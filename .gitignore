@@ -1,0 +1,29 @@
+node_modules/
+dist/
+target/
+.cargo-home/
+.rustup-home/
+.DS_Store
+Thumbs.db
+
+# Explicit build/runtime artifacts (defense-in-depth)
+src/tauri/target/
+dist/history/
+dist/portable/.webview2/
+dist/portable/v2rayn-widget-*.exe
+src/frontend/node_modules/
+src/frontend/.vite/
+src/frontend/dist/
+
+# Logs
+*.log
+logs/
+
+# Env
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp

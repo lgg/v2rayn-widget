@@ -288,6 +288,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::refresh_status,
+            commands::refresh_status_post_route,
             commands::refresh_status_background,
             commands::refresh_status_startup,
             commands::toggle_tun_via_ui,
@@ -317,7 +318,4 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
-
-
 

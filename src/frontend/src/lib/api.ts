@@ -18,6 +18,10 @@ export async function refreshStatus(): Promise<DashboardStatus> {
   return invoke<DashboardStatus>("refresh_status");
 }
 
+export async function refreshStatusPostRoute(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("refresh_status_post_route");
+}
+
 export async function refreshStatusBackground(): Promise<DashboardStatus> {
   return invoke<DashboardStatus>("refresh_status_background");
 }

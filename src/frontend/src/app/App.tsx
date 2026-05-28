@@ -11,14 +11,6 @@ import { setMainWindowHeight } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { AppSettings } from "@/lib/types";
 
-function copyToClipboard(value: string | null): Promise<void> {
-  if (!value) {
-    return Promise.resolve();
-  }
-
-  return navigator.clipboard.writeText(value);
-}
-
 export function App(): JSX.Element {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLElement | null>(null);
@@ -39,6 +31,7 @@ export function App(): JSX.Element {
     openSettings,
     openV2RayN,
     relaunchAsAdmin,
+    showNotice,
     clearNotice,
     applyExternalSettings
   } = useDashboardStore();
@@ -101,7 +94,7 @@ export function App(): JSX.Element {
       return false;
     }
 
-    return settings.show_clock || settings.show_external_ip || settings.show_latency;
+    return settings.show_info_status || settings.show_clock || settings.show_external_ip || settings.show_latency;
   }, [settings]);
 
   useEffect(() => {
@@ -158,6 +151,19 @@ export function App(): JSX.Element {
     profiles.find((profile) => profile.name === status.active_profile_name)?.id ?? profiles[0]?.id ?? "";
 
   const showLowerBlock = showInfoPanel || settings.show_action_buttons;
+  const copyIp = async (): Promise<void> => {
+    if (!status.external_ip) {
+      showNotice({ kind: "error", message: t("errors.copyIpMissing") });
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(status.external_ip);
+      showNotice({ kind: "info", message: t("notices.ipCopied") });
+    } catch {
+      showNotice({ kind: "error", message: t("errors.copyIpFailed") });
+    }
+  };
 
   return (
     <main data-tauri-drag-region className="drag-region h-full overflow-hidden p-0">
@@ -245,7 +251,7 @@ export function App(): JSX.Element {
                 </button>
                 <button
                   className="group rounded-2xl border border-white/25 bg-white/5 px-2 py-2 transition hover:bg-white/10"
-                  onClick={() => void copyToClipboard(status.external_ip)}
+                  onClick={() => void copyIp()}
                 >
                   <Copy className="mx-auto mb-1 h-4 w-4 text-emerald-200 transition group-hover:scale-105" />
                   <span className="text-[12px]">{t("actions.copyIp")}</span>

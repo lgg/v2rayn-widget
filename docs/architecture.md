@@ -18,7 +18,8 @@ Responsibilities:
 
 Key files:
 - `src/frontend/src/app/App.tsx`
-- `src/frontend/src/components/settings-panel.tsx`
+- `src/frontend/src/app/SettingsWindow.tsx`
+- `src/frontend/src/app/DebugWindow.tsx`
 - `src/frontend/src/components/info-panel.tsx`
 - `src/frontend/src/features/dashboard-store.ts`
 
@@ -52,6 +53,7 @@ Key modules:
 
 - `get_status`
 - `refresh_status`
+- `refresh_status_post_route`
 - `refresh_status_background`
 - `refresh_status_startup`
 - `toggle_tun_via_ui`
@@ -60,10 +62,22 @@ Key modules:
 - `restart_v2rayn`
 - `get_settings`
 - `update_settings`
+- `apply_ui_settings`
+- `open_settings_window`
+- `open_debug_window`
+- `run_ui_debug_probe`
+- `debug_toggle_via_ui_only`
+- `debug_click_reload_via_ui`
+- `debug_select_profile_via_ui`
+- `debug_capture_runtime_snapshot`
+- `debug_toggle_via_config_only`
+- `relaunch_widget_as_admin`
 - `detect_v2rayn_path`
 - `validate_v2rayn_path`
 - `get_available_locales`
 - `list_profiles`
+- `close_window`
+- `set_main_window_height`
 - `exit_app`
 
 ## Data models
@@ -84,14 +98,19 @@ Key modules:
 - `theme`
 - `always_on_top`
 - `autostart_with_windows`
+- `allow_restart_fallback`
 - `poll_interval_sec`
 - `time_format`
+- `show_clock`
+- `show_info_status`
 - `show_external_ip`
 - `show_latency`
+- `mock_mode_enabled`
 - `show_action_buttons`
 - `show_profile_selector`
 - `window_effect_enabled`
 - `window_opacity_percent`
+- `window_fix_mode`
 - `latency_mode`
 - `connectivity_endpoints`
 - `ip_endpoints`

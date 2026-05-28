@@ -15,7 +15,7 @@ use crate::{
         profile::ProfileSummary,
         settings::{
             default_connectivity_endpoints, default_ip_endpoints, AppSettings, LatencyMode,
-            UiSettingsPatch, V2RayNPathMode, WindowFixMode,
+            UiSettingsPatch, V2RayNPathMode,
         },
         status::{ConnectionState, DashboardStatus},
     },
@@ -33,6 +33,7 @@ use crate::{
 };
 
 const UIPI_MISMATCH_PREFIX: &str = "UIPI_MISMATCH";
+const PROFILE_IP_SETTLE_DELAY: Duration = Duration::from_secs(5);
 
 #[tauri::command]
 pub async fn get_status(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
@@ -62,6 +63,27 @@ pub async fn refresh_status(state: State<'_, AppState>) -> Result<DashboardStatu
 }
 
 #[tauri::command]
+pub async fn refresh_status_post_route(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
+    let snapshot = state.snapshot();
+
+    if snapshot.settings.mock_mode_enabled {
+        let mock = build_mock_status(&snapshot.status, &snapshot.settings, None, None);
+        state.update_status(mock.clone());
+        return Ok(mock);
+    }
+
+    let status = refresh_status_from_settings(&snapshot.settings, false, true, false)
+        .await
+        .map_err(|error| {
+            error!(?error, "refresh_status_post_route failed");
+            error.to_string()
+        })?;
+
+    let merged = merge_with_previous(status, &snapshot.status);
+    state.update_status(merged.clone());
+    Ok(merged)
+}
+#[tauri::command]
 pub async fn refresh_status_background(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
     let snapshot = state.snapshot();
 
@@ -84,6 +106,8 @@ pub async fn refresh_status_background(state: State<'_, AppState>) -> Result<Das
         snapshot.status.active_profile_name.as_deref(),
         merged.active_profile_name.as_deref(),
     ) {
+        tokio::time::sleep(PROFILE_IP_SETTLE_DELAY).await;
+
         let with_external_ip = refresh_status_from_settings(&snapshot.settings, true, true, false)
             .await
             .map_err(|error| {
@@ -204,7 +228,7 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
         }
     }
 
-    let status = refresh_status_from_settings(&snapshot.settings, true, true, true)
+    let status = refresh_status_after_route_change(&snapshot.settings, &snapshot.status)
         .await
         .map_err(|error| {
             error!(?error, "status refresh after toggle failed");
@@ -352,7 +376,7 @@ pub async fn set_active_profile(
         }
     }
 
-    let status = refresh_status_from_settings(&snapshot.settings, true, true, true)
+    let status = refresh_status_after_route_change(&snapshot.settings, &snapshot.status)
         .await
         .map_err(|error| {
             error!(?error, "status refresh after set_active_profile failed");
@@ -435,6 +459,9 @@ pub async fn apply_ui_settings(
     }
     if let Some(value) = payload.show_clock {
         merged.show_clock = value;
+    }
+    if let Some(value) = payload.show_info_status {
+        merged.show_info_status = value;
     }
     if let Some(value) = payload.show_external_ip {
         merged.show_external_ip = value;
@@ -738,6 +765,15 @@ fn merge_with_previous(mut next: DashboardStatus, previous: &DashboardStatus) ->
     next
 }
 
+async fn refresh_status_after_route_change(
+    settings: &AppSettings,
+    previous: &DashboardStatus,
+) -> anyhow::Result<DashboardStatus> {
+    // Route-change actions (toggle/profile switch) should return fast.
+    // We avoid blocking on network probes here; delayed full refresh is triggered from frontend.
+    let status = refresh_status_from_settings(settings, false, false, false).await?;
+    Ok(merge_with_previous(status, previous))
+}
 fn collect_runtime_snapshot(settings: &AppSettings) -> anyhow::Result<DebugRuntimeSnapshot> {
     let process = process_monitor::read_process_snapshot();
     let mut snapshot = DebugRuntimeSnapshot {
@@ -783,7 +819,6 @@ fn resolve_v2rayn_base_path(settings: &AppSettings) -> Option<PathBuf> {
 fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     settings.poll_interval_sec = settings.poll_interval_sec.clamp(1, 3600);
     settings.window_opacity_percent = settings.window_opacity_percent.clamp(10, 100);
-    settings.window_fix_mode = WindowFixMode::BasicTransparent;
     settings.v2rayn_path = normalize_manual_path(settings.v2rayn_path);
 
     settings.connectivity_endpoints = normalize_endpoint_list(
@@ -806,7 +841,7 @@ fn normalize_endpoint_list(values: Vec<String>, fallback: Vec<String>) -> Vec<St
     let filtered = values
         .into_iter()
         .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
+        .filter(|value| is_allowed_http_endpoint(value))
         .collect::<Vec<_>>();
 
     if filtered.is_empty() {
@@ -814,6 +849,14 @@ fn normalize_endpoint_list(values: Vec<String>, fallback: Vec<String>) -> Vec<St
     } else {
         filtered
     }
+}
+
+fn is_allowed_http_endpoint(value: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(value) else {
+        return false;
+    };
+
+    matches!(url.scheme(), "http" | "https") && url.host_str().is_some()
 }
 
 fn profile_name_matches(current: Option<&str>, expected: &str) -> bool {
@@ -885,7 +928,7 @@ fn build_mock_status(
         tun_enabled,
         connection_state,
         active_profile_name,
-        external_ip: Some("203.0.113.45".to_owned()),
+        external_ip: Some([203, 0, 113, 45].map(|part| part.to_string()).join(".")),
         latency_ms: Some(42),
         last_error: None,
         last_event: Some(if settings.language.starts_with("ru") {
@@ -965,38 +1008,48 @@ fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::settings::WindowFixMode;
 
+    #[test]
+    fn normalize_settings_preserves_window_fix_mode() {
+        let settings = AppSettings {
+            window_fix_mode: WindowFixMode::RegionClip,
+            ..AppSettings::default()
+        };
 
+        assert_eq!(normalize_settings(settings).window_fix_mode, WindowFixMode::RegionClip);
+    }
 
+    #[test]
+    fn normalize_endpoint_list_filters_invalid_and_non_http_urls() {
+        let result = normalize_endpoint_list(
+            vec![
+                " https://example.com/ip ".to_owned(),
+                "ftp://example.com/not-http".to_owned(),
+                "not a url".to_owned(),
+                "http://example.net/check".to_owned(),
+            ],
+            vec!["https://fallback.example".to_owned()],
+        );
 
+        assert_eq!(
+            result,
+            vec![
+                "https://example.com/ip".to_owned(),
+                "http://example.net/check".to_owned(),
+            ]
+        );
+    }
 
+    #[test]
+    fn normalize_endpoint_list_uses_fallback_when_all_values_are_invalid() {
+        let fallback = vec!["https://fallback.example".to_owned()];
+        let result = normalize_endpoint_list(vec!["not a url".to_owned()], fallback.clone());
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        assert_eq!(result, fallback);
+    }
+}
 

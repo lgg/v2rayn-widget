@@ -68,7 +68,7 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
     );
     changed |= set_first_existing_string_key(
         &mut json,
-        &["activeProfileName", "activeServerName", "currentProfile", "Remarks"],
+        &["activeProfileName", "activeServerName", "currentProfile"],
         &target.name,
     );
 
@@ -284,20 +284,23 @@ fn find_bool_by_keys(value: &Value, keys: &[&str]) -> Option<bool> {
 }
 
 fn extract_active_profile_name(json: &Value, profiles: &[ProfileSummary]) -> Option<String> {
-    if let Some(name) = find_string_by_keys(
+    let selected_id = find_string_by_keys(
         json,
-        &["activeProfileName", "activeServerName", "currentProfile", "remarks", "Remarks"],
-    ) {
-        return Some(name);
-    }
-
-    let selected_id = find_string_by_keys(json, &["IndexId", "indexId", "SubIndexId", "subIndexId", "selectedProfileId", "selectedServerId"])
-        .or_else(|| find_number_by_keys(json, &["indexMain", "selectedIndex"]).map(|v| v.to_string()));
+        &["IndexId", "indexId", "SubIndexId", "subIndexId", "selectedProfileId", "selectedServerId"],
+    )
+    .or_else(|| find_number_by_keys(json, &["indexMain", "selectedIndex"]).map(|v| v.to_string()));
 
     if let Some(id) = selected_id {
         if let Some(found) = profiles.iter().find(|profile| profile.id == id) {
             return Some(found.name.clone());
         }
+    }
+
+    if let Some(name) = find_string_by_keys(
+        json,
+        &["activeProfileName", "activeServerName", "currentProfile"],
+    ) {
+        return Some(name);
     }
 
     profiles.first().map(|profile| profile.name.clone())
@@ -384,6 +387,82 @@ fn find_value_by_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
         }
         Value::Array(items) => items.iter().find_map(|item| find_value_by_key(item, key)),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn profile(id: &str, name: &str) -> ProfileSummary {
+        ProfileSummary {
+            id: id.to_owned(),
+            name: name.to_owned(),
+        }
+    }
+
+    #[test]
+    fn active_profile_prefers_selected_index_over_nested_remarks() {
+        let json = serde_json::json!({
+            "IndexId": "second",
+            "ProfileItem": [
+                { "IndexId": "first", "Remarks": "First profile" },
+                { "IndexId": "second", "Remarks": "Second profile" }
+            ]
+        });
+        let profiles = vec![
+            profile("first", "First profile"),
+            profile("second", "Second profile"),
+        ];
+
+        assert_eq!(
+            extract_active_profile_name(&json, &profiles),
+            Some("Second profile".to_owned())
+        );
+    }
+
+    #[test]
+    fn set_active_profile_does_not_rewrite_profile_remarks() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!("v2rayn-widget-config-test-{unique}"));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        fs::write(
+            &config_path,
+            serde_json::json!({
+                "IndexId": "first",
+                "ProfileItem": [
+                    { "IndexId": "first", "Remarks": "First profile" },
+                    { "IndexId": "second", "Remarks": "Second profile" }
+                ]
+            })
+            .to_string(),
+        )
+        .expect("write config");
+
+        set_active_profile(&base_path, "second").expect("set profile");
+        let updated: Value =
+            serde_json::from_str(&fs::read_to_string(&config_path).expect("read config"))
+                .expect("parse config");
+
+        assert_eq!(updated.get("IndexId").and_then(Value::as_str), Some("second"));
+        assert_eq!(
+            updated
+                .get("ProfileItem")
+                .and_then(Value::as_array)
+                .and_then(|items| items.first())
+                .and_then(|item| item.get("Remarks"))
+                .and_then(Value::as_str),
+            Some("First profile")
+        );
+
+        let _ = fs::remove_dir_all(base_path);
     }
 }
 

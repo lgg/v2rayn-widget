@@ -55,6 +55,7 @@
   "settings.time12": "12-hour",
   "settings.widgetData": "Widget data",
   "settings.showClock": "Show clock",
+  "settings.showInfoStatus": "Show status in info panel",
   "settings.showExternalIp": "Show external IP",
   "settings.showLatency": "Show latency",
   "settings.showActionButtons": "Show action buttons",
@@ -103,7 +104,10 @@
   "errors.settingsSaveFailed": "Could not save settings",
   "errors.openFailed": "Could not open v2rayN",
   "errors.restartFailed": "Could not restart v2rayN",
+  "errors.copyIpMissing": "External IP is not available yet",
+  "errors.copyIpFailed": "Could not copy IP",
   "errors.uipiMismatch": "Permission mismatch: v2rayN is running as Administrator, but widget is not. Run both apps with the same rights or restart widget as Administrator.",
+  "notices.ipCopied": "External IP copied",
   "dashboard.pathConfigMissing": "v2rayN path is not configured. Open Settings and select your v2rayN folder."
 }
 

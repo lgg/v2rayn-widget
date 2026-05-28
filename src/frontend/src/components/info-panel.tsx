@@ -40,10 +40,14 @@ export function InfoPanel({ status, settings }: { status: DashboardStatus; setti
 
   return (
     <section className="rounded-2xl border border-white/50 bg-white/70 p-4 dark:border-slate-600/60 dark:bg-slate-900/60">
-      <div className="mb-3 flex items-center justify-between">
-        <StatusBadge status={status.status} />
-        {settings.show_clock && <span className="text-xs text-muted">{displayTime}</span>}
-      </div>
+      {(settings.show_info_status || settings.show_clock) && (
+        <div
+          className={`mb-3 flex items-center ${settings.show_info_status ? "justify-between" : "justify-end"}`}
+        >
+          {settings.show_info_status && <StatusBadge status={status.status} />}
+          {settings.show_clock && <span className="text-xs text-muted">{displayTime}</span>}
+        </div>
+      )}
 
       <dl className="space-y-2 text-sm">
         {settings.show_external_ip && (

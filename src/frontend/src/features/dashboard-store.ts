@@ -8,6 +8,7 @@ import {
   openV2RayN,
   refreshStatus,
   refreshStatusBackground,
+  refreshStatusPostRoute,
   refreshStatusStartup,
   relaunchWidgetAsAdmin,
   setActiveProfile as setActiveProfileApi,
@@ -34,8 +35,12 @@ interface DashboardState {
   openDebug: () => Promise<void>;
   relaunchAsAdmin: () => Promise<void>;
   applyExternalSettings: (settings: AppSettings) => void;
+  showNotice: (notice: Omit<UiNotice, "id">) => void;
   clearNotice: () => void;
 }
+
+let postRouteRefreshTimer: number | null = null;
+let refreshInFlight = false;
 
 function applyTheme(theme: "light" | "dark"): void {
   const root = document.documentElement;
@@ -153,11 +158,15 @@ export const useDashboardStore = create<DashboardState>((set) => ({
 
   refresh: async (options) => {
     const background = options?.background === true;
+    if (refreshInFlight) {
+      return;
+    }
 
     if (!background) {
       set({ actionLoading: true, error: null });
     }
 
+    refreshInFlight = true;
     try {
       const status = background ? await refreshStatusBackground() : await refreshStatus();
       const profiles = await listProfiles().catch(() => []);
@@ -175,6 +184,8 @@ export const useDashboardStore = create<DashboardState>((set) => ({
           notice: buildNoticeFromError(error, i18n.t("errors.refreshFailed"))
         });
       }
+    } finally {
+      refreshInFlight = false;
     }
   },
 
@@ -183,6 +194,27 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     try {
       const status = await toggleTunViaUi();
       set({ status, actionLoading: false });
+
+      if (postRouteRefreshTimer !== null) {
+        window.clearTimeout(postRouteRefreshTimer);
+      }
+
+      postRouteRefreshTimer = window.setTimeout(() => {
+        void (async () => {
+          try {
+            const refreshedStatus = await refreshStatusPostRoute();
+            const profiles = await listProfiles().catch(() => []);
+            set((prev) => ({
+              status: refreshedStatus,
+              profiles: profiles.length > 0 ? profiles : prev.profiles
+            }));
+          } catch {
+            // keep fast route-change UX even if delayed network refresh fails
+          } finally {
+            postRouteRefreshTimer = null;
+          }
+        })();
+      }, 3200);
     } catch (error) {
       set({
         actionLoading: false,
@@ -202,6 +234,27 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       const status = await setActiveProfileApi(profileId);
       const profiles = await listProfiles().catch(() => []);
       set({ status, profiles, actionLoading: false });
+
+      if (postRouteRefreshTimer !== null) {
+        window.clearTimeout(postRouteRefreshTimer);
+      }
+
+      postRouteRefreshTimer = window.setTimeout(() => {
+        void (async () => {
+          try {
+            const refreshedStatus = await refreshStatusPostRoute();
+            const refreshedProfiles = await listProfiles().catch(() => []);
+            set((prev) => ({
+              status: refreshedStatus,
+              profiles: refreshedProfiles.length > 0 ? refreshedProfiles : prev.profiles
+            }));
+          } catch {
+            // keep fast profile-switch UX even if delayed network refresh fails
+          } finally {
+            postRouteRefreshTimer = null;
+          }
+        })();
+      }, 5000);
     } catch (error) {
       set({
         actionLoading: false,
@@ -240,5 +293,14 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     set({ settings });
   },
 
+  showNotice: (notice) =>
+    set({
+      notice: {
+        ...notice,
+        id: Date.now()
+      }
+    }),
+
   clearNotice: () => set({ notice: null })
 }));
+

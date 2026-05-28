@@ -34,6 +34,7 @@ export interface AppSettings {
   poll_interval_sec: number;
   time_format: TimeFormat;
   show_clock: boolean;
+  show_info_status: boolean;
   show_external_ip: boolean;
   show_latency: boolean;
   mock_mode_enabled: boolean;
@@ -56,6 +57,7 @@ export interface UiSettingsPatch {
   always_on_top?: boolean;
   time_format?: TimeFormat;
   show_clock?: boolean;
+  show_info_status?: boolean;
   show_external_ip?: boolean;
   show_latency?: boolean;
   mock_mode_enabled?: boolean;

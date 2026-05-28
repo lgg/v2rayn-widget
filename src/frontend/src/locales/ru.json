@@ -55,6 +55,7 @@
   "settings.time12": "12-часовой",
   "settings.widgetData": "Данные виджета",
   "settings.showClock": "Показывать часы",
+  "settings.showInfoStatus": "Показывать статус в инфо-блоке",
   "settings.showExternalIp": "Показывать внешний IP",
   "settings.showLatency": "Показывать задержку",
   "settings.showActionButtons": "Показывать action-кнопки",
@@ -103,7 +104,10 @@
   "errors.settingsSaveFailed": "Не удалось сохранить настройки",
   "errors.openFailed": "Не удалось открыть v2rayN",
   "errors.restartFailed": "Не удалось перезапустить v2rayN",
+  "errors.copyIpMissing": "Внешний IP пока недоступен",
+  "errors.copyIpFailed": "Не удалось скопировать IP",
   "errors.uipiMismatch": "Несовпадение прав: v2rayN запущен от администратора, а виджет нет. Запустите оба приложения с одинаковыми правами или перезапустите виджет от администратора.",
+  "notices.ipCopied": "Внешний IP скопирован",
   "dashboard.pathConfigMissing": "Путь к v2rayN не настроен. Откройте настройки и выберите папку v2rayN."
 }
 

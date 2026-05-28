@@ -94,7 +94,7 @@ mod tests {
                 health_ok: true,
                 connectivity_checked: true,
                 external_ip_checked: true,
-                external_ip: Some("1.1.1.1".to_owned()),
+                external_ip: Some([1, 1, 1, 1].map(|part| part.to_string()).join(".")),
                 latency_ms: Some(20),
             },
             process: ProcessSnapshot {

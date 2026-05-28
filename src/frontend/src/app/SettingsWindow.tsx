@@ -75,6 +75,7 @@ function mergeUiFields(prev: AppSettings, next: AppSettings): AppSettings {
     allow_restart_fallback: next.allow_restart_fallback,
     time_format: next.time_format,
     show_clock: next.show_clock,
+    show_info_status: next.show_info_status,
     show_external_ip: next.show_external_ip,
     show_latency: next.show_latency,
     mock_mode_enabled: next.mock_mode_enabled,
@@ -97,6 +98,7 @@ export function SettingsWindow(): JSX.Element {
   const [ipEndpointsText, setIpEndpointsText] = useState<string>("");
   const [pollError, setPollError] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
+  const [draftDirty, setDraftDirty] = useState(false);
 
   useEffect(() => {
     const load = async (): Promise<void> => {
@@ -117,7 +119,17 @@ export function SettingsWindow(): JSX.Element {
   useEffect(() => {
     const bind = async (): Promise<(() => void) | undefined> => {
       const unlisten = await listen<AppSettings>("settings-updated", async (event) => {
-        setSettings((prev) => (prev ? mergeUiFields(prev, event.payload) : event.payload));
+        setSettings((prev) => {
+          if (!prev) {
+            return event.payload;
+          }
+
+          return draftDirty ? mergeUiFields(prev, event.payload) : event.payload;
+        });
+        if (!draftDirty) {
+          setConnectivityEndpointsText(linesToText(event.payload.connectivity_endpoints));
+          setIpEndpointsText(linesToText(event.payload.ip_endpoints));
+        }
         applyTheme(event.payload.theme);
         applyVisual(event.payload);
         await i18n.changeLanguage(event.payload.language);
@@ -131,7 +143,7 @@ export function SettingsWindow(): JSX.Element {
     });
 
     return () => dispose?.();
-  }, [i18n]);
+  }, [draftDirty, i18n]);
 
   const pathIsManual = settings?.v2rayn_path_mode === "manual";
 
@@ -146,6 +158,7 @@ export function SettingsWindow(): JSX.Element {
       always_on_top: settings.always_on_top,
       time_format: settings.time_format,
       show_clock: settings.show_clock,
+      show_info_status: settings.show_info_status,
       show_external_ip: settings.show_external_ip,
       show_latency: settings.show_latency,
       mock_mode_enabled: settings.mock_mode_enabled,
@@ -215,6 +228,7 @@ export function SettingsWindow(): JSX.Element {
 
       const saved = await updateSettings(next);
       setSettings(saved);
+      setDraftDirty(false);
       await closeSettingsWindow();
     } finally {
       setBusy(false);
@@ -327,6 +341,7 @@ export function SettingsWindow(): JSX.Element {
 
             {[
               ["settings.showClock", "show_clock"],
+              ["settings.showInfoStatus", "show_info_status"],
               ["settings.showProfileSelector", "show_profile_selector"],
               ["settings.showActionButtons", "show_action_buttons"],
               ["settings.showExternalIp", "show_external_ip"],
@@ -389,9 +404,10 @@ export function SettingsWindow(): JSX.Element {
               <input
                 type="checkbox"
                 checked={settings.autostart_with_windows}
-                onChange={(event) =>
-                  setSettings((prev) => (prev ? { ...prev, autostart_with_windows: event.target.checked } : prev))
-                }
+                onChange={(event) => {
+                  setDraftDirty(true);
+                  setSettings((prev) => (prev ? { ...prev, autostart_with_windows: event.target.checked } : prev));
+                }}
               />
             </label>
 
@@ -400,9 +416,10 @@ export function SettingsWindow(): JSX.Element {
               <input
                 type="checkbox"
                 checked={settings.allow_restart_fallback}
-                onChange={(event) =>
-                  setSettings((prev) => (prev ? { ...prev, allow_restart_fallback: event.target.checked } : prev))
-                }
+                onChange={(event) => {
+                  setDraftDirty(true);
+                  setSettings((prev) => (prev ? { ...prev, allow_restart_fallback: event.target.checked } : prev));
+                }}
               />
             </label>
 
@@ -417,6 +434,7 @@ export function SettingsWindow(): JSX.Element {
                 value={settings.poll_interval_sec}
                 onChange={(event) => {
                   setPollError(null);
+                  setDraftDirty(true);
                   const value = Number.parseInt(event.target.value, 10);
                   setSettings((prev) => (prev ? { ...prev, poll_interval_sec: Number.isFinite(value) ? value : 10 } : prev));
                 }}
@@ -433,11 +451,12 @@ export function SettingsWindow(): JSX.Element {
               <select
                 className="w-full rounded-xl border bg-white/90 px-3 py-2 dark:bg-slate-900/90"
                 value={settings.latency_mode}
-                onChange={(event) =>
+                onChange={(event) => {
+                  setDraftDirty(true);
                   setSettings((prev) =>
                     prev ? { ...prev, latency_mode: event.target.value as AppSettings["latency_mode"] } : prev
-                  )
-                }
+                  );
+                }}
               >
                 <option value="active">{t("settings.latencyModeActive")}</option>
                 <option value="log_snapshot">{t("settings.latencyModeLog")}</option>
@@ -449,11 +468,21 @@ export function SettingsWindow(): JSX.Element {
               <textarea
                 className="min-h-24 w-full resize-y rounded-xl border bg-white/90 px-3 py-2 text-xs leading-5 dark:bg-slate-900/90"
                 value={connectivityEndpointsText}
-                onChange={(event) => setConnectivityEndpointsText(event.target.value)}
+                onChange={(event) => {
+                  setDraftDirty(true);
+                  setConnectivityEndpointsText(event.target.value);
+                }}
               />
             </label>
             <div className="flex justify-end">
-              <button type="button" className="rounded-lg border px-2 py-1 text-xs" onClick={() => setConnectivityEndpointsText(linesToText(DEFAULT_CONNECTIVITY_ENDPOINTS))}>
+              <button
+                type="button"
+                className="rounded-lg border px-2 py-1 text-xs"
+                onClick={() => {
+                  setDraftDirty(true);
+                  setConnectivityEndpointsText(linesToText(DEFAULT_CONNECTIVITY_ENDPOINTS));
+                }}
+              >
                 {t("settings.resetDefaults")}
               </button>
             </div>
@@ -463,11 +492,21 @@ export function SettingsWindow(): JSX.Element {
               <textarea
                 className="min-h-24 w-full resize-y rounded-xl border bg-white/90 px-3 py-2 text-xs leading-5 dark:bg-slate-900/90"
                 value={ipEndpointsText}
-                onChange={(event) => setIpEndpointsText(event.target.value)}
+                onChange={(event) => {
+                  setDraftDirty(true);
+                  setIpEndpointsText(event.target.value);
+                }}
               />
             </label>
             <div className="flex justify-end">
-              <button type="button" className="rounded-lg border px-2 py-1 text-xs" onClick={() => setIpEndpointsText(linesToText(DEFAULT_IP_ENDPOINTS))}>
+              <button
+                type="button"
+                className="rounded-lg border px-2 py-1 text-xs"
+                onClick={() => {
+                  setDraftDirty(true);
+                  setIpEndpointsText(linesToText(DEFAULT_IP_ENDPOINTS));
+                }}
+              >
                 {t("settings.resetDefaults")}
               </button>
             </div>
@@ -481,6 +520,7 @@ export function SettingsWindow(): JSX.Element {
                 type="radio"
                 checked={settings.v2rayn_path_mode === "auto"}
                 onChange={() => {
+                  setDraftDirty(true);
                   setPathError(null);
                   setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "auto", v2rayn_path: null } : prev));
                 }}
@@ -493,6 +533,7 @@ export function SettingsWindow(): JSX.Element {
                 type="radio"
                 checked={settings.v2rayn_path_mode === "manual"}
                 onChange={() => {
+                  setDraftDirty(true);
                   setPathError(null);
                   setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "manual" } : prev));
                 }}
@@ -506,6 +547,7 @@ export function SettingsWindow(): JSX.Element {
               value={settings.v2rayn_path ?? ""}
               placeholder={t("settings.pathPlaceholder")}
               onChange={(event) => {
+                setDraftDirty(true);
                 setPathError(null);
                 setSettings((prev) => (prev ? { ...prev, v2rayn_path: event.target.value } : prev));
               }}
@@ -518,6 +560,7 @@ export function SettingsWindow(): JSX.Element {
                 onClick={async () => {
                   const detected = await detectV2RayNPath();
                   if (detected) {
+                    setDraftDirty(true);
                     setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "manual", v2rayn_path: detected } : prev));
                     setPathValidation(t("settings.pathDetected"));
                   } else {
@@ -540,6 +583,7 @@ export function SettingsWindow(): JSX.Element {
                     return;
                   }
                   const result = await validateV2RayNPath(path);
+                  setDraftDirty(true);
                   setSettings((prev) => (prev ? { ...prev, v2rayn_path: result.normalized_path } : prev));
                   setPathValidation(t(result.message_key));
                   if (!result.is_valid) {
@@ -556,6 +600,7 @@ export function SettingsWindow(): JSX.Element {
                 type="button"
                 className="rounded-lg border px-2 py-1"
                 onClick={() => {
+                  setDraftDirty(true);
                   setPathError(null);
                   setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "auto", v2rayn_path: null } : prev));
                   setPathValidation(t("settings.pathAutoMode"));

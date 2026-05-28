@@ -41,6 +41,7 @@ interface DashboardState {
 
 let postRouteRefreshTimer: number | null = null;
 let refreshInFlight = false;
+let manualRefreshQueued = false;
 
 function applyTheme(theme: "light" | "dark"): void {
   const root = document.documentElement;
@@ -111,7 +112,7 @@ function buildNoticeFromError(error: unknown, fallback: string): UiNotice {
   };
 }
 
-export const useDashboardStore = create<DashboardState>((set) => ({
+export const useDashboardStore = create<DashboardState>((set, get) => ({
   status: null,
   settings: null,
   profiles: [],
@@ -159,6 +160,10 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   refresh: async (options) => {
     const background = options?.background === true;
     if (refreshInFlight) {
+      if (!background) {
+        manualRefreshQueued = true;
+        set({ actionLoading: true, error: null });
+      }
       return;
     }
 
@@ -186,6 +191,10 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       }
     } finally {
       refreshInFlight = false;
+      if (manualRefreshQueued) {
+        manualRefreshQueued = false;
+        void get().refresh({ background: false });
+      }
     }
   },
 

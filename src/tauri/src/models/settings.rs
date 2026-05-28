@@ -56,19 +56,6 @@ impl Default for LatencyMode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum WindowFixMode {
-    BasicTransparent,
-    RegionClip,
-}
-
-impl Default for WindowFixMode {
-    fn default() -> Self {
-        Self::RegionClip
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WindowPosition {
     pub x: i32,
     pub y: i32,
@@ -111,7 +98,6 @@ pub struct AppSettings {
     pub show_profile_selector: bool,
     pub window_effect_enabled: bool,
     pub window_opacity_percent: u8,
-    pub window_fix_mode: WindowFixMode,
     pub latency_mode: LatencyMode,
     #[serde(default = "default_connectivity_endpoints")]
     pub connectivity_endpoints: Vec<String>,
@@ -141,7 +127,6 @@ impl Default for AppSettings {
             show_profile_selector: true,
             window_effect_enabled: true,
             window_opacity_percent: 92,
-            window_fix_mode: WindowFixMode::BasicTransparent,
             latency_mode: LatencyMode::Active,
             connectivity_endpoints: default_connectivity_endpoints(),
             ip_endpoints: default_ip_endpoints(),
@@ -168,7 +153,6 @@ pub struct UiSettingsPatch {
     pub show_profile_selector: Option<bool>,
     pub window_effect_enabled: Option<bool>,
     pub window_opacity_percent: Option<u8>,
-    pub window_fix_mode: Option<WindowFixMode>,
 }
 
 

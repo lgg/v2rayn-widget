@@ -72,16 +72,33 @@ pub fn v2rayn_base_path_from_running_process() -> Option<PathBuf> {
     None
 }
 
-pub fn terminate_v2rayn() {
+pub fn terminate_v2rayn_at_path(base_path: &Path) -> bool {
     let mut system = System::new_all();
     system.refresh_processes(ProcessesToUpdate::All, true);
 
+    let expected = normalize_path(base_path);
+    let mut killed = false;
+
     for process in system.processes().values() {
         let process_name = process.name().to_string_lossy().to_lowercase();
-        if is_v2rayn_process_name(&process_name) {
+        if !is_v2rayn_process_name(&process_name) {
+            continue;
+        }
+
+        let Some(exe) = process.exe() else {
+            continue;
+        };
+        let Some(parent) = exe.parent() else {
+            continue;
+        };
+
+        if normalize_path(parent) == expected {
             let _ = process.kill();
+            killed = true;
         }
     }
+
+    killed
 }
 
 fn is_v2rayn_process_name(name: &str) -> bool {
@@ -93,4 +110,8 @@ fn is_valid_v2rayn_base_path(path: &Path) -> bool {
         && path.join("guiConfigs").exists()
         && path.join("guiLogs").exists()
         && path.join("v2rayN.exe").exists()
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }

@@ -1,4 +1,5 @@
 use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::{Path, PathBuf},
     process::Command,
     time::Duration,
@@ -484,10 +485,6 @@ pub async fn apply_ui_settings(
     if let Some(value) = payload.window_opacity_percent {
         merged.window_opacity_percent = value;
     }
-    if let Some(value) = payload.window_fix_mode {
-        merged.window_fix_mode = value;
-    }
-
     let settings = normalize_settings(merged);
 
     settings_store::save_settings(&settings).map_err(|error| error.to_string())?;
@@ -856,7 +853,50 @@ fn is_allowed_http_endpoint(value: &str) -> bool {
         return false;
     };
 
-    matches!(url.scheme(), "http" | "https") && url.host_str().is_some()
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+
+    is_allowed_endpoint_host(host)
+}
+
+fn is_allowed_endpoint_host(host: &str) -> bool {
+    let host = host.trim().trim_matches(['[', ']']).to_lowercase();
+    if host.is_empty() || host == "localhost" || host.ends_with(".localhost") {
+        return false;
+    }
+
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(addr)) => is_allowed_ipv4_endpoint(addr),
+        Ok(IpAddr::V6(addr)) => is_allowed_ipv6_endpoint(addr),
+        Err(_) => true,
+    }
+}
+
+fn is_allowed_ipv4_endpoint(addr: Ipv4Addr) -> bool {
+    !(addr.is_private()
+        || addr.is_loopback()
+        || addr.is_link_local()
+        || addr.is_broadcast()
+        || addr.is_documentation()
+        || addr.is_unspecified())
+}
+
+fn is_allowed_ipv6_endpoint(addr: Ipv6Addr) -> bool {
+    !(addr.is_loopback()
+        || addr.is_unspecified()
+        || addr.is_unique_local()
+        || addr.is_unicast_link_local()
+        || is_documentation_ipv6(addr))
+}
+
+fn is_documentation_ipv6(addr: Ipv6Addr) -> bool {
+    let segments = addr.segments();
+    segments[0] == 0x2001 && segments[1] == 0x0db8
 }
 
 fn profile_name_matches(current: Option<&str>, expected: &str) -> bool {
@@ -972,7 +1012,12 @@ fn open_v2rayn_process(base_path: &Path) -> Result<(), String> {
 }
 
 fn restart_v2rayn_process(base_path: &Path) -> anyhow::Result<()> {
-    process_monitor::terminate_v2rayn();
+    if !process_monitor::terminate_v2rayn_at_path(base_path) {
+        warn!(
+            base_path = %base_path.display(),
+            "no running v2rayN process matched configured path during restart"
+        );
+    }
     std::thread::sleep(Duration::from_millis(750));
 
     open_v2rayn_process(base_path).map_err(anyhow::Error::msg)
@@ -1011,18 +1056,6 @@ fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::settings::WindowFixMode;
-
-    #[test]
-    fn normalize_settings_preserves_window_fix_mode() {
-        let settings = AppSettings {
-            window_fix_mode: WindowFixMode::RegionClip,
-            ..AppSettings::default()
-        };
-
-        assert_eq!(normalize_settings(settings).window_fix_mode, WindowFixMode::RegionClip);
-    }
-
     #[test]
     fn normalize_endpoint_list_filters_invalid_and_non_http_urls() {
         let result = normalize_endpoint_list(
@@ -1042,6 +1075,24 @@ mod tests {
                 "http://example.net/check".to_owned(),
             ]
         );
+    }
+
+    #[test]
+    fn normalize_endpoint_list_rejects_local_and_private_hosts() {
+        let private_ipv4 = [10, 0, 0, 5].map(|part| part.to_string()).join(".");
+        let loopback_ipv4 = [127, 0, 0, 1].map(|part| part.to_string()).join(".");
+
+        let result = normalize_endpoint_list(
+            vec![
+                format!("http://{private_ipv4}/check"),
+                format!("http://{loopback_ipv4}/check"),
+                "http://localhost/check".to_owned(),
+                "https://example.com/check".to_owned(),
+            ],
+            vec!["https://fallback.example".to_owned()],
+        );
+
+        assert_eq!(result, vec!["https://example.com/check".to_owned()]);
     }
 
     #[test]

@@ -82,8 +82,7 @@ function mergeUiFields(prev: AppSettings, next: AppSettings): AppSettings {
     show_action_buttons: next.show_action_buttons,
     show_profile_selector: next.show_profile_selector,
     window_effect_enabled: next.window_effect_enabled,
-    window_opacity_percent: next.window_opacity_percent,
-    window_fix_mode: next.window_fix_mode
+    window_opacity_percent: next.window_opacity_percent
   };
 }
 
@@ -165,8 +164,7 @@ export function SettingsWindow(): JSX.Element {
       show_action_buttons: settings.show_action_buttons,
       show_profile_selector: settings.show_profile_selector,
       window_effect_enabled: settings.window_effect_enabled,
-      window_opacity_percent: settings.window_opacity_percent,
-      window_fix_mode: settings.window_fix_mode
+      window_opacity_percent: settings.window_opacity_percent
     };
   }, [settings]);
 

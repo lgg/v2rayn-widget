@@ -16,7 +16,6 @@ export type ThemeMode = "light" | "dark";
 export type PathMode = "auto" | "manual";
 export type TimeFormat = "system" | "24h" | "12h";
 export type LatencyMode = "active" | "log_snapshot";
-export type WindowFixMode = "basic_transparent" | "region_clip";
 
 export interface WindowPosition {
   x: number;
@@ -42,7 +41,6 @@ export interface AppSettings {
   show_profile_selector: boolean;
   window_effect_enabled: boolean;
   window_opacity_percent: number;
-  window_fix_mode: WindowFixMode;
   latency_mode: LatencyMode;
   connectivity_endpoints: string[];
   ip_endpoints: string[];
@@ -65,7 +63,6 @@ export interface UiSettingsPatch {
   show_profile_selector?: boolean;
   window_effect_enabled?: boolean;
   window_opacity_percent?: number;
-  window_fix_mode?: WindowFixMode;
 }
 
 export interface PathValidation {

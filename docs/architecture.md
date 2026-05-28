@@ -110,7 +110,6 @@ Key modules:
 - `show_profile_selector`
 - `window_effect_enabled`
 - `window_opacity_percent`
-- `window_fix_mode`
 - `latency_mode`
 - `connectivity_endpoints`
 - `ip_endpoints`

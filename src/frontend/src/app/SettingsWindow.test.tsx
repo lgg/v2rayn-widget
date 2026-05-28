@@ -84,4 +84,26 @@ describe("SettingsWindow", () => {
     });
     expect(apiMocks.closeWindow).toHaveBeenCalledWith("settings");
   });
+
+  it("warns before closing with unsaved draft settings", async () => {
+    render(<SettingsWindow />);
+
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Autostart with Windows"));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(await screen.findByText("Unsaved settings")).not.toBeNull();
+    expect(apiMocks.closeWindow).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByText("Unsaved settings")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard changes" }));
+
+    await waitFor(() => {
+      expect(apiMocks.closeWindow).toHaveBeenCalledWith("settings");
+    });
+  });
 });

@@ -51,6 +51,9 @@ Exit criteria:
 ## ToDo / backlog
 
 1. Dedicated leak-check page (DNS/WebRTC/IP leak diagnostics).
-2. Installer packaging flow.
-3. Subscription-mode profile switch validation matrix.
-4. Linux/macOS widget port feasibility and control-path parity.
+2. Subscription-mode profile switch validation matrix.
+3. Linux/macOS widget port feasibility and control-path parity.
+
+## Completed release workflow tasks
+
+- [x] Installer packaging flow: `scripts/build-installer.ps1` builds a Windows NSIS installer through the project-local Tauri CLI.

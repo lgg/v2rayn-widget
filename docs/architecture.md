@@ -37,6 +37,12 @@ Responsibilities:
 - apply window behavior (always-on-top, rounded region, opacity),
 - apply autostart setting.
 
+## Build and release flows
+
+- `scripts/build-portable.ps1` runs frontend tests/build, Rust tests/build, and copies the release executable to `dist/portable/`.
+- `scripts/build-installer.ps1` runs frontend tests, prepares the isolated Rust environment, and invokes the project-local Tauri CLI with NSIS bundling enabled; Tauri runs the frontend production build through `beforeBuildCommand`.
+- `src/tauri/tauri.conf.json` keeps bundling disabled by default for regular portable builds; `src/tauri/tauri.installer.conf.json` enables NSIS bundling and uses the installer CLI working directory's frontend build path.
+
 Key modules:
 - `services/config_reader.rs`
 - `services/log_reader.rs`

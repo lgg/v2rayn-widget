@@ -1,0 +1,11 @@
+{
+  "build": {
+    "beforeBuildCommand": "npm --prefix frontend run build"
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ]
+  }
+}

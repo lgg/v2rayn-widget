@@ -98,6 +98,7 @@ export function SettingsWindow(): JSX.Element {
   const [pollError, setPollError] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
 
   useEffect(() => {
     const load = async (): Promise<void> => {
@@ -233,6 +234,21 @@ export function SettingsWindow(): JSX.Element {
     }
   };
 
+  const requestClose = async (): Promise<void> => {
+    if (draftDirty) {
+      setConfirmDiscardOpen(true);
+      return;
+    }
+
+    await closeSettingsWindow();
+  };
+
+  const discardAndClose = async (): Promise<void> => {
+    setConfirmDiscardOpen(false);
+    setDraftDirty(false);
+    await closeSettingsWindow();
+  };
+
   if (loading || !settings) {
     return (
       <main data-tauri-drag-region className="drag-region h-full">
@@ -246,12 +262,39 @@ export function SettingsWindow(): JSX.Element {
       <section className="glass flex h-full flex-col overflow-hidden rounded-3xl border border-white/40 p-4 dark:border-slate-700/80">
         <header className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{t("settings.title")}</h2>
-          <button type="button" className="no-drag rounded-lg p-2 hover:bg-white/50 dark:hover:bg-slate-800" onClick={() => void closeSettingsWindow()}>
+          <button
+            type="button"
+            aria-label={t("common.close")}
+            className="no-drag rounded-lg p-2 hover:bg-white/50 dark:hover:bg-slate-800"
+            onClick={() => void requestClose()}
+          >
             <X className="h-4 w-4" />
           </button>
         </header>
 
         <div className="no-drag min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+          {confirmDiscardOpen && (
+            <section
+              role="alert"
+              className="rounded-xl border border-amber-300 bg-amber-50/90 p-3 text-sm text-amber-950 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-100"
+            >
+              <p className="font-medium">{t("settings.unsavedTitle")}</p>
+              <p className="mt-1 text-xs">{t("settings.unsavedMessage")}</p>
+              <div className="mt-3 flex justify-end gap-2">
+                <button type="button" className="rounded-lg border px-2 py-1 text-xs" onClick={() => setConfirmDiscardOpen(false)}>
+                  {t("settings.keepEditing")}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-amber-600 px-2 py-1 text-xs font-medium text-white"
+                  onClick={() => void discardAndClose()}
+                >
+                  {t("settings.discardChanges")}
+                </button>
+              </div>
+            </section>
+          )}
+
           <label className="block space-y-1">
             <span className="flex items-center gap-2 font-medium text-muted">
               <Languages className="h-4 w-4" />

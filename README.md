@@ -76,7 +76,7 @@ Deliver a polished floating app that:
 - Transparent undecorated windows on Windows can still show platform-specific artifacts depending on GPU/driver/compositor.
 - UI automation remains version-sensitive across v2rayN builds.
 - Profile switching is marked experimental.
-- Portable flow only (no installer yet).
+- NSIS installer flow is available, but portable remains the primary artifact until the installer is validated on target Windows machines.
 
 ## Project layout
 
@@ -93,6 +93,7 @@ project-root/
     rust-env.ps1
     test-rust.ps1
     build-portable.ps1
+    build-installer.ps1
   src/
     frontend/
     tauri/
@@ -135,6 +136,16 @@ Rust runs with repository-local homes (virtualenv-like isolation):
 Output: `dist/portable/v2rayn-widget.exe`
 (or timestamped file if target exe is locked by a running process).
 
+## Build Windows installer
+
+```powershell
+./scripts/build-installer.ps1
+```
+
+The script installs frontend dependencies, runs frontend tests, prepares the isolated Rust environment, and invokes the project-local Tauri CLI with NSIS bundling enabled. Tauri runs the frontend production build through `beforeBuildCommand`.
+
+Output: `src/tauri/target/release/bundle/nsis/*.exe`
+
 ## v2rayN folder expectations
 
 Configured v2rayN folder must contain:
@@ -165,5 +176,4 @@ App logs are written to user config directory:
 
 - Add dedicated leak-check page (DNS/WebRTC/IP leak diagnostics).
 - Validate profile switching reliability for subscription-driven setups.
-- Add installer build flow (not only portable).
 - Cross-platform roadmap: Linux/macOS support only after platform-specific v2rayN control path is validated on real systems.

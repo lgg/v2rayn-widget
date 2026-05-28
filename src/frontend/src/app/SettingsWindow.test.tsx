@@ -46,6 +46,8 @@ const baseSettings: AppSettings = {
   show_profile_selector: true,
   window_effect_enabled: true,
   window_opacity_percent: 92,
+  diagnostics_enabled: false,
+  diagnostics_url: "https://ipleak.net/",
   latency_mode: "active",
   connectivity_endpoints: ["https://example.com/connect"],
   ip_endpoints: ["https://example.com/ip"],
@@ -83,6 +85,25 @@ describe("SettingsWindow", () => {
       v2rayn_path: null
     });
     expect(apiMocks.closeWindow).toHaveBeenCalledWith("settings");
+  });
+
+  it("saves diagnostics page settings with normalized site URL", async () => {
+    render(<SettingsWindow />);
+
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Enable diagnostics page"));
+    fireEvent.change(screen.getByLabelText("Diagnostics site"), { target: { value: "browserleaks.com/ip" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(apiMocks.updateSettings).toHaveBeenCalledTimes(1);
+    });
+
+    expect(apiMocks.updateSettings.mock.calls[0][0]).toMatchObject({
+      diagnostics_enabled: true,
+      diagnostics_url: "https://browserleaks.com/ip"
+    });
   });
 
   it("warns before closing with unsaved draft settings", async () => {

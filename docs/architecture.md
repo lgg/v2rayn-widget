@@ -15,6 +15,7 @@ Responsibilities:
 - run polling timer,
 - show transient notices (toast/inline),
 - handle profile selector and action buttons visibility.
+- show an optional diagnostics action that opens a configured external leak-test site in a separate app WebView.
 
 Key files:
 - `src/frontend/src/app/App.tsx`
@@ -71,6 +72,7 @@ Key modules:
 - `apply_ui_settings`
 - `open_settings_window`
 - `open_debug_window`
+- `open_diagnostics_window`
 - `run_ui_debug_probe`
 - `debug_toggle_via_ui_only`
 - `debug_click_reload_via_ui`
@@ -116,6 +118,8 @@ Key modules:
 - `show_profile_selector`
 - `window_effect_enabled`
 - `window_opacity_percent`
+- `diagnostics_enabled`
+- `diagnostics_url`
 - `latency_mode`
 - `connectivity_endpoints`
 - `ip_endpoints`

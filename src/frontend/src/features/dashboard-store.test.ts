@@ -7,6 +7,7 @@ const apiMocks = vi.hoisted(() => ({
   getStatus: vi.fn(),
   listProfiles: vi.fn(),
   openDebugWindow: vi.fn(),
+  openDiagnosticsWindow: vi.fn(),
   openSettingsWindow: vi.fn(),
   openV2RayN: vi.fn(),
   refreshStatus: vi.fn(),
@@ -80,5 +81,13 @@ describe("dashboard store refresh", () => {
 
     expect(useDashboardStore.getState().status?.updated_at).toBe("manual");
     expect(useDashboardStore.getState().actionLoading).toBe(false);
+  });
+
+  it("opens the diagnostics window through the backend command", async () => {
+    apiMocks.openDiagnosticsWindow.mockResolvedValue(undefined);
+
+    await useDashboardStore.getState().openDiagnostics();
+
+    expect(apiMocks.openDiagnosticsWindow).toHaveBeenCalledTimes(1);
   });
 });

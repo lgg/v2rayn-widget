@@ -300,6 +300,7 @@ fn main() {
             commands::apply_ui_settings,
             commands::open_settings_window,
             commands::open_debug_window,
+            commands::open_diagnostics_window,
             commands::run_ui_debug_probe,
             commands::debug_toggle_via_ui_only,
             commands::debug_click_reload_via_ui,

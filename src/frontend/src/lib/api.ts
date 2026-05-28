@@ -66,6 +66,10 @@ export async function openDebugWindow(): Promise<void> {
   return invoke("open_debug_window");
 }
 
+export async function openDiagnosticsWindow(): Promise<void> {
+  return invoke("open_diagnostics_window");
+}
+
 export async function runUiDebugProbe(): Promise<UiDebugReport> {
   return invoke<UiDebugReport>("run_ui_debug_probe");
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Bug, Check, FolderCheck, Languages, MoonStar, Shield, SlidersHorizontal, Sun, X } from "lucide-react";
+import { Bug, Check, FolderCheck, Globe, Languages, MoonStar, Shield, SlidersHorizontal, Sun, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   applyUiSettings,
@@ -26,6 +26,7 @@ const DEFAULT_CONNECTIVITY_ENDPOINTS = [
 ];
 
 const DEFAULT_IP_ENDPOINTS = ["https://api.ipify.org?format=json", "https://ifconfig.me/ip", "https://icanhazip.com"];
+const DEFAULT_DIAGNOSTICS_URL = "https://ipleak.net/";
 
 const settingsWindow = getCurrentWindow();
 
@@ -47,6 +48,23 @@ function parseLines(value: string): string[] {
 
 function linesToText(lines: string[]): string {
   return lines.join("\n");
+}
+
+function normalizeDiagnosticsUrl(value: string): string | null {
+  const trimmed = value.trim();
+  const candidate = trimmed.length > 0 ? trimmed : DEFAULT_DIAGNOSTICS_URL;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
+
+  try {
+    const parsed = new URL(withScheme);
+    if ((parsed.protocol === "https:" || parsed.protocol === "http:") && parsed.hostname.length > 0) {
+      return parsed.href;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 function applyTheme(theme: AppSettings["theme"]): void {
@@ -97,6 +115,7 @@ export function SettingsWindow(): JSX.Element {
   const [ipEndpointsText, setIpEndpointsText] = useState<string>("");
   const [pollError, setPollError] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
+  const [diagnosticsUrlError, setDiagnosticsUrlError] = useState<string | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
 
@@ -191,6 +210,7 @@ export function SettingsWindow(): JSX.Element {
     setBusy(true);
     setPollError(null);
     setPathError(null);
+    setDiagnosticsUrlError(null);
     try {
       const pollValue = Number(settings.poll_interval_sec);
       if (!Number.isFinite(pollValue) || pollValue < 1 || pollValue > 3600) {
@@ -216,10 +236,17 @@ export function SettingsWindow(): JSX.Element {
         setPathValidation(t(validation.message_key));
       }
 
+      const diagnosticsUrl = normalizeDiagnosticsUrl(settings.diagnostics_url);
+      if (!diagnosticsUrl) {
+        setDiagnosticsUrlError(t("settings.diagnosticsUrlInvalid"));
+        return;
+      }
+
       const next: AppSettings = {
         ...settings,
         poll_interval_sec: Math.min(3600, Math.max(1, Math.round(pollValue))),
         window_opacity_percent: Math.min(100, Math.max(10, Math.round(settings.window_opacity_percent))),
+        diagnostics_url: diagnosticsUrl,
         connectivity_endpoints: parseLines(connectivityEndpointsText),
         ip_endpoints: parseLines(ipEndpointsText),
         v2rayn_path: settings.v2rayn_path_mode === "manual" ? normalizedPath : null
@@ -481,6 +508,40 @@ export function SettingsWindow(): JSX.Element {
                 }}
               />
               {pollError && <p className="text-xs text-rose-400">{pollError}</p>}
+            </label>
+          </fieldset>
+
+          <fieldset className="space-y-2 rounded-xl border bg-white/70 p-3 dark:bg-slate-900/70">
+            <legend className="px-1 text-sm font-medium text-muted">{t("settings.diagnosticsSection")}</legend>
+
+            <label className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Globe className="h-4 w-4" />
+                {t("settings.diagnosticsEnabled")}
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.diagnostics_enabled}
+                onChange={(event) => {
+                  setDraftDirty(true);
+                  setSettings((prev) => (prev ? { ...prev, diagnostics_enabled: event.target.checked } : prev));
+                }}
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span>{t("settings.diagnosticsUrl")}</span>
+              <input
+                className={`w-full rounded-xl border px-3 py-2 dark:bg-slate-900/90 ${diagnosticsUrlError ? "border-rose-400 bg-rose-50/80 dark:bg-rose-500/10" : "bg-white/90"}`}
+                value={settings.diagnostics_url}
+                placeholder={DEFAULT_DIAGNOSTICS_URL}
+                onChange={(event) => {
+                  setDraftDirty(true);
+                  setDiagnosticsUrlError(null);
+                  setSettings((prev) => (prev ? { ...prev, diagnostics_url: event.target.value } : prev));
+                }}
+              />
+              {diagnosticsUrlError && <p className="text-xs text-rose-400">{diagnosticsUrlError}</p>}
             </label>
           </fieldset>
 

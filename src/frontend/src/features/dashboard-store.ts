@@ -4,6 +4,7 @@ import {
   getStatus,
   listProfiles,
   openDebugWindow,
+  openDiagnosticsWindow,
   openSettingsWindow,
   openV2RayN,
   refreshStatus,
@@ -33,6 +34,7 @@ interface DashboardState {
   openV2RayN: () => Promise<void>;
   openSettings: () => Promise<void>;
   openDebug: () => Promise<void>;
+  openDiagnostics: () => Promise<void>;
   relaunchAsAdmin: () => Promise<void>;
   applyExternalSettings: (settings: AppSettings) => void;
   showNotice: (notice: Omit<UiNotice, "id">) => void;
@@ -289,6 +291,16 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   openDebug: async () => {
     await openDebugWindow();
+  },
+
+  openDiagnostics: async () => {
+    try {
+      await openDiagnosticsWindow();
+    } catch (error) {
+      set({
+        notice: buildNoticeFromError(error, i18n.t("errors.diagnosticsOpenFailed"))
+      });
+    }
   },
 
   relaunchAsAdmin: async () => {

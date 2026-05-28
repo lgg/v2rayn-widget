@@ -41,6 +41,8 @@ export interface AppSettings {
   show_profile_selector: boolean;
   window_effect_enabled: boolean;
   window_opacity_percent: number;
+  diagnostics_enabled: boolean;
+  diagnostics_url: string;
   latency_mode: LatencyMode;
   connectivity_endpoints: string[];
   ip_endpoints: string[];

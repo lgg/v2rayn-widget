@@ -60,6 +60,8 @@ Deliver a polished floating app that:
   - mockup mode (fake profile/IP/latency/status for screenshots/streams)
   - show/hide action buttons
   - show/hide external IP and latency
+  - optional external diagnostics page button
+  - diagnostics site URL (default `https://ipleak.net/`)
   - latency mode + endpoints
   - v2rayN path auto/manual + detect/validate/reset
   - window transparency effect + opacity slider
@@ -174,6 +176,5 @@ App logs are written to user config directory:
 
 ## ToDo / next
 
-- Add dedicated leak-check page (DNS/WebRTC/IP leak diagnostics).
 - Validate profile switching reliability for subscription-driven setups.
 - Cross-platform roadmap: Linux/macOS support only after platform-specific v2rayN control path is validated on real systems.

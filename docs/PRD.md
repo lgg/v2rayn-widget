@@ -67,7 +67,7 @@ A compact Windows utility widget that provides:
 
 ## Future scope
 
-- Dedicated leak-check page (DNS/WebRTC/IP leak).
+- Optional diagnostics page that opens a configured external leak-test site in a separate app WebView.
 - Installer and packaging pipeline.
 - Better subscription-aware profile switching robustness.
 - Linux/macOS widget port after platform control-path validation.

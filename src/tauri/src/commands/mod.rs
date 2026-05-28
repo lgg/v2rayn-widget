@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, State};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, State, Url, WebviewUrl, WebviewWindowBuilder};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -15,8 +15,8 @@ use crate::{
         path_validation::PathValidation,
         profile::ProfileSummary,
         settings::{
-            default_connectivity_endpoints, default_ip_endpoints, AppSettings, LatencyMode,
-            UiSettingsPatch, V2RayNPathMode,
+            default_connectivity_endpoints, default_diagnostics_url, default_ip_endpoints,
+            AppSettings, LatencyMode, UiSettingsPatch, V2RayNPathMode,
         },
         status::{ConnectionState, DashboardStatus},
     },
@@ -513,6 +513,40 @@ pub async fn open_debug_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn open_diagnostics_window(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let settings = state.snapshot().settings;
+    if !settings.diagnostics_enabled {
+        return Err("Diagnostics page is disabled".to_owned());
+    }
+
+    let url = normalize_diagnostics_url(&settings.diagnostics_url)
+        .unwrap_or_else(|| Url::parse(&default_diagnostics_url()).expect("default diagnostics URL is valid"));
+
+    if let Some(window) = app.get_webview_window("diagnostics") {
+        window.navigate(url).map_err(|error| error.to_string())?;
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(&app, "diagnostics", WebviewUrl::External(url))
+        .title("Diagnostics")
+        .inner_size(1100.0, 780.0)
+        .min_inner_size(760.0, 520.0)
+        .resizable(true)
+        .decorations(true)
+        .visible(true)
+        .build()
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn run_ui_debug_probe() -> Result<UiDebugReport, String> {
     let mut report = ui_controller::debug_probe().map_err(|error| error.to_string())?;
 
@@ -817,6 +851,9 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     settings.poll_interval_sec = settings.poll_interval_sec.clamp(1, 3600);
     settings.window_opacity_percent = settings.window_opacity_percent.clamp(10, 100);
     settings.v2rayn_path = normalize_manual_path(settings.v2rayn_path);
+    settings.diagnostics_url = normalize_diagnostics_url(&settings.diagnostics_url)
+        .map(|url| url.to_string())
+        .unwrap_or_else(default_diagnostics_url);
 
     settings.connectivity_endpoints = normalize_endpoint_list(
         settings.connectivity_endpoints,
@@ -826,6 +863,23 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     settings.ip_endpoints = normalize_endpoint_list(settings.ip_endpoints, default_ip_endpoints());
 
     settings
+}
+
+fn normalize_diagnostics_url(value: &str) -> Option<Url> {
+    let trimmed = value.trim();
+    let candidate = if trimmed.is_empty() {
+        default_diagnostics_url()
+    } else if trimmed.contains("://") {
+        trimmed.to_owned()
+    } else {
+        format!("https://{trimmed}")
+    };
+
+    let url = Url::parse(&candidate).ok()?;
+    match url.scheme() {
+        "http" | "https" if url.host_str().is_some() => Some(url),
+        _ => None,
+    }
 }
 
 fn normalize_manual_path(value: Option<String>) -> Option<String> {
@@ -1101,6 +1155,24 @@ mod tests {
         let result = normalize_endpoint_list(vec!["not a url".to_owned()], fallback.clone());
 
         assert_eq!(result, fallback);
+    }
+
+    #[test]
+    fn normalize_diagnostics_url_defaults_and_accepts_bare_hosts() {
+        assert_eq!(
+            normalize_diagnostics_url("").map(|url| url.to_string()),
+            Some("https://ipleak.net/".to_owned())
+        );
+        assert_eq!(
+            normalize_diagnostics_url("browserleaks.com/ip").map(|url| url.to_string()),
+            Some("https://browserleaks.com/ip".to_owned())
+        );
+    }
+
+    #[test]
+    fn normalize_diagnostics_url_rejects_non_http_schemes() {
+        assert!(normalize_diagnostics_url("file:///C:/temp/check.html").is_none());
+        assert!(normalize_diagnostics_url("javascript:alert(1)").is_none());
     }
 }
 

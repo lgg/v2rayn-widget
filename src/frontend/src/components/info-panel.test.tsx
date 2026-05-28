@@ -33,6 +33,8 @@ const baseSettings: AppSettings = {
   show_profile_selector: true,
   window_effect_enabled: true,
   window_opacity_percent: 92,
+  diagnostics_enabled: false,
+  diagnostics_url: "https://ipleak.net/",
   latency_mode: "active",
   connectivity_endpoints: [],
   ip_endpoints: [],

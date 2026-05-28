@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Copy, RefreshCcw, Settings, SquareArrowOutUpRight } from "lucide-react";
+import { Copy, Globe, RefreshCcw, Settings, SquareArrowOutUpRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ConnectButton } from "@/components/connect-button";
 import { InfoPanel } from "@/components/info-panel";
@@ -28,6 +28,7 @@ export function App(): JSX.Element {
     actionLoading,
     notice,
     pathNoticeKey,
+    openDiagnostics,
     openSettings,
     openV2RayN,
     relaunchAsAdmin,
@@ -233,7 +234,7 @@ export function App(): JSX.Element {
             {showInfoPanel && <InfoPanel status={status} settings={settings} />}
 
             {settings.show_action_buttons && (
-              <div className="no-drag mt-4 grid grid-cols-3 gap-2 text-xs">
+              <div className={`no-drag mt-4 grid gap-2 text-xs ${settings.diagnostics_enabled ? "grid-cols-4" : "grid-cols-3"}`}>
                 <button
                   className="group rounded-2xl border border-white/25 bg-white/5 px-2 py-2 transition hover:bg-white/10"
                   onClick={() => void refresh()}
@@ -256,6 +257,15 @@ export function App(): JSX.Element {
                   <Copy className="mx-auto mb-1 h-4 w-4 text-emerald-200 transition group-hover:scale-105" />
                   <span className="text-[12px]">{t("actions.copyIp")}</span>
                 </button>
+                {settings.diagnostics_enabled && (
+                  <button
+                    className="group rounded-2xl border border-white/25 bg-white/5 px-2 py-2 transition hover:bg-white/10"
+                    onClick={() => void openDiagnostics()}
+                  >
+                    <Globe className="mx-auto mb-1 h-4 w-4 text-amber-200 transition group-hover:scale-105" />
+                    <span className="text-[12px] lowercase">{t("actions.diagnostics")}</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

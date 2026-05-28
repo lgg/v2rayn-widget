@@ -2,7 +2,9 @@ use std::fs;
 
 use anyhow::{Context, Result};
 
-use crate::models::settings::{default_connectivity_endpoints, default_ip_endpoints, AppSettings};
+use crate::models::settings::{
+    default_connectivity_endpoints, default_diagnostics_url, default_ip_endpoints, AppSettings,
+};
 use crate::utils::{app_paths, locale};
 
 pub fn load_settings() -> Result<AppSettings> {
@@ -32,6 +34,12 @@ pub fn load_settings() -> Result<AppSettings> {
     }
 
     parsed.window_opacity_percent = parsed.window_opacity_percent.clamp(10, 100);
+
+    if parsed.diagnostics_url.trim().is_empty() {
+        parsed.diagnostics_url = default_diagnostics_url();
+    } else {
+        parsed.diagnostics_url = parsed.diagnostics_url.trim().to_owned();
+    }
 
     parsed.v2rayn_path = parsed
         .v2rayn_path
@@ -78,5 +86,7 @@ mod tests {
         assert_eq!(decoded.poll_interval_sec, initial.poll_interval_sec);
         assert_eq!(decoded.language, initial.language);
         assert_eq!(decoded.window_opacity_percent, initial.window_opacity_percent);
+        assert_eq!(decoded.diagnostics_enabled, initial.diagnostics_enabled);
+        assert_eq!(decoded.diagnostics_url, initial.diagnostics_url);
     }
 }

@@ -79,6 +79,10 @@ pub fn default_ip_endpoints() -> Vec<String> {
     ]
 }
 
+pub fn default_diagnostics_url() -> String {
+    "https://ipleak.net/".to_owned()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
@@ -98,6 +102,9 @@ pub struct AppSettings {
     pub show_profile_selector: bool,
     pub window_effect_enabled: bool,
     pub window_opacity_percent: u8,
+    pub diagnostics_enabled: bool,
+    #[serde(default = "default_diagnostics_url")]
+    pub diagnostics_url: String,
     pub latency_mode: LatencyMode,
     #[serde(default = "default_connectivity_endpoints")]
     pub connectivity_endpoints: Vec<String>,
@@ -127,6 +134,8 @@ impl Default for AppSettings {
             show_profile_selector: true,
             window_effect_enabled: true,
             window_opacity_percent: 92,
+            diagnostics_enabled: false,
+            diagnostics_url: default_diagnostics_url(),
             latency_mode: LatencyMode::Active,
             connectivity_endpoints: default_connectivity_endpoints(),
             ip_endpoints: default_ip_endpoints(),

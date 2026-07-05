@@ -1,59 +1,22 @@
 # Tasks
 
-## Phase 1: Data & status reliability
+Task tracking has moved to `project-tracking/`.
 
-- [x] Parse `guiNConfig.json` for TUN and active profile id.
-- [x] Add DB fallback parser for profiles (`guiNDB.db` / `ProfileItem`).
-- [x] Resolve active profile name via `IndexId` mapping.
+Current source of truth:
 
-Exit criteria:
-- active profile is correctly resolved when JSON profile arrays are empty.
+- Roadmap: `project-tracking/roadmap/0000-roadmap.md`
+- Tasks: `project-tracking/tasks/`
+- Reports: `project-tracking/reports/`
+- Decisions: `project-tracking/decisions/`
+- Definition of Done: `project-tracking/checklists/0000-definition-of-done.md`
 
-## Phase 2: Window UX and rendering
+## Current Open Work
 
-- [x] Remove external scroll/overflow artifacts in widget.
-- [x] Repair settings panel scroll/layout for lower blocks.
-- [x] Add draggable behavior for non-interactive regions (including settings overlay).
-- [x] Add window effect toggle + opacity setting.
+| Task | Priority | Status |
+| --- | --- | --- |
+| `project-tracking/tasks/0011-build-subscription-mode-profile-switch-validation-matrix.md` | P2 | Open |
+| `project-tracking/tasks/0012-assess-linux-and-macos-feasibility-after-platform-control-path-validation.md` | P3 | Open |
 
-Exit criteria:
-- compact window remains usable and visually stable in both dashboard and settings modes.
+## Public Project Rule
 
-## Phase 3: Settings expansion
-
-- [x] Add autostart with Windows.
-- [x] Add show/hide action buttons.
-- [x] Add show/hide profile selector.
-- [x] Add compact layout behavior when profile selector is hidden.
-
-Exit criteria:
-- all new options persist and apply correctly.
-
-## Phase 4: Interaction quality
-
-- [x] Move action buttons under info panel.
-- [x] Remove duplicated profile from info block.
-- [x] Replace raw error line with styled transient notice.
-- [x] Make info-panel clock update every second.
-- [x] Reduce UI flicker during background refresh.
-
-Exit criteria:
-- no distracting pulse on poll refresh, clear in-style error feedback.
-
-## Phase 5: Toggle and profile controls
-
-- [x] Improve toggle reliability for Enable TUN (automation + fallback).
-- [x] Keep profile switching marked experimental with safe fallback.
-
-Exit criteria:
-- toggle returns stable result on target machine or meaningful actionable error.
-
-## ToDo / backlog
-
-1. Subscription-mode profile switch validation matrix.
-2. Linux/macOS widget port feasibility and control-path parity.
-
-## Completed release workflow tasks
-
-- [x] Installer packaging flow: `scripts/build-installer.ps1` builds a Windows NSIS installer through the project-local Tauri CLI.
-- [x] Optional diagnostics page: settings can enable a dashboard action that opens the configured external leak-test site in a separate app WebView.
+Do not put tokens, private URLs, subscription links, local system paths, real v2rayN configs/logs, addresses or personal data into task/report files.

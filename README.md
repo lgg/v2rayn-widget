@@ -2,6 +2,12 @@
 
 Portable Windows utility app for fast v2rayN control in TUN mode.
 
+## Contributor and agent workflow
+
+Before making changes, read `AGENTS.md`.
+
+Project planning, tasks, reports, decisions and checklists live in `project-tracking/`. The project is public: do not put tokens, private URLs, subscription links, local system paths, real v2rayN configs/logs or personal data into tasks, reports or docs.
+
 ## UI Preview
 
 ![Widget Full](docs/screenshots/widget-full.png)
@@ -90,7 +96,15 @@ project-root/
     architecture.md
     research-notes.md
     ui-reference.md
-    tasks.md
+    tasks.md              # legacy pointer to project-tracking/
+  project-tracking/
+    README.md
+    roadmap/
+    tasks/
+    reports/
+    decisions/
+    checklists/
+    templates/
   scripts/
     rust-env.ps1
     test-rust.ps1

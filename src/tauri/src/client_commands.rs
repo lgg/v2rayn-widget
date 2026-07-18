@@ -6,12 +6,15 @@ use crate::{
         client::{ClientDescriptor, ClientDiagnostics, ProxyClientId},
         path_validation::PathValidation,
         profile::ProfileSummary,
-        settings::AppSettings,
+        settings::{AppSettings, HappSettingsPatch},
         status::DashboardStatus,
     },
     state::app_state::AppState,
     utils::settings_store,
 };
+
+const CLIENT_CONTEXT_CHANGED: &str =
+    "CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running";
 
 #[tauri::command]
 pub async fn get_client_catalog(
@@ -66,8 +69,7 @@ pub async fn select_client(
 
     snapshot.settings.selected_client = client_id;
     settings_store::save_settings(&snapshot.settings).map_err(|error| error.to_string())?;
-    state.update_settings(snapshot.settings.clone());
-    state.update_status(DashboardStatus::default());
+    state.replace_settings_and_status(snapshot.settings.clone(), DashboardStatus::default());
 
     app.emit("settings-updated", &snapshot.settings)
         .map_err(|error| error.to_string())?;
@@ -88,6 +90,74 @@ pub async fn detect_happ_path(state: State<'_, AppState>) -> Result<Option<Strin
 
 #[tauri::command]
 pub async fn validate_happ_path(path: String) -> Result<PathValidation, String> {
+    validate_happ_path_value(&path)
+}
+
+#[tauri::command]
+pub async fn update_happ_settings(
+    payload: HappSettingsPatch,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AppSettings, String> {
+    let snapshot = state.snapshot();
+    let mut settings = snapshot.settings.clone();
+
+    settings.happ_path = match payload.happ_path.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(value) => {
+            let validation = validate_happ_path_value(value)?;
+            if !validation.is_valid {
+                return Err(validation.message_key);
+            }
+            Some(validation.normalized_path)
+        }
+    };
+    settings.happ_allow_ui_automation = payload.happ_allow_ui_automation;
+    let control_requires_probe = settings.happ_allow_ui_automation
+        && (!snapshot.settings.happ_allow_ui_automation
+            || settings.happ_path != snapshot.settings.happ_path);
+
+    if control_requires_probe {
+        let diagnostics = happ::diagnostics(&settings);
+        if !diagnostics.application_running
+            || !diagnostics.window_found
+            || diagnostics.action_label.is_none()
+            || diagnostics.action_score.is_none()
+        {
+            return Err(
+                "HAPP_UI_AUTOMATION_PROBE_REQUIRED: open Happ and run a successful high-confidence probe before enabling experimental control"
+                    .to_owned(),
+            );
+        }
+    }
+
+    let latest = state.snapshot();
+    let mut final_settings = latest.settings;
+    final_settings.happ_path = settings.happ_path;
+    final_settings.happ_allow_ui_automation = settings.happ_allow_ui_automation;
+
+    settings_store::save_settings(&final_settings).map_err(|error| error.to_string())?;
+    state.replace_settings_and_status_invalidating_context(
+        final_settings.clone(),
+        if final_settings.selected_client == ProxyClientId::Happ {
+            DashboardStatus::default()
+        } else {
+            latest.status
+        },
+    );
+
+    app.emit("settings-updated", &final_settings)
+        .map_err(|error| error.to_string())?;
+    app.emit(
+        "client-selected",
+        adapters::descriptor(final_settings.selected_client, &final_settings),
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok(final_settings)
+}
+
+fn validate_happ_path_value(path: &str) -> Result<PathValidation, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Ok(PathValidation {
@@ -97,26 +167,34 @@ pub async fn validate_happ_path(path: String) -> Result<PathValidation, String> 
         });
     }
 
-    match happ::validate_executable_candidate(trimmed) {
-        Some(normalized) => Ok(PathValidation {
+    Ok(match happ::validate_executable_candidate(trimmed) {
+        Some(normalized) => PathValidation {
             is_valid: true,
             message_key: "settings.happPathValid".to_owned(),
             normalized_path: normalized.to_string_lossy().to_string(),
-        }),
-        None => Ok(PathValidation {
+        },
+        None => PathValidation {
             is_valid: false,
             message_key: "settings.happPathInvalid".to_owned(),
             normalized_path: trimmed.to_owned(),
-        }),
-    }
+        },
+    })
 }
 
 async fn refresh_with_kind(
     state: State<'_, AppState>,
     kind: RefreshKind,
 ) -> Result<DashboardStatus, String> {
-    let client_id = state.snapshot().settings.selected_client;
-    adapters::adapter(client_id).refresh(state, kind).await
+    let snapshot = state.snapshot();
+    let client_id = snapshot.settings.selected_client;
+    let client_epoch = snapshot.client_epoch;
+    let result = adapters::adapter(client_id).refresh(state.clone(), kind).await?;
+
+    if state.context_matches(client_id, client_epoch) {
+        Ok(result)
+    } else {
+        Err(CLIENT_CONTEXT_CHANGED.to_owned())
+    }
 }
 
 #[tauri::command]
@@ -149,16 +227,30 @@ pub async fn refresh_selected_client_post_route(
 
 #[tauri::command]
 pub async fn toggle_selected_client(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
-    let client_id = state.snapshot().settings.selected_client;
-    adapters::adapter(client_id).toggle(state).await
+    let snapshot = state.snapshot();
+    let client_id = snapshot.settings.selected_client;
+    let result = adapters::adapter(client_id).toggle(state.clone()).await?;
+
+    if state.context_matches(client_id, snapshot.client_epoch) {
+        Ok(result)
+    } else {
+        Err(CLIENT_CONTEXT_CHANGED.to_owned())
+    }
 }
 
 #[tauri::command]
 pub async fn list_selected_client_items(
     state: State<'_, AppState>,
 ) -> Result<Vec<ProfileSummary>, String> {
-    let client_id = state.snapshot().settings.selected_client;
-    adapters::adapter(client_id).list_items(state).await
+    let snapshot = state.snapshot();
+    let client_id = snapshot.settings.selected_client;
+    let result = adapters::adapter(client_id).list_items(state.clone()).await?;
+
+    if state.context_matches(client_id, snapshot.client_epoch) {
+        Ok(result)
+    } else {
+        Err(CLIENT_CONTEXT_CHANGED.to_owned())
+    }
 }
 
 #[tauri::command]
@@ -166,10 +258,17 @@ pub async fn select_client_item(
     item_id: String,
     state: State<'_, AppState>,
 ) -> Result<DashboardStatus, String> {
-    let client_id = state.snapshot().settings.selected_client;
-    adapters::adapter(client_id)
-        .select_item(item_id, state)
-        .await
+    let snapshot = state.snapshot();
+    let client_id = snapshot.settings.selected_client;
+    let result = adapters::adapter(client_id)
+        .select_item(item_id, state.clone())
+        .await?;
+
+    if state.context_matches(client_id, snapshot.client_epoch) {
+        Ok(result)
+    } else {
+        Err(CLIENT_CONTEXT_CHANGED.to_owned())
+    }
 }
 
 #[tauri::command]

@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Этот файл фиксирует актуальный roadmap `v2rayN Widget`: компактного Windows desktop-виджета для контроля v2rayN TUN mode.
+Этот файл фиксирует верхнеуровневый roadmap Windows desktop-виджета. Проект начался как `v2rayN Widget`, но теперь развивается в сторону единого интерфейса с адаптерами v2rayN, Happ и будущих proxy/VPN client applications.
+
+Подробный multi-client roadmap: `project-tracking/roadmap/0013-proxy-client-adapter-roadmap.md`.
 
 ## Status Legend
 
@@ -84,25 +86,81 @@ Related tasks:
 
 ## Phase 4 - Diagnostics and Profile Validation
 
-Status: Planned
+Status: In Progress
 
 Goals:
 
 - Поддерживать optional external diagnostics WebView без built-in leak diagnostics.
-- Валидировать profile switching для subscription-driven setups.
+- Валидировать profile switching для subscription-driven v2rayN setups.
+- Не смешивать profile switching и subscription switching.
 
 Related tasks:
 
 - `0010-add-optional-external-diagnostics-webview` - Done
 - `0011-build-subscription-mode-profile-switch-validation-matrix` - Open
 
-## Phase 5 - Cross-Platform Feasibility
+Current limitation:
+
+- v2rayN subscription listing, switching, refresh and management are unsupported.
+
+## Phase 5 - Multi-Client Adapter Architecture
+
+Status: In Progress
+
+Goals:
+
+- Ввести настоящий `ProxyClientAdapter` boundary и registry.
+- Сохранить текущую v2rayN интеграцию за v2rayN adapter.
+- Добавить persisted выбор v2rayN/Happ.
+- Перевести основной frontend и tray на generic client commands.
+- Показывать действия только по adapter capabilities.
+- Добавить безопасный read-only Happ MVP.
+- Зафиксировать отдельный roadmap для Happ API/IPC research, control и subscriptions.
+
+Related work:
+
+- `0013-add-proxy-client-adapters-and-happ-mvp` - In Progress
+- `project-tracking/roadmap/0013-proxy-client-adapter-roadmap.md`
+- `project-tracking/decisions/0013-multi-client-adapter-architecture.md`
+
+Current Happ limitation:
+
+- reliable connection state, connect/disconnect, transport mode, server selection and subscriptions require further API/IPC research.
+
+## Phase 6 - Happ Control Research and Implementation
 
 Status: Planned
 
 Goals:
 
-- Рассмотреть Linux/macOS только после проверки platform-specific v2rayN control paths на реальных системах.
+- Проверить официальный CLI/API.
+- Исследовать daemon IPC только в redacted и version-aware формате.
+- Выбрать безопасный supported control path.
+- Реализовать status/control только после отдельного decision.
+- Не определять Connected только по наличию процесса.
+
+## Phase 7 - Subscription Abstraction
+
+Status: Planned
+
+Goals:
+
+- Создать отдельную subscription model, не подменяя ее profiles/servers.
+- Добавить capability states для list/switch/refresh/manage.
+- Реализовывать операции отдельно для каждого клиента только при безопасном supported path.
+
+Baseline:
+
+- v2rayN subscription capabilities - Unsupported.
+- Happ subscription capabilities - Research Required.
+
+## Phase 8 - Cross-Platform Feasibility
+
+Status: Planned
+
+Goals:
+
+- Рассмотреть Linux/macOS только после проверки platform-specific client control paths на реальных системах.
 - Зафиксировать feasibility decision перед началом реализации.
 
 Related tasks:
@@ -113,9 +171,10 @@ Related tasks:
 
 | ID | Task | Priority | Status | Notes |
 | --- | --- | --- | --- | --- |
-| 0011 | Build subscription-mode profile switch validation matrix | P2 | Open | Требуется QA matrix для subscription-driven setups |
-| 0012 | Assess Linux and macOS feasibility after platform control path validation | P3 | Open | Решение после реальной проверки control paths |
+| 0011 | Build subscription-mode profile switch validation matrix | P2 | Open | QA matrix; subscriptions themselves remain unsupported |
+| 0012 | Assess Linux and macOS feasibility after platform control path validation | P3 | Open | После стабилизации Windows adapters |
+| 0013 | Add proxy client adapters and Happ MVP | P1 | In Progress | Trait/registry, generic UI/API, v2rayN compatibility, Happ read-only MVP |
 
 ## Public Data Rule
 
-Roadmap entries must not include private URLs, tokens, secrets, local system paths, real v2rayN configs, subscription data, addresses or personal data.
+Roadmap entries must not include private URLs, tokens, secrets, local system paths, real client configs, subscription data, addresses or personal data.

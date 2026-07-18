@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
     adapters::{self, happ, ProxyClientAdapter, RefreshKind},
@@ -39,6 +39,17 @@ pub async fn get_happ_diagnostics(
     state: State<'_, AppState>,
 ) -> Result<ClientDiagnostics, String> {
     adapters::adapter(ProxyClientId::Happ).diagnostics(state).await
+}
+
+#[tauri::command]
+pub async fn open_happ_setup_window(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("happ-setup")
+        .ok_or_else(|| "Happ setup window is not registered".to_owned())?;
+    window.show().map_err(|error| error.to_string())?;
+    let _ = window.unminimize();
+    window.set_focus().map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]

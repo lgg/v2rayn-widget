@@ -98,6 +98,11 @@ export interface AppSettings {
   window_position: WindowPosition | null;
 }
 
+export interface HappSettingsPatch {
+  happ_path: string | null;
+  happ_allow_ui_automation: boolean;
+}
+
 export interface UiSettingsPatch {
   language?: string;
   theme?: ThemeMode;

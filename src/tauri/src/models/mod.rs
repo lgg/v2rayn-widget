@@ -1,3 +1,4 @@
+pub mod client;
 pub mod debug;
 pub mod locale;
 pub mod path_validation;

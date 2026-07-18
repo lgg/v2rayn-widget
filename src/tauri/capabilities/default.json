@@ -1,10 +1,9 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for v2rayN widget",
-  "windows": ["main", "settings", "debug"],
+  "description": "Default capability for the proxy client widget",
+  "windows": ["main", "settings", "debug", "happ-setup"],
   "permissions": [
     "core:default"
   ]
 }
-

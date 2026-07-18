@@ -2,143 +2,252 @@
 
 ## System overview
 
-Tauri desktop app with split responsibilities:
-- frontend (`src/frontend`): UI, i18n, UX state.
-- backend (`src/tauri`): v2rayN integration, status resolution, automation, persistence.
+Tauri desktop application with four responsibility layers:
+
+- frontend (`src/frontend`) — shared widget UI, i18n, capability gating, setup/debug windows and polling;
+- application commands (`src/tauri/src/client_commands.rs`) — generic selected-adapter dispatch;
+- client adapters (`src/tauri/src/adapters`) — client-specific operations, capabilities and diagnostics;
+- backend services (`src/tauri/src/services`, `src/tauri/src/utils`) — health checks, persistence, window behavior and automation helpers.
+
+Adapters are registered at compile time. Runtime DLL/plugin loading is not part of the design.
+
+## Operational adapter boundary
+
+`ProxyClientAdapter` is the common application contract. Each registered adapter provides:
+
+- stable `ProxyClientId`;
+- dynamic `ClientDescriptor` and `ClientCapabilities`;
+- foreground/background/startup/post-route refresh;
+- connection toggle;
+- item list and selection;
+- application open;
+- `ClientDiagnostics`.
+
+Registered adapters:
+
+- `RegisteredAdapter::V2rayn`;
+- `RegisteredAdapter::Happ`.
+
+`client_commands.rs` resolves `selected_client` and calls the trait. It does not contain v2rayN/Happ operation branching. New clients are added by implementing the adapter contract and registering the enum variant.
+
+Capability states:
+
+- `supported`;
+- `experimental`;
+- `unsupported`;
+- `research_required`.
+
+Unsupported operations are protected twice:
+
+1. frontend gating;
+2. backend rejection.
+
+## Compatibility strategy
+
+The project migrated incrementally from a v2rayN-specific API:
+
+- old settings default to `selected_client = v2rayn`;
+- legacy v2rayN Tauri commands remain registered;
+- `DashboardStatus.tun_enabled` and `active_profile_name` remain compatibility fields;
+- v2rayN Debug Tools remain client-specific;
+- new UI and tray operations use generic commands.
+
+Compatibility APIs should be removed only in a separate reviewed cleanup task.
+
+## Shared models
+
+### ProxyClientId
+
+- `v2rayn`
+- `happ`
+
+### ClientDescriptor
+
+- `id`
+- `display_name`
+- `maturity`
+- `status_note`
+- `capabilities`
+
+### ClientDiagnostics
+
+- client/process/PID/executable;
+- window detection/title;
+- connection state;
+- transport mode;
+- control source;
+- detected action and confidence;
+- redacted UI nodes;
+- adapter note.
+
+### TransportMode
+
+- `unknown`
+- `proxy`
+- `tun`
+- `mixed`
+
+### AppSettings adapter fields
+
+- `selected_client`
+- `v2rayn_path_mode`
+- `v2rayn_path`
+- `happ_path`
+- `happ_allow_ui_automation`
+
+`happ_allow_ui_automation` defaults to `false` through Serde migration defaults.
+
+## Generic command flow
+
+Generic commands:
+
+- `get_client_catalog`
+- `get_selected_client`
+- `get_selected_client_diagnostics`
+- `select_client`
+- `refresh_selected_client*`
+- `toggle_selected_client`
+- `list_selected_client_items`
+- `select_client_item`
+- `open_selected_client`
+
+Adapter-specific setup helpers remain allowed where the contract requires client-specific configuration, such as Happ path validation and the Happ diagnostics probe.
+
+Status refresh:
+
+1. frontend invokes a generic refresh;
+2. command reads `selected_client`;
+3. registry returns the operational adapter;
+4. adapter gathers safe client-specific signals;
+5. shared health checks run when enabled;
+6. state is updated;
+7. frontend renders controls based on descriptor capabilities and explicit opt-in settings.
+
+## v2rayN adapter
+
+The v2rayN adapter delegates to the proven existing services while exposing them through the generic contract.
+
+Responsibilities:
+
+- resolve installation path;
+- read config, profile database and latest log;
+- monitor v2rayN/core processes;
+- run optional health checks;
+- resolve combined status;
+- toggle Enable TUN through Windows UI Automation;
+- use config plus reload/restart fallback when enabled;
+- list profiles;
+- experimentally select the active profile;
+- open/restart;
+- collect privilege/UIPI diagnostics.
+
+Explicitly unsupported:
+
+- generic transport-mode reporting;
+- subscription list/switch/refresh/update/add/remove/manage.
+
+Profile selection is not subscription selection.
+
+## Happ adapter
+
+### Safe baseline
+
+- detect known Happ process names and PID;
+- detect executable from the process or common installation folders;
+- validate optional manual executable path;
+- open the application;
+- run generic IP/latency diagnostics;
+- report Disconnected while absent;
+- report Unknown while running without a reliable Happ-specific signal;
+- never infer Connected from process existence.
+
+### Experimental control
+
+Happ control is disabled by default and requires explicit consent in `HappSetupWindow`.
+
+The controller in `services/happ_ui.rs`:
+
+1. receives the detected Happ PID;
+2. enumerates visible windows belonging only to that PID;
+3. selects the best application window;
+4. scans its UI Automation subtree;
+5. accepts only explicit English/Russian Connect or Disconnect actions;
+6. rejects Auto connect, Reconnect and connection-settings labels;
+7. requires a high confidence score;
+8. clicks through Invoke, Toggle, LegacyAccessible or native button fallback;
+9. refreshes status after the action;
+10. fails without clicking when identification is ambiguous.
+
+Connection state is inferred from the visible action:
+
+- visible Disconnect action → currently Connected;
+- visible Connect action → currently Disconnected;
+- no reliable action → Unknown.
+
+Transport mode is reported experimentally only when the UI exposes an exact selected Proxy, TUN or Mixed item. Otherwise it remains Unknown.
+
+The controller never writes Happ config, database or subscription files.
+
+### Happ diagnostics window
+
+`HappSetupWindow` provides:
+
+- executable path detection/validation;
+- explicit experimental-control opt-in;
+- runtime probe;
+- process/PID/path/window data;
+- inferred state and transport;
+- action label/confidence;
+- expandable redacted UI Automation tree.
+
+This is the target-machine compatibility mechanism for version-sensitive Happ UI changes.
 
 ## Frontend
 
-Responsibilities:
-- render compact widget,
-- render settings overlay,
-- apply themes and visual effect mode,
-- run polling timer,
-- show transient notices (toast/inline),
-- handle profile selector and action buttons visibility.
-- show an optional diagnostics action that opens a configured external leak-test site in a separate app WebView.
+Key responsibilities:
+
+- render selected-client UX;
+- persist selection through backend commands;
+- clear stale status/items after switching;
+- gate controls using capabilities;
+- additionally require persisted Happ UIA consent before enabling connect;
+- render Settings, Debug and Happ Setup windows;
+- apply visual settings and polling;
+- show transient errors and diagnostic information.
 
 Key files:
+
 - `src/frontend/src/app/App.tsx`
 - `src/frontend/src/app/SettingsWindow.tsx`
 - `src/frontend/src/app/DebugWindow.tsx`
-- `src/frontend/src/components/info-panel.tsx`
+- `src/frontend/src/app/HappSetupWindow.tsx`
+- `src/frontend/src/components/client-selector.tsx`
 - `src/frontend/src/features/dashboard-store.ts`
+- `src/frontend/src/lib/api.ts`
+- `src/frontend/src/lib/types.ts`
 
-## Backend
+## Subscription boundary
 
-Responsibilities:
-- read config (`guiNConfig.json`),
-- read profile list (DB fallback `guiNDB.db`),
-- read latest log,
-- process monitor,
-- health checks,
-- resolve status model,
-- toggle TUN (UI automation + fallback),
-- persist app settings,
-- apply window behavior (always-on-top, rounded region, opacity),
-- apply autostart setting.
+Subscriptions are deliberately not represented as profiles or servers.
 
-## Build and release flows
+Current states:
 
-- `scripts/build-portable.ps1` runs frontend tests/build, Rust tests/build, and copies the release executable to `dist/portable/`.
-- `scripts/build-installer.ps1` runs frontend tests, prepares the isolated Rust environment, and invokes the project-local Tauri CLI with NSIS bundling enabled; Tauri runs the frontend production build through `beforeBuildCommand`.
-- `src/tauri/tauri.conf.json` keeps bundling disabled by default for regular portable builds; `src/tauri/tauri.installer.conf.json` enables NSIS bundling and uses the installer CLI working directory's frontend build path.
+- v2rayN subscription operations: `unsupported`;
+- Happ subscription operations: `research_required`.
 
-Key modules:
-- `services/config_reader.rs`
-- `services/log_reader.rs`
-- `services/health_check.rs`
-- `services/process_monitor.rs`
-- `services/status_service.rs`
-- `services/ui_controller.rs`
-- `commands/mod.rs`
-- `utils/settings_store.rs`
-- `utils/window_visuals.rs`
-- `utils/autostart.rs`
+A separate future model must define list, active subscription, refresh, switch, add/remove and metadata only when a client exposes a safe control contract.
 
-## Command API
+## Build and verification
 
-- `get_status`
-- `refresh_status`
-- `refresh_status_post_route`
-- `refresh_status_background`
-- `refresh_status_startup`
-- `toggle_tun_via_ui`
-- `set_active_profile`
-- `open_v2rayn`
-- `restart_v2rayn`
-- `get_settings`
-- `update_settings`
-- `apply_ui_settings`
-- `open_settings_window`
-- `open_debug_window`
-- `open_diagnostics_window`
-- `run_ui_debug_probe`
-- `debug_toggle_via_ui_only`
-- `debug_click_reload_via_ui`
-- `debug_select_profile_via_ui`
-- `debug_capture_runtime_snapshot`
-- `debug_toggle_via_config_only`
-- `relaunch_widget_as_admin`
-- `detect_v2rayn_path`
-- `validate_v2rayn_path`
-- `get_available_locales`
-- `list_profiles`
-- `close_window`
-- `set_main_window_height`
-- `exit_app`
+`.github/workflows/windows-quality.yml`:
 
-## Data models
+- installs frontend dependencies;
+- runs frontend tests;
+- builds the frontend;
+- transfers `dist` to the Rust job;
+- verifies changed Rust formatting;
+- runs Rust unit/regression tests;
+- runs `cargo check --locked`;
+- preserves short-lived diagnostics artifacts.
 
-### DashboardStatus
-- `status`
-- `tun_enabled`
-- `connection_state`
-- `active_profile_name`
-- `external_ip`
-- `latency_ms`
-- `last_error`
-- `last_event`
-- `updated_at`
-
-### AppSettings
-- `language`
-- `theme`
-- `always_on_top`
-- `autostart_with_windows`
-- `allow_restart_fallback`
-- `poll_interval_sec`
-- `time_format`
-- `show_clock`
-- `show_info_status`
-- `show_external_ip`
-- `show_latency`
-- `mock_mode_enabled`
-- `show_action_buttons`
-- `show_profile_selector`
-- `window_effect_enabled`
-- `window_opacity_percent`
-- `diagnostics_enabled`
-- `diagnostics_url`
-- `latency_mode`
-- `connectivity_endpoints`
-- `ip_endpoints`
-- `v2rayn_path_mode`
-- `v2rayn_path`
-- `window_position`
-
-## Flow: status refresh
-
-1. frontend requests refresh command.
-2. backend resolves v2rayN path.
-3. backend reads config + profiles + logs + process state.
-4. backend runs optional health checks.
-5. resolver combines signals into `DashboardStatus`.
-6. frontend updates UI with minimal loading state changes.
-
-## Flow: toggle
-
-1. attempt UI automation for Enable TUN.
-2. if fails, fallback to config toggle (`EnableTun`).
-3. optionally restart v2rayN after fallback update.
-4. refresh status and return updated model.
+The Rust suite includes existing v2rayN resolver/config/log tests and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.

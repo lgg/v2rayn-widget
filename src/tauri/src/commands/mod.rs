@@ -5,11 +5,14 @@ use std::{
     time::Duration,
 };
 
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, State, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, State, Url, WebviewUrl, WebviewWindowBuilder,
+};
 use tracing::{error, info, warn};
 
 use crate::{
     models::{
+        client::ProxyClientId,
         debug::{DebugRuntimeSnapshot, UiDebugReport},
         locale::LocaleInfo,
         path_validation::PathValidation,
@@ -23,9 +26,7 @@ use crate::{
     services::{
         config_reader,
         health_check::{self, HealthCheckOptions},
-        log_reader,
-        privilege,
-        process_monitor,
+        log_reader, privilege, process_monitor,
         status_service::{self, StatusInputs},
         ui_controller,
     },
@@ -47,8 +48,7 @@ pub async fn refresh_status(state: State<'_, AppState>) -> Result<DashboardStatu
 
     if snapshot.settings.mock_mode_enabled {
         let mock = build_mock_status(&snapshot.status, &snapshot.settings, None, None);
-        state.update_status(mock.clone());
-        return Ok(mock);
+        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
     }
 
     let status = refresh_status_from_settings(&snapshot.settings, true, true, false)
@@ -59,18 +59,18 @@ pub async fn refresh_status(state: State<'_, AppState>) -> Result<DashboardStatu
         })?;
 
     let merged = merge_with_previous(status, &snapshot.status);
-    state.update_status(merged.clone());
-    Ok(merged)
+    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
 }
 
 #[tauri::command]
-pub async fn refresh_status_post_route(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
+pub async fn refresh_status_post_route(
+    state: State<'_, AppState>,
+) -> Result<DashboardStatus, String> {
     let snapshot = state.snapshot();
 
     if snapshot.settings.mock_mode_enabled {
         let mock = build_mock_status(&snapshot.status, &snapshot.settings, None, None);
-        state.update_status(mock.clone());
-        return Ok(mock);
+        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
     }
 
     let status = refresh_status_from_settings(&snapshot.settings, false, true, false)
@@ -81,17 +81,17 @@ pub async fn refresh_status_post_route(state: State<'_, AppState>) -> Result<Das
         })?;
 
     let merged = merge_with_previous(status, &snapshot.status);
-    state.update_status(merged.clone());
-    Ok(merged)
+    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
 }
 #[tauri::command]
-pub async fn refresh_status_background(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
+pub async fn refresh_status_background(
+    state: State<'_, AppState>,
+) -> Result<DashboardStatus, String> {
     let snapshot = state.snapshot();
 
     if snapshot.settings.mock_mode_enabled {
         let mock = build_mock_status(&snapshot.status, &snapshot.settings, None, None);
-        state.update_status(mock.clone());
-        return Ok(mock);
+        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
     }
 
     let status = refresh_status_from_settings(&snapshot.settings, true, false, false)
@@ -112,15 +112,17 @@ pub async fn refresh_status_background(state: State<'_, AppState>) -> Result<Das
         let with_external_ip = refresh_status_from_settings(&snapshot.settings, true, true, false)
             .await
             .map_err(|error| {
-                error!(?error, "refresh_status_background profile-change external-ip refresh failed");
+                error!(
+                    ?error,
+                    "refresh_status_background profile-change external-ip refresh failed"
+                );
                 error.to_string()
             })?;
 
         merged = merge_with_previous(with_external_ip, &merged);
     }
 
-    state.update_status(merged.clone());
-    Ok(merged)
+    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
 }
 
 #[tauri::command]
@@ -129,8 +131,7 @@ pub async fn refresh_status_startup(state: State<'_, AppState>) -> Result<Dashbo
 
     if snapshot.settings.mock_mode_enabled {
         let mock = build_mock_status(&snapshot.status, &snapshot.settings, None, None);
-        state.update_status(mock.clone());
-        return Ok(mock);
+        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
     }
 
     let status = refresh_status_from_settings(&snapshot.settings, true, true, true)
@@ -141,8 +142,7 @@ pub async fn refresh_status_startup(state: State<'_, AppState>) -> Result<Dashbo
         })?;
 
     let merged = merge_with_previous(status, &snapshot.status);
-    state.update_status(merged.clone());
-    Ok(merged)
+    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
 }
 
 #[tauri::command]
@@ -156,15 +156,14 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
             Some(!snapshot.status.tun_enabled),
             None,
         );
-        state.update_status(mock.clone());
-        return Ok(mock);
+        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
     }
 
     ensure_uipi_compatible_for_control()?;
 
     let allow_restart_fallback = snapshot.settings.allow_restart_fallback;
-    let base_path =
-        resolve_v2rayn_base_path(&snapshot.settings).ok_or_else(|| "v2rayN path not found".to_owned())?;
+    let base_path = resolve_v2rayn_base_path(&snapshot.settings)
+        .ok_or_else(|| "v2rayN path not found".to_owned())?;
 
     let before = config_reader::read_config(&base_path)
         .ok()
@@ -182,13 +181,19 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
 
     if need_fallback {
         if !allow_restart_fallback {
-            return Err("UI toggle did not apply and restart fallback is disabled in Settings".to_owned());
+            return Err(
+                "UI toggle did not apply and restart fallback is disabled in Settings".to_owned(),
+            );
         }
 
         if let Err(error) = &automation_result {
             warn!(?error, "UI toggle failed, using config fallback");
         } else {
-            warn!(?before, ?after_ui, "UI toggle did not change config state, using fallback");
+            warn!(
+                ?before,
+                ?after_ui,
+                "UI toggle did not change config state, using fallback"
+            );
         }
 
         let expected_enable_tun = config_reader::toggle_tun_mode(&base_path)
@@ -217,13 +222,17 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
                     }
                 }
                 Err(error) => {
-                    warn!(?error, "UI Reload is unavailable, using process restart fallback");
+                    warn!(
+                        ?error,
+                        "UI Reload is unavailable, using process restart fallback"
+                    );
                 }
             }
 
             if !reloaded_without_restart {
-                restart_v2rayn_process(&base_path)
-                    .map_err(|error| format!("toggle fallback changed config but restart failed: {error}"))?;
+                restart_v2rayn_process(&base_path).map_err(|error| {
+                    format!("toggle fallback changed config but restart failed: {error}")
+                })?;
                 tokio::time::sleep(Duration::from_millis(1200)).await;
             }
         }
@@ -237,8 +246,7 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
         })?;
 
     let merged = merge_with_previous(status, &snapshot.status);
-    state.update_status(merged.clone());
-    Ok(merged)
+    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
 }
 
 #[tauri::command]
@@ -266,8 +274,7 @@ pub async fn set_active_profile(
             None,
             Some(target_profile.name.clone()),
         );
-        state.update_status(mock.clone());
-        return Ok(mock);
+        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
     }
 
     ensure_uipi_compatible_for_control()?;
@@ -288,17 +295,22 @@ pub async fn set_active_profile(
         .cloned()
         .ok_or_else(|| format!("Profile not found: {requested_profile_id}"))?;
 
-    if profile_name_matches(config_before.active_profile_name.as_deref(), &target_profile.name) {
+    if profile_name_matches(
+        config_before.active_profile_name.as_deref(),
+        &target_profile.name,
+    ) {
         let status = refresh_status_from_settings(&snapshot.settings, true, true, true)
             .await
             .map_err(|error| {
-                error!(?error, "status refresh after set_active_profile no-op failed");
+                error!(
+                    ?error,
+                    "status refresh after set_active_profile no-op failed"
+                );
                 error.to_string()
             })?;
 
         let merged = merge_with_previous(status, &snapshot.status);
-        state.update_status(merged.clone());
-        return Ok(merged);
+        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged);
     }
 
     let process_snapshot = process_monitor::read_process_snapshot();
@@ -332,7 +344,10 @@ pub async fn set_active_profile(
 
     if !applied_via_ui {
         if !allow_restart_fallback {
-            return Err("UI profile switch did not apply and restart fallback is disabled in Settings".to_owned());
+            return Err(
+                "UI profile switch did not apply and restart fallback is disabled in Settings"
+                    .to_owned(),
+            );
         }
 
         config_reader::set_active_profile(&base_path, &requested_profile_id).map_err(|error| {
@@ -385,8 +400,7 @@ pub async fn set_active_profile(
         })?;
 
     let merged = merge_with_previous(status, &snapshot.status);
-    state.update_status(merged.clone());
-    Ok(merged)
+    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
 }
 
 #[tauri::command]
@@ -420,16 +434,17 @@ pub async fn update_settings(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AppSettings, String> {
-    let settings = normalize_settings(payload);
+    let _settings_update = state.lock_settings_update();
+    let snapshot = state.snapshot();
+    let settings = merge_general_settings_payload(payload, &snapshot.settings);
+    let status = if settings.mock_mode_enabled {
+        build_mock_status(&snapshot.status, &settings, None, None)
+    } else {
+        snapshot.status
+    };
 
     settings_store::save_settings(&settings).map_err(|error| error.to_string())?;
-    state.update_settings(settings.clone());
-
-    if settings.mock_mode_enabled {
-        let snapshot = state.snapshot();
-        let mock = build_mock_status(&snapshot.status, &settings, None, None);
-        state.update_status(mock);
-    }
+    state.replace_settings_and_status_invalidating_context(settings.clone(), status);
 
     apply_runtime_settings(&app, &settings);
     emit_settings_updated(&app, &settings);
@@ -443,7 +458,10 @@ pub async fn apply_ui_settings(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AppSettings, String> {
+    let _settings_update = state.lock_settings_update();
     let snapshot = state.snapshot();
+    let previous_mock_mode = snapshot.settings.mock_mode_enabled;
+    let previous_status = snapshot.status;
     let mut merged = snapshot.settings;
 
     if let Some(value) = payload.language {
@@ -488,12 +506,15 @@ pub async fn apply_ui_settings(
     let settings = normalize_settings(merged);
 
     settings_store::save_settings(&settings).map_err(|error| error.to_string())?;
-    state.update_settings(settings.clone());
-
-    if settings.mock_mode_enabled {
-        let snapshot = state.snapshot();
-        let mock = build_mock_status(&snapshot.status, &settings, None, None);
-        state.update_status(mock);
+    if previous_mock_mode != settings.mock_mode_enabled {
+        let status = if settings.mock_mode_enabled {
+            build_mock_status(&previous_status, &settings, None, None)
+        } else {
+            DashboardStatus::default()
+        };
+        state.replace_settings_and_status_invalidating_context(settings.clone(), status);
+    } else {
+        state.update_settings(settings.clone());
     }
 
     apply_runtime_settings(&app, &settings);
@@ -522,8 +543,9 @@ pub async fn open_diagnostics_window(
         return Err("Diagnostics page is disabled".to_owned());
     }
 
-    let url = normalize_diagnostics_url(&settings.diagnostics_url)
-        .unwrap_or_else(|| Url::parse(&default_diagnostics_url()).expect("default diagnostics URL is valid"));
+    let url = normalize_diagnostics_url(&settings.diagnostics_url).unwrap_or_else(|| {
+        Url::parse(&default_diagnostics_url()).expect("default diagnostics URL is valid")
+    });
 
     if let Some(window) = app.get_webview_window("diagnostics") {
         window.navigate(url).map_err(|error| error.to_string())?;
@@ -749,7 +771,8 @@ pub async fn refresh_status_from_settings(
     };
 
     let check_latency = include_latency_probe && (settings.show_latency || force_full_probe);
-    let check_external_ip = include_external_ip_probe && (settings.show_external_ip || force_full_probe);
+    let check_external_ip =
+        include_external_ip_probe && (settings.show_external_ip || force_full_probe);
 
     let health_options = HealthCheckOptions {
         enable_external_ip: check_external_ip,
@@ -847,10 +870,24 @@ fn resolve_v2rayn_base_path(settings: &AppSettings) -> Option<PathBuf> {
     })
 }
 
+fn merge_general_settings_payload(payload: AppSettings, current: &AppSettings) -> AppSettings {
+    let mut settings = normalize_settings(payload);
+
+    // This payload is owned by the general settings window. Preserve fields that
+    // are managed by client selection, Happ setup, or live window tracking so a
+    // stale draft cannot overwrite newer state from another window.
+    settings.selected_client = current.selected_client;
+    settings.happ_path = current.happ_path.clone();
+    settings.happ_allow_ui_automation = current.happ_allow_ui_automation;
+    settings.window_position = current.window_position.clone();
+    settings
+}
+
 fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     settings.poll_interval_sec = settings.poll_interval_sec.clamp(1, 3600);
     settings.window_opacity_percent = settings.window_opacity_percent.clamp(10, 100);
     settings.v2rayn_path = normalize_manual_path(settings.v2rayn_path);
+    settings.happ_path = normalize_manual_path(settings.happ_path);
     settings.diagnostics_url = normalize_diagnostics_url(&settings.diagnostics_url)
         .map(|url| url.to_string())
         .unwrap_or_else(default_diagnostics_url);
@@ -1001,14 +1038,15 @@ fn build_mock_status(
 ) -> DashboardStatus {
     let mock_profiles = mock_profiles();
 
-    let active_profile_name = profile_override.or_else(|| {
-        previous
-            .active_profile_name
-            .as_ref()
-            .filter(|name| mock_profiles.iter().any(|item| item.name == **name))
-            .cloned()
-    })
-    .or_else(|| mock_profiles.first().map(|item| item.name.clone()));
+    let active_profile_name = profile_override
+        .or_else(|| {
+            previous
+                .active_profile_name
+                .as_ref()
+                .filter(|name| mock_profiles.iter().any(|item| item.name == **name))
+                .cloned()
+        })
+        .or_else(|| mock_profiles.first().map(|item| item.name.clone()));
 
     let tun_enabled = tun_override.unwrap_or(previous.tun_enabled);
     let connection_state = if tun_enabled {
@@ -1031,6 +1069,22 @@ fn build_mock_status(
             "Mockup mode is enabled".to_owned()
         }),
         ..DashboardStatus::default()
+    }
+}
+
+fn commit_client_status(
+    state: &State<'_, AppState>,
+    client_id: ProxyClientId,
+    client_epoch: u64,
+    status: DashboardStatus,
+) -> Result<DashboardStatus, String> {
+    if state.update_status_if_context(client_id, client_epoch, status.clone()) {
+        Ok(status)
+    } else {
+        Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running"
+                .to_owned(),
+        )
     }
 }
 
@@ -1078,7 +1132,7 @@ fn restart_v2rayn_process(base_path: &Path) -> anyhow::Result<()> {
 }
 
 fn apply_runtime_settings(app: &AppHandle, settings: &AppSettings) {
-    for label in ["main", "settings", "debug"] {
+    for label in ["main", "settings", "debug", "happ-setup"] {
         if let Some(window) = app.get_webview_window(label) {
             let _ = window.set_always_on_top(settings.always_on_top);
         }
@@ -1110,6 +1164,36 @@ fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn general_settings_payload_preserves_adapter_owned_fields() {
+        let current = AppSettings {
+            selected_client: ProxyClientId::Happ,
+            happ_path: Some("C:\\Happ\\Happ.exe".to_owned()),
+            happ_allow_ui_automation: true,
+            window_position: Some(crate::models::settings::WindowPosition {
+                x: 10,
+                y: 20,
+                width: 360,
+                height: 500,
+            }),
+            ..AppSettings::default()
+        };
+
+        let stale_payload = AppSettings {
+            selected_client: ProxyClientId::V2rayn,
+            happ_path: None,
+            happ_allow_ui_automation: false,
+            window_position: None,
+            ..AppSettings::default()
+        };
+
+        let merged = merge_general_settings_payload(stale_payload, &current);
+        assert_eq!(merged.selected_client, ProxyClientId::Happ);
+        assert_eq!(merged.happ_path, current.happ_path);
+        assert!(merged.happ_allow_ui_automation);
+        assert_eq!(merged.window_position, current.window_position);
+    }
+
     #[test]
     fn normalize_endpoint_list_filters_invalid_and_non_http_urls() {
         let result = normalize_endpoint_list(
@@ -1175,4 +1259,3 @@ mod tests {
         assert!(normalize_diagnostics_url("javascript:alert(1)").is_none());
     }
 }
-

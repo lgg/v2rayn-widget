@@ -12,6 +12,50 @@ export interface DashboardStatus {
   updated_at: string;
 }
 
+export type ProxyClientId = "v2rayn" | "happ";
+export type CapabilityState = "supported" | "experimental" | "unsupported" | "research_required";
+export type TransportMode = "unknown" | "proxy" | "tun" | "mixed";
+
+export interface ClientCapabilities {
+  detect_application: CapabilityState;
+  read_process_state: CapabilityState;
+  read_connection_state: CapabilityState;
+  open_application: CapabilityState;
+  toggle_connection: CapabilityState;
+  list_items: CapabilityState;
+  select_item: CapabilityState;
+  restart_application: CapabilityState;
+  read_transport_mode: CapabilityState;
+  list_subscriptions: CapabilityState;
+  switch_subscription: CapabilityState;
+  refresh_subscription: CapabilityState;
+  manage_subscriptions: CapabilityState;
+}
+
+export interface ClientDescriptor {
+  id: ProxyClientId;
+  display_name: string;
+  maturity: string;
+  status_note: string;
+  capabilities: ClientCapabilities;
+}
+
+export interface ClientDiagnostics {
+  client_id: ProxyClientId;
+  application_running: boolean;
+  process_id: number | null;
+  executable_path: string | null;
+  window_found: boolean;
+  window_title: string | null;
+  connection_state: StatusLevel;
+  transport_mode: TransportMode;
+  control_source: string | null;
+  action_label: string | null;
+  action_score: number | null;
+  ui_nodes: string[];
+  note: string;
+}
+
 export type ThemeMode = "light" | "dark";
 export type PathMode = "auto" | "manual";
 export type TimeFormat = "system" | "24h" | "12h";
@@ -25,6 +69,7 @@ export interface WindowPosition {
 }
 
 export interface AppSettings {
+  selected_client: ProxyClientId;
   language: string;
   theme: ThemeMode;
   always_on_top: boolean;
@@ -48,7 +93,14 @@ export interface AppSettings {
   ip_endpoints: string[];
   v2rayn_path_mode: PathMode;
   v2rayn_path: string | null;
+  happ_path: string | null;
+  happ_allow_ui_automation: boolean;
   window_position: WindowPosition | null;
+}
+
+export interface HappSettingsPatch {
+  happ_path: string | null;
+  happ_allow_ui_automation: boolean;
 }
 
 export interface UiSettingsPatch {
@@ -137,6 +189,3 @@ export interface UiDebugReport {
   privilege: PrivilegeDiagnostics;
   note: string;
 }
-
-
-

@@ -7,6 +7,7 @@ use crate::models::debug::UiDebugReport;
 
 #[cfg(target_os = "windows")]
 mod windows_impl {
+    use crate::models::debug::{UiAutomationNode, UiDebugReport};
     use anyhow::{anyhow, Result};
     use windows::{
         core::BOOL,
@@ -19,33 +20,29 @@ mod windows_impl {
             },
             UI::{
                 Accessibility::{
-                    CUIAutomation, IUIAutomation, IUIAutomationElement,
-                    IUIAutomationInvokePattern, IUIAutomationLegacyIAccessiblePattern,
-                    IUIAutomationSelectionItemPattern, IUIAutomationTogglePattern,
-                    TreeScope_Subtree, UIA_ButtonControlTypeId, UIA_CheckBoxControlTypeId,
-                    UIA_CustomControlTypeId, UIA_DataItemControlTypeId,
+                    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationInvokePattern,
+                    IUIAutomationLegacyIAccessiblePattern, IUIAutomationSelectionItemPattern,
+                    IUIAutomationTogglePattern, TreeScope_Subtree, UIA_ButtonControlTypeId,
+                    UIA_CheckBoxControlTypeId, UIA_CustomControlTypeId, UIA_DataItemControlTypeId,
                     UIA_HyperlinkControlTypeId, UIA_InvokePatternId,
                     UIA_LegacyIAccessiblePatternId, UIA_ListItemControlTypeId,
-                    UIA_MenuItemControlTypeId, UIA_PaneControlTypeId,
-                    UIA_SelectionItemPatternId, UIA_TogglePatternId,
-                    UIA_ToolBarControlTypeId, UIA_WindowControlTypeId,
+                    UIA_MenuItemControlTypeId, UIA_PaneControlTypeId, UIA_SelectionItemPatternId,
+                    UIA_TogglePatternId, UIA_ToolBarControlTypeId, UIA_WindowControlTypeId,
                 },
                 Input::KeyboardAndMouse::{
                     SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN,
                     MOUSEEVENTF_LEFTUP, MOUSEINPUT,
                 },
                 WindowsAndMessaging::{
-                    BM_CLICK, EnumChildWindows, EnumWindows, FindWindowW, GetCursorPos,
-                    GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
-                    GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_MINIMIZE,
-                    SW_RESTORE, SendMessageW, SetCursorPos, SetForegroundWindow, ShowWindow,
-                    WM_KEYDOWN, WM_KEYUP,
-                    WM_LBUTTONDOWN, WM_LBUTTONUP,
+                    EnumChildWindows, EnumWindows, FindWindowW, GetCursorPos, GetWindowRect,
+                    GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+                    IsWindowVisible, SendMessageW, SetCursorPos, SetForegroundWindow, ShowWindow,
+                    BM_CLICK, SW_MINIMIZE, SW_RESTORE, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN,
+                    WM_LBUTTONUP,
                 },
             },
         },
     };
-    use crate::models::debug::{UiAutomationNode, UiDebugReport};
 
     const MAX_UIA_NODES: usize = 480;
     const MAX_TEXT_ITEMS: usize = 360;
@@ -89,13 +86,17 @@ mod windows_impl {
         fn init() -> Result<Self> {
             let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
             if hr == RPC_E_CHANGED_MODE {
-                return Ok(Self { should_uninit: false });
+                return Ok(Self {
+                    should_uninit: false,
+                });
             }
 
             hr.ok()
                 .map_err(|error| anyhow!("CoInitializeEx failed: {error}"))?;
 
-            Ok(Self { should_uninit: true })
+            Ok(Self {
+                should_uninit: true,
+            })
         }
     }
 
@@ -178,8 +179,8 @@ mod windows_impl {
         let result = (|| -> Result<String> {
             let candidate = find_profile_candidate(hwnd, profile_name)?;
 
-            let select_method = select_element(&candidate.element)
-                .unwrap_or("selection_soft_fallback");
+            let select_method =
+                select_element(&candidate.element).unwrap_or("selection_soft_fallback");
 
             std::thread::sleep(std::time::Duration::from_millis(120));
             let (focus_method, focus_hwnd) = focus_profile_row(&candidate.element, hwnd)
@@ -343,11 +344,21 @@ mod windows_impl {
                     .map_err(|error| anyhow!("GetElement({index}) failed: {error}"))?
             };
 
-            let name = sanitize_optional(unsafe { element.CurrentName() }.ok().map(|v| v.to_string()));
-            let automation_id =
-                sanitize_optional(unsafe { element.CurrentAutomationId() }.ok().map(|v| v.to_string()));
-            let class_name = sanitize_optional(unsafe { element.CurrentClassName() }.ok().map(|v| v.to_string()));
-            let control_type_id = unsafe { element.CurrentControlType() }.ok().map(|value| value.0);
+            let name =
+                sanitize_optional(unsafe { element.CurrentName() }.ok().map(|v| v.to_string()));
+            let automation_id = sanitize_optional(
+                unsafe { element.CurrentAutomationId() }
+                    .ok()
+                    .map(|v| v.to_string()),
+            );
+            let class_name = sanitize_optional(
+                unsafe { element.CurrentClassName() }
+                    .ok()
+                    .map(|v| v.to_string()),
+            );
+            let control_type_id = unsafe { element.CurrentControlType() }
+                .ok()
+                .map(|value| value.0);
             let control_type = control_type_id
                 .map(control_type_label)
                 .unwrap_or_else(|| "Unknown".to_owned());
@@ -400,7 +411,13 @@ mod windows_impl {
 
             let reload_score = score_reload_candidate(&haystack, control_type_id);
             if reload_score > 0 {
-                let label = format_candidate_label(name, automation_id, class_name, &control_type, reload_score);
+                let label = format_candidate_label(
+                    name,
+                    automation_id,
+                    class_name,
+                    &control_type,
+                    reload_score,
+                );
 
                 if result.reload_candidates.len() < MAX_TEXT_ITEMS {
                     result.reload_candidates.push(label.clone());
@@ -410,7 +427,7 @@ mod windows_impl {
                     Some(best) if best.score >= reload_score => {}
                     _ => {
                         result.best_reload = Some(UiActionCandidate {
-                            element: element,
+                            element,
                             label,
                             score: reload_score,
                         });
@@ -422,7 +439,10 @@ mod windows_impl {
         Ok(result)
     }
 
-    fn find_profile_candidate(parent_hwnd: HWND, target_profile_name: &str) -> Result<UiActionCandidate> {
+    fn find_profile_candidate(
+        parent_hwnd: HWND,
+        target_profile_name: &str,
+    ) -> Result<UiActionCandidate> {
         let _com = ComGuard::init()?;
         let automation: IUIAutomation = unsafe {
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
@@ -472,12 +492,21 @@ mod windows_impl {
                     .map_err(|error| anyhow!("GetElement({index}) failed: {error}"))?
             };
 
-            let name = sanitize_optional(unsafe { element.CurrentName() }.ok().map(|v| v.to_string()));
-            let automation_id =
-                sanitize_optional(unsafe { element.CurrentAutomationId() }.ok().map(|v| v.to_string()));
-            let class_name =
-                sanitize_optional(unsafe { element.CurrentClassName() }.ok().map(|v| v.to_string()));
-            let control_type_id = unsafe { element.CurrentControlType() }.ok().map(|value| value.0);
+            let name =
+                sanitize_optional(unsafe { element.CurrentName() }.ok().map(|v| v.to_string()));
+            let automation_id = sanitize_optional(
+                unsafe { element.CurrentAutomationId() }
+                    .ok()
+                    .map(|v| v.to_string()),
+            );
+            let class_name = sanitize_optional(
+                unsafe { element.CurrentClassName() }
+                    .ok()
+                    .map(|v| v.to_string()),
+            );
+            let control_type_id = unsafe { element.CurrentControlType() }
+                .ok()
+                .map(|value| value.0);
             let control_type = control_type_id
                 .map(control_type_label)
                 .unwrap_or_else(|| "Unknown".to_owned());
@@ -497,13 +526,9 @@ mod windows_impl {
                 continue;
             }
 
-            let label = format_candidate_label(
-                name,
-                automation_id,
-                class_name,
-                &control_type,
-                score,
-            ) + &bounds_suffix(bounds);
+            let label =
+                format_candidate_label(name, automation_id, class_name, &control_type, score)
+                    + &bounds_suffix(bounds);
 
             if profile_candidates.len() < MAX_TEXT_ITEMS {
                 profile_candidates.push(label.clone());
@@ -544,17 +569,21 @@ mod windows_impl {
             let _ = element.SetFocus();
         }
 
-        if let Ok(pattern) =
-            unsafe { element.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId) }
-        {
+        if let Ok(pattern) = unsafe {
+            element.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(
+                UIA_SelectionItemPatternId,
+            )
+        } {
             if unsafe { pattern.Select() }.is_ok() {
                 return Ok("selection_item_pattern");
             }
         }
 
-        if let Ok(pattern) =
-            unsafe { element.GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(UIA_LegacyIAccessiblePatternId) }
-        {
+        if let Ok(pattern) = unsafe {
+            element.GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(
+                UIA_LegacyIAccessiblePatternId,
+            )
+        } {
             if unsafe { pattern.Select(3) }.is_ok() {
                 return Ok("legacy_select");
             }
@@ -572,8 +601,9 @@ mod windows_impl {
             let _ = element.SetFocus();
         }
 
-        if let Ok(pattern) = unsafe { element.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId) }
-        {
+        if let Ok(pattern) = unsafe {
+            element.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId)
+        } {
             unsafe {
                 pattern
                     .Toggle()
@@ -582,8 +612,9 @@ mod windows_impl {
             return Ok("toggle_pattern");
         }
 
-        if let Ok(pattern) = unsafe { element.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId) }
-        {
+        if let Ok(pattern) = unsafe {
+            element.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId)
+        } {
             unsafe {
                 pattern
                     .Invoke()
@@ -592,9 +623,11 @@ mod windows_impl {
             return Ok("invoke_pattern");
         }
 
-        if let Ok(pattern) =
-            unsafe { element.GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(UIA_LegacyIAccessiblePatternId) }
-        {
+        if let Ok(pattern) = unsafe {
+            element.GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(
+                UIA_LegacyIAccessiblePatternId,
+            )
+        } {
             if unsafe { pattern.DoDefaultAction() }.is_ok() {
                 return Ok("legacy_default_action");
             }
@@ -614,7 +647,10 @@ mod windows_impl {
         ))
     }
 
-    fn focus_profile_row(element: &IUIAutomationElement, fallback_hwnd: HWND) -> Result<(&'static str, HWND)> {
+    fn focus_profile_row(
+        element: &IUIAutomationElement,
+        fallback_hwnd: HWND,
+    ) -> Result<(&'static str, HWND)> {
         let rect = unsafe { element.CurrentBoundingRectangle() }
             .map_err(|error| anyhow!("CurrentBoundingRectangle failed: {error}"))?;
 
@@ -646,7 +682,12 @@ mod windows_impl {
         let (client_x, client_y) = screen_to_client_point(target_hwnd, click_x, click_y);
         unsafe {
             let client_pos = encode_point_lparam(client_x, client_y);
-            let _ = SendMessageW(target_hwnd, WM_LBUTTONDOWN, Some(WPARAM(0x0001)), Some(client_pos));
+            let _ = SendMessageW(
+                target_hwnd,
+                WM_LBUTTONDOWN,
+                Some(WPARAM(0x0001)),
+                Some(client_pos),
+            );
             let _ = SendMessageW(target_hwnd, WM_LBUTTONUP, Some(WPARAM(0)), Some(client_pos));
         }
 
@@ -721,7 +762,11 @@ mod windows_impl {
         }
     }
 
-    fn build_haystack(name: &Option<String>, automation_id: &Option<String>, class_name: &Option<String>) -> String {
+    fn build_haystack(
+        name: &Option<String>,
+        automation_id: &Option<String>,
+        class_name: &Option<String>,
+    ) -> String {
         format!(
             "{} {} {}",
             name.as_deref().unwrap_or_default().to_lowercase(),
@@ -740,7 +785,10 @@ mod windows_impl {
         if haystack.contains("enable tun") {
             score += 240;
         }
-        if haystack.contains("enabletun") || haystack.contains("tunmode") || haystack.contains("tun mode") {
+        if haystack.contains("enabletun")
+            || haystack.contains("tunmode")
+            || haystack.contains("tun mode")
+        {
             score += 180;
         }
         if haystack.contains("switch") || haystack.contains("toggle") {
@@ -1221,14 +1269,6 @@ pub fn debug_click_reload_via_ui_only() -> Result<String> {
     Err(anyhow!("UI automation is only available on Windows"))
 }
 
-
-
-
-
-
-
-
-
 #[cfg(target_os = "windows")]
 pub fn debug_select_profile_via_ui_only(profile_name: &str) -> Result<String> {
     windows_impl::set_active_profile_via_ui(profile_name)
@@ -1238,24 +1278,3 @@ pub fn debug_select_profile_via_ui_only(profile_name: &str) -> Result<String> {
 pub fn debug_select_profile_via_ui_only(_profile_name: &str) -> Result<String> {
     Err(anyhow!("UI automation is only available on Windows"))
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

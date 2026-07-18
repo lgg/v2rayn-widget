@@ -1,34 +1,27 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+use crate::models::client::ProxyClientId;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
     Light,
+    #[default]
     Dark,
 }
 
-impl Default for ThemeMode {
-    fn default() -> Self {
-        Self::Dark
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum V2RayNPathMode {
+    #[default]
     Auto,
     Manual,
 }
 
-impl Default for V2RayNPathMode {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum TimeFormat {
     #[serde(rename = "system")]
+    #[default]
     System,
     #[serde(rename = "24h")]
     H24,
@@ -36,23 +29,12 @@ pub enum TimeFormat {
     H12,
 }
 
-impl Default for TimeFormat {
-    fn default() -> Self {
-        Self::System
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum LatencyMode {
+    #[default]
     Active,
     LogSnapshot,
-}
-
-impl Default for LatencyMode {
-    fn default() -> Self {
-        Self::Active
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -86,6 +68,7 @@ pub fn default_diagnostics_url() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
+    pub selected_client: ProxyClientId,
     pub language: String,
     pub theme: ThemeMode,
     pub always_on_top: bool,
@@ -112,12 +95,15 @@ pub struct AppSettings {
     pub ip_endpoints: Vec<String>,
     pub v2rayn_path_mode: V2RayNPathMode,
     pub v2rayn_path: Option<String>,
+    pub happ_path: Option<String>,
+    pub happ_allow_ui_automation: bool,
     pub window_position: Option<WindowPosition>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            selected_client: ProxyClientId::V2rayn,
             language: "en".to_owned(),
             theme: ThemeMode::Dark,
             always_on_top: false,
@@ -141,9 +127,18 @@ impl Default for AppSettings {
             ip_endpoints: default_ip_endpoints(),
             v2rayn_path_mode: V2RayNPathMode::Auto,
             v2rayn_path: None,
+            happ_path: None,
+            happ_allow_ui_automation: false,
             window_position: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct HappSettingsPatch {
+    pub happ_path: Option<String>,
+    pub happ_allow_ui_automation: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -164,6 +159,16 @@ pub struct UiSettingsPatch {
     pub window_opacity_percent: Option<u8>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-
-
+    #[test]
+    fn legacy_settings_default_to_v2rayn() {
+        let json = r#"{"language":"en"}"#;
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.selected_client, ProxyClientId::V2rayn);
+        assert!(settings.happ_path.is_none());
+        assert!(!settings.happ_allow_ui_automation);
+    }
+}

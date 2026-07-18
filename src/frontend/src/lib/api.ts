@@ -1,14 +1,86 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
+  ClientDescriptor,
+  ClientDiagnostics,
   DashboardStatus,
   DebugRuntimeSnapshot,
+  HappSettingsPatch,
   LocaleInfo,
   PathValidation,
   ProfileSummary,
+  ProxyClientId,
   UiDebugReport,
   UiSettingsPatch
 } from "@/lib/types";
+
+export async function getClientCatalog(): Promise<ClientDescriptor[]> {
+  return invoke<ClientDescriptor[]>("get_client_catalog");
+}
+
+export async function getSelectedClient(): Promise<ClientDescriptor> {
+  return invoke<ClientDescriptor>("get_selected_client");
+}
+
+export async function getSelectedClientDiagnostics(): Promise<ClientDiagnostics> {
+  return invoke<ClientDiagnostics>("get_selected_client_diagnostics");
+}
+
+export async function getHappDiagnostics(): Promise<ClientDiagnostics> {
+  return invoke<ClientDiagnostics>("get_happ_diagnostics");
+}
+
+export async function selectClient(clientId: ProxyClientId): Promise<AppSettings> {
+  return invoke<AppSettings>("select_client", { clientId });
+}
+
+export async function detectHappPath(): Promise<string | null> {
+  return invoke<string | null>("detect_happ_path");
+}
+
+export async function validateHappPath(path: string): Promise<PathValidation> {
+  return invoke<PathValidation>("validate_happ_path", { path });
+}
+
+export async function openHappSetupWindow(): Promise<void> {
+  return invoke("open_happ_setup_window");
+}
+
+export async function updateHappSettings(payload: HappSettingsPatch): Promise<AppSettings> {
+  return invoke<AppSettings>("update_happ_settings", { payload });
+}
+
+export async function refreshSelectedClient(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("refresh_selected_client");
+}
+
+export async function refreshSelectedClientBackground(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("refresh_selected_client_background");
+}
+
+export async function refreshSelectedClientStartup(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("refresh_selected_client_startup");
+}
+
+export async function refreshSelectedClientPostRoute(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("refresh_selected_client_post_route");
+}
+
+export async function toggleSelectedClient(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("toggle_selected_client");
+}
+
+export async function listSelectedClientItems(): Promise<ProfileSummary[]> {
+  return invoke<ProfileSummary[]>("list_selected_client_items");
+}
+
+export async function selectClientItem(itemId: string): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("select_client_item", { itemId });
+}
+
+export async function openSelectedClient(): Promise<void> {
+  return invoke("open_selected_client");
+}
 
 export async function getStatus(): Promise<DashboardStatus> {
   return invoke<DashboardStatus>("get_status");
@@ -125,4 +197,3 @@ export async function exitApp(): Promise<void> {
 export async function setMainWindowHeight(height: number): Promise<void> {
   return invoke("set_main_window_height", { height });
 }
-

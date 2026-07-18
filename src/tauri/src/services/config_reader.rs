@@ -63,7 +63,14 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
     let mut changed = false;
     changed |= set_first_existing_string_key(
         &mut json,
-        &["IndexId", "indexId", "SubIndexId", "subIndexId", "selectedProfileId", "selectedServerId"],
+        &[
+            "IndexId",
+            "indexId",
+            "SubIndexId",
+            "subIndexId",
+            "selectedProfileId",
+            "selectedServerId",
+        ],
         &target.id,
     );
     changed |= set_first_existing_string_key(
@@ -121,11 +128,8 @@ pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
     }
 
     if !changed {
-        changed = set_first_existing_bool_key(
-            &mut json,
-            &["EnableTun", "enableTun", "tunEnabled"],
-            next,
-        );
+        changed =
+            set_first_existing_bool_key(&mut json, &["EnableTun", "enableTun", "tunEnabled"], next);
     }
 
     if !changed {
@@ -247,14 +251,12 @@ fn set_first_existing_bool_key(value: &mut Value, keys: &[&str], new_value: bool
 }
 
 fn extract_enable_tun(json: &Value) -> Option<bool> {
-    if let Some(item) = find_value_by_key(json, "TunModeItem") {
-        if let Value::Object(map) = item {
-            if let Some(Value::Bool(flag)) = map.get("EnableTun") {
-                return Some(*flag);
-            }
-            if let Some(Value::Bool(flag)) = map.get("enableTun") {
-                return Some(*flag);
-            }
+    if let Some(Value::Object(map)) = find_value_by_key(json, "TunModeItem") {
+        if let Some(Value::Bool(flag)) = map.get("EnableTun") {
+            return Some(*flag);
+        }
+        if let Some(Value::Bool(flag)) = map.get("enableTun") {
+            return Some(*flag);
         }
     }
 
@@ -286,7 +288,14 @@ fn find_bool_by_keys(value: &Value, keys: &[&str]) -> Option<bool> {
 fn extract_active_profile_name(json: &Value, profiles: &[ProfileSummary]) -> Option<String> {
     let selected_id = find_string_by_keys(
         json,
-        &["IndexId", "indexId", "SubIndexId", "subIndexId", "selectedProfileId", "selectedServerId"],
+        &[
+            "IndexId",
+            "indexId",
+            "SubIndexId",
+            "subIndexId",
+            "selectedProfileId",
+            "selectedServerId",
+        ],
     )
     .or_else(|| find_number_by_keys(json, &["indexMain", "selectedIndex"]).map(|v| v.to_string()));
 
@@ -309,7 +318,14 @@ fn extract_active_profile_name(json: &Value, profiles: &[ProfileSummary]) -> Opt
 fn extract_profiles_from_json(json: &Value) -> Vec<ProfileSummary> {
     let mut result = Vec::new();
 
-    let list_keys = ["profiles", "servers", "vmess", "configs", "profileItem", "ProfileItem"];
+    let list_keys = [
+        "profiles",
+        "servers",
+        "vmess",
+        "configs",
+        "profileItem",
+        "ProfileItem",
+    ];
     for key in list_keys {
         if let Some(Value::Array(items)) = find_value_by_key(json, key) {
             for (index, item) in items.iter().enumerate() {
@@ -451,7 +467,10 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(&config_path).expect("read config"))
                 .expect("parse config");
 
-        assert_eq!(updated.get("IndexId").and_then(Value::as_str), Some("second"));
+        assert_eq!(
+            updated.get("IndexId").and_then(Value::as_str),
+            Some("second")
+        );
         assert_eq!(
             updated
                 .get("ProfileItem")
@@ -465,7 +484,3 @@ mod tests {
         let _ = fs::remove_dir_all(base_path);
     }
 }
-
-
-
-

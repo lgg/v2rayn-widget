@@ -1,11 +1,14 @@
-use std::fs;
+use std::{fs, sync::Mutex};
 
 use anyhow::{Context, Result};
+use once_cell::sync::Lazy;
 
 use crate::models::settings::{
     default_connectivity_endpoints, default_diagnostics_url, default_ip_endpoints, AppSettings,
 };
 use crate::utils::{app_paths, locale};
+
+static SETTINGS_WRITE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub fn load_settings() -> Result<AppSettings> {
     let path = app_paths::settings_file_path()?;
@@ -46,6 +49,11 @@ pub fn load_settings() -> Result<AppSettings> {
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty());
 
+    parsed.happ_path = parsed
+        .happ_path
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+
     if parsed.connectivity_endpoints.is_empty() {
         parsed.connectivity_endpoints = default_connectivity_endpoints();
     }
@@ -58,6 +66,9 @@ pub fn load_settings() -> Result<AppSettings> {
 }
 
 pub fn save_settings(settings: &AppSettings) -> Result<()> {
+    let _write_guard = SETTINGS_WRITE_LOCK
+        .lock()
+        .map_err(|_| anyhow::anyhow!("Settings write lock is poisoned"))?;
     let path = app_paths::settings_file_path()?;
     let parent = path
         .parent()
@@ -85,7 +96,10 @@ mod tests {
 
         assert_eq!(decoded.poll_interval_sec, initial.poll_interval_sec);
         assert_eq!(decoded.language, initial.language);
-        assert_eq!(decoded.window_opacity_percent, initial.window_opacity_percent);
+        assert_eq!(
+            decoded.window_opacity_percent,
+            initial.window_opacity_percent
+        );
         assert_eq!(decoded.diagnostics_enabled, initial.diagnostics_enabled);
         assert_eq!(decoded.diagnostics_url, initial.diagnostics_url);
     }

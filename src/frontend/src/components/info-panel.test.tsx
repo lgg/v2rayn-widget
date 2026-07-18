@@ -17,6 +17,7 @@ const baseStatus: DashboardStatus = {
 };
 
 const baseSettings: AppSettings = {
+  selected_client: "v2rayn",
   language: "en",
   theme: "dark",
   always_on_top: false,
@@ -40,6 +41,8 @@ const baseSettings: AppSettings = {
   ip_endpoints: [],
   v2rayn_path_mode: "auto",
   v2rayn_path: null,
+  happ_path: null,
+  happ_allow_ui_automation: false,
   window_position: null
 };
 

@@ -145,5 +145,14 @@
   "errors.copyIpFailed": "Could not copy IP",
   "errors.uipiMismatch": "Permission mismatch: v2rayN is running as Administrator, but widget is not. Run both apps with the same rights or restart widget as Administrator.",
   "notices.ipCopied": "External IP copied",
-  "dashboard.pathConfigMissing": "v2rayN path is not configured. Open Settings and select your v2rayN folder."
+  "dashboard.pathConfigMissing": "v2rayN path is not configured. Open Settings and select your v2rayN folder.",
+  "happSetup.loadFailed": "Could not load Happ adapter settings.",
+  "happSetup.detectFailed": "Happ executable detection failed.",
+  "happSetup.probeRequired": "Open Happ and run a successful probe before enabling experimental control.",
+  "happSetup.probeNoAction": "The probe did not find one unique high-confidence Connect or Disconnect control.",
+  "happSetup.probeBeforeEnable": "Run a successful Happ probe to unlock this option.",
+  "transport.unknown": "Unknown",
+  "transport.proxy": "Proxy",
+  "transport.tun": "TUN",
+  "transport.mixed": "Mixed"
 }

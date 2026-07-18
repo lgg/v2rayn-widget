@@ -10,7 +10,7 @@ const apiMocks = vi.hoisted(() => ({
   detectHappPath: vi.fn(),
   getHappDiagnostics: vi.fn(),
   getSettings: vi.fn(),
-  updateSettings: vi.fn(),
+  updateHappSettings: vi.fn(),
   validateHappPath: vi.fn()
 }));
 
@@ -60,7 +60,7 @@ const diagnostics: ClientDiagnostics = {
   control_source: "windows_ui_automation",
   action_label: "Connect",
   action_score: 360,
-  ui_nodes: ["Connect | Button"],
+  ui_nodes: ["action=Connect; automation_id=<redacted len=8>; class=<redacted len=6>; control_type=50000"],
   note: "Probe complete"
 };
 
@@ -73,7 +73,10 @@ describe("HappSetupWindow", () => {
       message_key: "settings.happPathValid",
       normalized_path: "C:\\Happ\\Happ.exe"
     });
-    apiMocks.updateSettings.mockImplementation(async (payload: AppSettings) => payload);
+    apiMocks.updateHappSettings.mockImplementation(async (payload: { happ_path: string | null; happ_allow_ui_automation: boolean }) => ({
+      ...settings,
+      ...payload
+    }));
     apiMocks.getHappDiagnostics.mockResolvedValue(diagnostics);
   });
 
@@ -84,11 +87,13 @@ describe("HappSetupWindow", () => {
     fireEvent.change(screen.getByLabelText("Executable path"), {
       target: { value: "C:\\Happ\\Happ.exe" }
     });
+    fireEvent.click(screen.getByRole("button", { name: "Run Happ probe" }));
+    await screen.findByText("Probe complete");
     fireEvent.click(screen.getByLabelText(/I understand and enable/));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(apiMocks.updateSettings).toHaveBeenCalledTimes(1));
-    expect(apiMocks.updateSettings.mock.calls[0][0]).toMatchObject({
+    await waitFor(() => expect(apiMocks.updateHappSettings).toHaveBeenCalledTimes(1));
+    expect(apiMocks.updateHappSettings.mock.calls[0][0]).toMatchObject({
       happ_path: "C:\\Happ\\Happ.exe",
       happ_allow_ui_automation: true
     });

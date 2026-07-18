@@ -262,18 +262,15 @@ fn main() {
                         if let (Ok(position), Ok(size)) =
                             (window.outer_position(), window.outer_size())
                         {
-                            let mut snapshot = state.snapshot();
-                            snapshot.settings.window_position = Some(WindowPosition {
+                            let settings = state.update_window_position(WindowPosition {
                                 x: position.x,
                                 y: position.y,
                                 width: size.width,
                                 height: size.height,
                             });
 
-                            if let Err(error) = settings_store::save_settings(&snapshot.settings) {
+                            if let Err(error) = settings_store::save_settings(&settings) {
                                 warn!(?error, "failed to persist window position");
-                            } else {
-                                state.update_settings(snapshot.settings.clone());
                             }
                         }
                     }
@@ -303,6 +300,7 @@ fn main() {
             client_commands::select_client,
             client_commands::detect_happ_path,
             client_commands::validate_happ_path,
+            client_commands::update_happ_settings,
             client_commands::refresh_selected_client,
             client_commands::refresh_selected_client_background,
             client_commands::refresh_selected_client_startup,

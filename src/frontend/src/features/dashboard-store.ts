@@ -55,6 +55,22 @@ interface DashboardState {
 let postRouteRefreshTimer: number | null = null;
 let refreshInFlight = false;
 let manualRefreshQueued = false;
+let clientGeneration = 0;
+
+function invalidateClientOperations(): number {
+  clientGeneration += 1;
+  manualRefreshQueued = false;
+  if (postRouteRefreshTimer !== null) {
+    window.clearTimeout(postRouteRefreshTimer);
+    postRouteRefreshTimer = null;
+  }
+  return clientGeneration;
+}
+
+function clientOperationIsCurrent(generation: number, clientId: ProxyClientId | undefined): boolean {
+  return generation === clientGeneration
+    && (clientId === undefined || useDashboardStore.getState().settings?.selected_client === clientId);
+}
 
 function applyTheme(theme: "light" | "dark"): void {
   const root = document.documentElement;
@@ -147,6 +163,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   pathNoticeKey: null,
 
   bootstrap: async () => {
+    const generation = clientGeneration;
     set({ loading: true, error: null });
 
     try {
@@ -160,6 +177,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         listSelectedClientItems().catch(() => [])
       ]);
 
+      if (generation !== clientGeneration) {
+        return;
+      }
+
       set({
         settings,
         clients,
@@ -170,6 +191,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         error: null
       });
     } catch (error) {
+      if (generation !== clientGeneration) {
+        return;
+      }
       set({
         loading: false,
         status: defaultStatus(),
@@ -184,6 +208,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   refresh: async (options) => {
     const background = options?.background === true;
+    const generation = clientGeneration;
+    const clientId = get().settings?.selected_client;
     if (refreshInFlight) {
       if (!background) {
         manualRefreshQueued = true;
@@ -201,12 +227,19 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const status = background ? await refreshSelectedClientBackground() : await refreshSelectedClient();
       const profiles = await listSelectedClientItems().catch(() => []);
 
+      if (!clientOperationIsCurrent(generation, clientId)) {
+        return;
+      }
+
       set((prev) => ({
         status,
         profiles,
         actionLoading: background ? prev.actionLoading : false
       }));
     } catch (error) {
+      if (!clientOperationIsCurrent(generation, clientId)) {
+        return;
+      }
       if (!background) {
         set({
           actionLoading: false,
@@ -229,27 +262,48 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       return;
     }
 
-    set({ actionLoading: true, error: null, profiles: [], status: defaultStatus() });
+    const previousStatus = get().status;
+    const previousProfiles = get().profiles;
+    const generation = invalidateClientOperations();
+    set({
+      actionLoading: true,
+      error: null,
+      profiles: [],
+      status: defaultStatus(),
+      settings: { ...current, selected_client: clientId }
+    });
     try {
       const settings = await selectClientApi(clientId);
       applyTheme(settings.theme);
       applyLanguage(settings.language);
       applyVisualSettings(settings);
 
-      const [status, profiles] = await Promise.all([
+      const [status, profiles, clients] = await Promise.all([
         refreshSelectedClientStartup().catch(() => defaultStatus()),
-        listSelectedClientItems().catch(() => [])
+        listSelectedClientItems().catch(() => []),
+        getClientCatalog().catch(() => get().clients)
       ]);
+
+      if (!clientOperationIsCurrent(generation, clientId)) {
+        return;
+      }
 
       set({
         settings,
+        clients,
         status,
         profiles,
         actionLoading: false,
         pathNoticeKey: pathNoticeFor(settings)
       });
     } catch (error) {
+      if (!clientOperationIsCurrent(generation, clientId)) {
+        return;
+      }
       set({
+        settings: current,
+        status: previousStatus,
+        profiles: previousProfiles,
         actionLoading: false,
         error: error instanceof Error ? error.message : "select_client_failed",
         notice: buildNoticeFromError(error, i18n.t("errors.clientSwitchFailed"))
@@ -258,20 +312,29 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   toggleConnection: async () => {
+    const generation = clientGeneration;
+    const clientId = get().settings?.selected_client;
     set({ actionLoading: true, error: null });
     try {
       const status = await toggleSelectedClient();
+      if (!clientOperationIsCurrent(generation, clientId)) {
+        return;
+      }
       set({ status, actionLoading: false });
 
       if (postRouteRefreshTimer !== null) {
         window.clearTimeout(postRouteRefreshTimer);
       }
 
-      postRouteRefreshTimer = window.setTimeout(() => {
+      let timerId = 0;
+      timerId = window.setTimeout(() => {
         void (async () => {
           try {
             const refreshedStatus = await refreshSelectedClientPostRoute();
             const profiles = await listSelectedClientItems().catch(() => []);
+            if (!clientOperationIsCurrent(generation, clientId)) {
+              return;
+            }
             set((prev) => ({
               status: refreshedStatus,
               profiles: profiles.length > 0 ? profiles : prev.profiles
@@ -279,11 +342,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           } catch {
             // Keep fast route-change UX even if delayed network refresh fails.
           } finally {
-            postRouteRefreshTimer = null;
+            if (postRouteRefreshTimer === timerId) {
+              postRouteRefreshTimer = null;
+            }
           }
         })();
       }, 3200);
+      postRouteRefreshTimer = timerId;
     } catch (error) {
+      if (!clientOperationIsCurrent(generation, clientId)) {
+        return;
+      }
       set({
         actionLoading: false,
         error: error instanceof Error ? error.message : "toggle_failed",
@@ -297,21 +366,30 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       return;
     }
 
+    const generation = clientGeneration;
+    const clientId = get().settings?.selected_client;
     set({ actionLoading: true, error: null });
     try {
       const status = await selectClientItemApi(itemId);
       const profiles = await listSelectedClientItems().catch(() => []);
+      if (!clientOperationIsCurrent(generation, clientId)) {
+        return;
+      }
       set({ status, profiles, actionLoading: false });
 
       if (postRouteRefreshTimer !== null) {
         window.clearTimeout(postRouteRefreshTimer);
       }
 
-      postRouteRefreshTimer = window.setTimeout(() => {
+      let timerId = 0;
+      timerId = window.setTimeout(() => {
         void (async () => {
           try {
             const refreshedStatus = await refreshSelectedClientPostRoute();
             const refreshedProfiles = await listSelectedClientItems().catch(() => []);
+            if (!clientOperationIsCurrent(generation, clientId)) {
+              return;
+            }
             set((prev) => ({
               status: refreshedStatus,
               profiles: refreshedProfiles.length > 0 ? refreshedProfiles : prev.profiles
@@ -319,11 +397,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           } catch {
             // Keep fast item-switch UX even if delayed network refresh fails.
           } finally {
-            postRouteRefreshTimer = null;
+            if (postRouteRefreshTimer === timerId) {
+              postRouteRefreshTimer = null;
+            }
           }
         })();
       }, 5000);
+      postRouteRefreshTimer = timerId;
     } catch (error) {
+      if (!clientOperationIsCurrent(generation, clientId)) {
+        return;
+      }
       set({
         actionLoading: false,
         error: error instanceof Error ? error.message : "set_item_failed",
@@ -365,10 +449,29 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   applyExternalSettings: (settings) => {
+    const previousClient = get().settings?.selected_client;
+    if (previousClient !== undefined && previousClient !== settings.selected_client) {
+      invalidateClientOperations();
+    }
     applyTheme(settings.theme);
     applyLanguage(settings.language);
     applyVisualSettings(settings);
-    set({ settings, pathNoticeKey: pathNoticeFor(settings) });
+    set({
+      settings,
+      pathNoticeKey: pathNoticeFor(settings),
+      ...(previousClient !== undefined && previousClient !== settings.selected_client
+        ? { status: defaultStatus(), profiles: [], actionLoading: false }
+        : {})
+    });
+
+    const generation = clientGeneration;
+    void getClientCatalog()
+      .then((clients) => {
+        if (generation === clientGeneration) {
+          set({ clients });
+        }
+      })
+      .catch(() => undefined);
   },
 
   showNotice: (notice) =>

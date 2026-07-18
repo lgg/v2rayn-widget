@@ -157,9 +157,8 @@ export function App(): JSX.Element {
   }
 
   const selectedClient = clients.find((client) => client.id === settings.selected_client);
-  const canToggle = selectedClient?.id === "happ"
-    ? settings.happ_allow_ui_automation
-    : capabilityAvailable(selectedClient?.capabilities.toggle_connection);
+  const canToggle = capabilityAvailable(selectedClient?.capabilities.toggle_connection)
+    && (selectedClient?.id !== "happ" || settings.happ_allow_ui_automation);
   const canListItems = capabilityAvailable(selectedClient?.capabilities.list_items);
   const canSelectItems = capabilityAvailable(selectedClient?.capabilities.select_item);
   const showProfileSelector = settings.show_profile_selector && canListItems;

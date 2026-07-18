@@ -86,20 +86,33 @@ pub fn read_process_snapshot() -> HappProcessSnapshot {
     let mut system = System::new_all();
     system.refresh_processes(ProcessesToUpdate::All, true);
 
-    for (pid, process) in system.processes() {
-        let process_name = process.name().to_string_lossy().to_lowercase();
-        if !is_happ_process_name(&process_name) {
-            continue;
-        }
+    system
+        .processes()
+        .iter()
+        .filter_map(|(pid, process)| {
+            let process_name = process.name().to_string_lossy().to_lowercase();
+            if !is_happ_process_name(&process_name) {
+                return None;
+            }
 
-        return HappProcessSnapshot {
+            let executable = process.exe().map(Path::to_path_buf);
+            let rank = process_candidate_rank(
+                &process_name,
+                executable
+                    .as_deref()
+                    .map(is_valid_happ_executable)
+                    .unwrap_or(false),
+                pid.as_u32(),
+            );
+            Some((rank, pid.as_u32(), executable))
+        })
+        .max_by_key(|(rank, pid, _)| (*rank, *pid))
+        .map(|(_, pid, executable)| HappProcessSnapshot {
             running: true,
-            pid: Some(pid.as_u32()),
-            executable: process.exe().map(Path::to_path_buf),
-        };
-    }
-
-    HappProcessSnapshot::default()
+            pid: Some(pid),
+            executable,
+        })
+        .unwrap_or_default()
 }
 
 pub fn detect_executable(settings: &AppSettings) -> Option<PathBuf> {
@@ -208,17 +221,39 @@ pub async fn toggle(settings: &AppSettings) -> Result<DashboardStatus, String> {
     let mut process = read_process_snapshot();
     if !process.running {
         open(settings)?;
-        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
-        process = read_process_snapshot();
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            process = read_process_snapshot();
+            if process.running {
+                break;
+            }
+        }
     }
 
-    let action = happ_ui::toggle_connection(process.pid).map_err(|error| error.to_string())?;
-    tokio::time::sleep(std::time::Duration::from_millis(650)).await;
-    let mut status = refresh(settings, true, true, false)
-        .await
-        .map_err(|error| error.to_string())?;
-    status.last_event = Some(action);
-    Ok(status)
+    if !process.running {
+        return Err("HAPP_START_TIMEOUT: Happ was launched but its process was not detected".to_owned());
+    }
+
+    let outcome = happ_ui::toggle_connection(process.pid).map_err(|error| error.to_string())?;
+    for _ in 0..20 {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        let observed = happ_ui::probe(process.pid);
+        if observed.connection_state == outcome.expected_state {
+            let mut status = refresh(settings, true, true, false)
+                .await
+                .map_err(|error| error.to_string())?;
+            status.last_event = Some(format!(
+                "{}; confirmed state={:?}",
+                outcome.note, outcome.expected_state
+            ));
+            return Ok(status);
+        }
+    }
+
+    Err(format!(
+        "HAPP_TOGGLE_UNCONFIRMED: {}. The click was sent, but Happ did not expose the expected {:?} state within 5 seconds.",
+        outcome.note, outcome.expected_state
+    ))
 }
 
 pub fn diagnostics(settings: &AppSettings) -> ClientDiagnostics {
@@ -270,6 +305,16 @@ pub fn unsupported_control_error(action: &str) -> String {
     format!(
         "Happ action '{action}' is unavailable. Server/profile and subscription operations require a documented stable control path."
     )
+}
+
+fn process_candidate_rank(name: &str, executable_is_valid: bool, pid: u32) -> u64 {
+    let executable_score = if executable_is_valid { 1_000_000_u64 } else { 0 };
+    let name_score = if matches!(name, "happ.exe" | "happ") {
+        100_000_u64
+    } else {
+        0
+    };
+    executable_score + name_score + u64::from(pid)
 }
 
 fn is_happ_process_name(name: &str) -> bool {
@@ -342,6 +387,18 @@ mod tests {
         assert!(is_happ_process_name("happ.exe"));
         assert!(is_happ_process_name("happ-desktop.exe"));
         assert!(!is_happ_process_name("unrelated.exe"));
+    }
+
+    #[test]
+    fn process_selection_prefers_valid_gui_executable_deterministically() {
+        assert!(
+            process_candidate_rank("happ.exe", true, 10)
+                > process_candidate_rank("happ-desktop.exe", false, 9999)
+        );
+        assert!(
+            process_candidate_rank("happ.exe", true, 20)
+                > process_candidate_rank("happ.exe", true, 10)
+        );
     }
 
     #[test]

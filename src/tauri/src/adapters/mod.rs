@@ -22,6 +22,7 @@ pub enum RefreshKind {
     PostRoute,
 }
 
+#[allow(async_fn_in_trait)]
 pub trait ProxyClientAdapter: Send + Sync {
     fn id(&self) -> ProxyClientId;
     fn descriptor(&self, settings: &AppSettings) -> ClientDescriptor;
@@ -92,8 +93,15 @@ impl ProxyClientAdapter for RegisteredAdapter {
                     .await
                     .map_err(|error| error.to_string())?;
                 let merged = merge_with_previous(status, &snapshot.status);
-                state.update_status(merged.clone());
-                Ok(merged)
+                if state.update_status_if_context(
+                    ProxyClientId::Happ,
+                    snapshot.client_epoch,
+                    merged.clone(),
+                ) {
+                    Ok(merged)
+                } else {
+                    Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running".to_owned())
+                }
             }
         }
     }
@@ -102,10 +110,17 @@ impl ProxyClientAdapter for RegisteredAdapter {
         match self {
             Self::V2rayn => v2rayn::toggle(state).await,
             Self::Happ => {
-                let settings = state.snapshot().settings;
-                let status = happ::toggle(&settings).await?;
-                state.update_status(status.clone());
-                Ok(status)
+                let snapshot = state.snapshot();
+                let status = happ::toggle(&snapshot.settings).await?;
+                if state.update_status_if_context(
+                    ProxyClientId::Happ,
+                    snapshot.client_epoch,
+                    status.clone(),
+                ) {
+                    Ok(status)
+                } else {
+                    Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running".to_owned())
+                }
             }
         }
     }

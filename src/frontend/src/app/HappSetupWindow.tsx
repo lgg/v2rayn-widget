@@ -6,14 +6,35 @@ import {
   detectHappPath,
   getHappDiagnostics,
   getSettings,
-  updateSettings,
+  updateHappSettings,
   validateHappPath
 } from "@/lib/api";
-import type { AppSettings, ClientDiagnostics } from "@/lib/types";
+import type { AppSettings, ClientDiagnostics, StatusLevel, TransportMode } from "@/lib/types";
+
+function backendMessage(cause: unknown, fallback: string, translate: (key: string) => string): string {
+  const raw = cause instanceof Error ? cause.message : String(cause ?? "");
+  if (raw.startsWith("HAPP_UI_AUTOMATION_PROBE_REQUIRED")) {
+    return translate("happSetup.probeRequired");
+  }
+  if (raw.startsWith("settings.")) {
+    return translate(raw);
+  }
+  return raw.trim().length > 0 ? raw : fallback;
+}
+
+function statusLabel(value: StatusLevel, translate: (key: string) => string): string {
+  return translate(`status.${value.toLowerCase()}`);
+}
+
+function transportLabel(value: TransportMode, translate: (key: string) => string): string {
+  return translate(`transport.${value}`);
+}
 
 export function HappSetupWindow(): JSX.Element {
   const { t } = useTranslation();
+  const translate = (key: string): string => t(key);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [loading, setLoading] = useState(true);
   const [path, setPath] = useState("");
   const [allowUiAutomation, setAllowUiAutomation] = useState(false);
   const [diagnostics, setDiagnostics] = useState<ClientDiagnostics | null>(null);
@@ -22,25 +43,52 @@ export function HappSetupWindow(): JSX.Element {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void getSettings().then((loaded) => {
-      setSettings(loaded);
-      setPath(loaded.happ_path ?? "");
-      setAllowUiAutomation(loaded.happ_allow_ui_automation);
-    });
-  }, []);
+    let active = true;
+    void getSettings()
+      .then((loaded) => {
+        if (!active) {
+          return;
+        }
+        setSettings(loaded);
+        setPath(loaded.happ_path ?? "");
+        setAllowUiAutomation(loaded.happ_allow_ui_automation);
+      })
+      .catch((cause) => {
+        if (active) {
+          setError(backendMessage(cause, t("happSetup.loadFailed"), translate));
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [t]);
+
+  const probeReady = diagnostics?.application_running === true
+    && diagnostics.window_found
+    && diagnostics.action_label !== null
+    && diagnostics.action_score !== null;
 
   const detectPath = async (): Promise<void> => {
     setBusy(true);
     setError(null);
+    setMessage(null);
+    setDiagnostics(null);
     try {
       const detected = await detectHappPath();
       if (detected) {
         setPath(detected);
         setMessage(t("happSetup.pathDetected"));
       } else {
-        setMessage(null);
         setError(t("happSetup.pathNotDetected"));
       }
+    } catch (cause) {
+      setError(backendMessage(cause, t("happSetup.detectFailed"), translate));
     } finally {
       setBusy(false);
     }
@@ -48,6 +96,13 @@ export function HappSetupWindow(): JSX.Element {
 
   const save = async (): Promise<void> => {
     if (!settings) {
+      return;
+    }
+
+    const controlRequiresProbe = allowUiAutomation
+      && (!settings.happ_allow_ui_automation || path.trim() !== (settings.happ_path ?? ""));
+    if (controlRequiresProbe && !probeReady) {
+      setError(t("happSetup.probeRequired"));
       return;
     }
 
@@ -66,8 +121,7 @@ export function HappSetupWindow(): JSX.Element {
         normalizedPath = validation.normalized_path;
       }
 
-      const saved = await updateSettings({
-        ...settings,
+      const saved = await updateHappSettings({
         happ_path: normalizedPath,
         happ_allow_ui_automation: allowUiAutomation
       });
@@ -76,7 +130,7 @@ export function HappSetupWindow(): JSX.Element {
       setAllowUiAutomation(saved.happ_allow_ui_automation);
       setMessage(t("happSetup.saved"));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("errors.settingsSaveFailed"));
+      setError(backendMessage(cause, t("errors.settingsSaveFailed"), translate));
     } finally {
       setBusy(false);
     }
@@ -85,19 +139,36 @@ export function HappSetupWindow(): JSX.Element {
   const probe = async (): Promise<void> => {
     setBusy(true);
     setError(null);
+    setMessage(null);
     try {
-      setDiagnostics(await getHappDiagnostics());
+      const result = await getHappDiagnostics();
+      setDiagnostics(result);
+      if (result.action_label === null || result.action_score === null) {
+        setError(t("happSetup.probeNoAction"));
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("happSetup.probeFailed"));
+      setDiagnostics(null);
+      setError(backendMessage(cause, t("happSetup.probeFailed"), translate));
     } finally {
       setBusy(false);
     }
   };
 
-  if (!settings) {
+  if (loading) {
     return (
       <main className="drag-region flex h-full items-center justify-center text-sm text-muted">
         {t("common.loading")}
+      </main>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <main data-tauri-drag-region className="drag-region h-full p-4">
+        <section className="glass flex h-full flex-col items-center justify-center gap-4 rounded-3xl border p-5 text-center">
+          <p className="text-sm text-rose-300">{error ?? t("happSetup.loadFailed")}</p>
+          <button type="button" className="no-drag rounded-lg border px-3 py-2" onClick={() => void closeWindow("happ-setup")}>{t("common.close")}</button>
+        </section>
       </main>
     );
   }
@@ -128,7 +199,13 @@ export function HappSetupWindow(): JSX.Element {
               className="w-full rounded-xl border bg-white/90 px-3 py-2 dark:bg-slate-900/90"
               value={path}
               placeholder="C:\\Path\\To\\Happ.exe"
-              onChange={(event) => setPath(event.target.value)}
+              onChange={(event) => {
+                setPath(event.target.value);
+                setDiagnostics(null);
+                if (!settings.happ_allow_ui_automation) {
+                  setAllowUiAutomation(false);
+                }
+              }}
             />
             <div className="flex flex-wrap gap-2">
               <button
@@ -144,7 +221,13 @@ export function HappSetupWindow(): JSX.Element {
                 type="button"
                 disabled={busy}
                 className="rounded-lg border px-2 py-1"
-                onClick={() => setPath("")}
+                onClick={() => {
+                  setPath("");
+                  setDiagnostics(null);
+                  if (!settings.happ_allow_ui_automation) {
+                    setAllowUiAutomation(false);
+                  }
+                }}
               >
                 {t("happSetup.useAutoPath")}
               </button>
@@ -163,10 +246,14 @@ export function HappSetupWindow(): JSX.Element {
                 type="checkbox"
                 className="mt-1"
                 checked={allowUiAutomation}
+                disabled={busy || (!allowUiAutomation && !probeReady)}
                 onChange={(event) => setAllowUiAutomation(event.target.checked)}
               />
               <span>{t("happSetup.enableUiAutomation")}</span>
             </label>
+            {!allowUiAutomation && !probeReady && (
+              <p className="text-xs">{t("happSetup.probeBeforeEnable")}</p>
+            )}
           </fieldset>
 
           <fieldset className="space-y-3 rounded-xl border bg-white/70 p-3 dark:bg-slate-900/70">
@@ -187,8 +274,8 @@ export function HappSetupWindow(): JSX.Element {
                 <p>PID: {diagnostics.process_id ?? t("common.notAvailable")}</p>
                 <p>{t("happSetup.pathLabel")}: {diagnostics.executable_path ?? t("common.notAvailable")}</p>
                 <p>{t("happSetup.window")}: {diagnostics.window_title ?? t("common.notAvailable")}</p>
-                <p>{t("fields.connection")}: {diagnostics.connection_state}</p>
-                <p>{t("happSetup.transport")}: {diagnostics.transport_mode}</p>
+                <p>{t("fields.connection")}: {statusLabel(diagnostics.connection_state, translate)}</p>
+                <p>{t("happSetup.transport")}: {transportLabel(diagnostics.transport_mode, translate)}</p>
                 <p>{t("happSetup.action")}: {diagnostics.action_label ?? t("common.notAvailable")}</p>
                 <p>{t("happSetup.confidence")}: {diagnostics.action_score ?? t("common.notAvailable")}</p>
                 <p className="pt-1 text-muted">{diagnostics.note}</p>
@@ -211,7 +298,7 @@ export function HappSetupWindow(): JSX.Element {
             </div>
           )}
           {error && (
-            <div className="rounded-xl border border-rose-400/50 bg-rose-500/10 p-3 text-xs text-rose-200">
+            <div className="rounded-xl border border-rose-400/50 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-200">
               {error}
             </div>
           )}

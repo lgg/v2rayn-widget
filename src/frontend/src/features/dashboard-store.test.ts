@@ -1,6 +1,6 @@
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DashboardStatus } from "@/lib/types";
+import type { AppSettings, ClientDescriptor, DashboardStatus } from "@/lib/types";
 
 const apiMocks = vi.hoisted(() => ({
   getClientCatalog: vi.fn(),
@@ -24,6 +24,60 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock("@/lib/api", () => apiMocks);
 
 import { useDashboardStore } from "@/features/dashboard-store";
+
+const baseSettings: AppSettings = {
+  selected_client: "v2rayn",
+  language: "en",
+  theme: "dark",
+  always_on_top: false,
+  autostart_with_windows: false,
+  allow_restart_fallback: false,
+  poll_interval_sec: 10,
+  time_format: "24h",
+  show_clock: true,
+  show_info_status: true,
+  show_external_ip: true,
+  show_latency: true,
+  mock_mode_enabled: false,
+  show_action_buttons: true,
+  show_profile_selector: true,
+  window_effect_enabled: true,
+  window_opacity_percent: 92,
+  diagnostics_enabled: false,
+  diagnostics_url: "https://ipleak.net/",
+  latency_mode: "active",
+  connectivity_endpoints: [],
+  ip_endpoints: [],
+  v2rayn_path_mode: "auto",
+  v2rayn_path: null,
+  happ_path: null,
+  happ_allow_ui_automation: false,
+  window_position: null
+};
+
+function descriptor(id: "v2rayn" | "happ", toggle: "supported" | "experimental" | "research_required"): ClientDescriptor {
+  return {
+    id,
+    display_name: id === "v2rayn" ? "v2rayN" : "Happ",
+    maturity: "test",
+    status_note: "test",
+    capabilities: {
+      detect_application: "supported",
+      read_process_state: "supported",
+      read_connection_state: toggle,
+      open_application: "supported",
+      toggle_connection: toggle,
+      list_items: id === "v2rayn" ? "supported" : "research_required",
+      select_item: id === "v2rayn" ? "experimental" : "research_required",
+      restart_application: "research_required",
+      read_transport_mode: "research_required",
+      list_subscriptions: "unsupported",
+      switch_subscription: "unsupported",
+      refresh_subscription: "unsupported",
+      manage_subscriptions: "unsupported"
+    }
+  };
+}
 
 function status(updatedAt: string): DashboardStatus {
   return {
@@ -52,8 +106,14 @@ describe("dashboard store refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.listSelectedClientItems.mockResolvedValue([]);
+    apiMocks.getClientCatalog.mockResolvedValue([
+      descriptor("v2rayn", "supported"),
+      descriptor("happ", "research_required")
+    ]);
     useDashboardStore.setState({
       status: null,
+      settings: baseSettings,
+      clients: [descriptor("v2rayn", "supported"), descriptor("happ", "research_required")],
       profiles: [],
       loading: false,
       actionLoading: false,
@@ -92,4 +152,44 @@ describe("dashboard store refresh", () => {
 
     expect(apiMocks.openDiagnosticsWindow).toHaveBeenCalledTimes(1);
   });
+
+  it("does not let an old background refresh overwrite a newly selected client", async () => {
+    const background = deferred<DashboardStatus>();
+    apiMocks.refreshSelectedClientBackground.mockReturnValueOnce(background.promise);
+    apiMocks.selectClient.mockResolvedValueOnce({ ...baseSettings, selected_client: "happ" });
+    apiMocks.refreshSelectedClientStartup.mockResolvedValueOnce({
+      ...status("happ"),
+      status: "Disconnected",
+      connection_state: "Disconnected",
+      tun_enabled: false,
+      active_profile_name: null
+    });
+
+    const oldRefresh = useDashboardStore.getState().refresh({ background: true });
+    await useDashboardStore.getState().selectClient("happ");
+    background.resolve(status("old-v2rayn"));
+    await oldRefresh;
+
+    expect(useDashboardStore.getState().settings?.selected_client).toBe("happ");
+    expect(useDashboardStore.getState().status?.updated_at).toBe("happ");
+  });
+
+  it("reloads dynamic capability descriptors after external settings change", async () => {
+    apiMocks.getClientCatalog.mockResolvedValueOnce([
+      descriptor("v2rayn", "supported"),
+      descriptor("happ", "experimental")
+    ]);
+
+    useDashboardStore.getState().applyExternalSettings({
+      ...baseSettings,
+      selected_client: "happ",
+      happ_allow_ui_automation: true
+    });
+
+    await waitFor(() => {
+      expect(useDashboardStore.getState().clients.find((client) => client.id === "happ")?.capabilities.toggle_connection)
+        .toBe("experimental");
+    });
+  });
+
 });

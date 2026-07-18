@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Bug, Check, FolderCheck, Globe, Languages, MoonStar, Shield, SlidersHorizontal, Sun, X } from "lucide-react";
@@ -84,13 +84,19 @@ function applyVisual(settings: AppSettings): void {
   body.classList.toggle("widget-effect-disabled", !settings.window_effect_enabled);
 }
 
-function mergeUiFields(prev: AppSettings, next: AppSettings): AppSettings {
+export function mergeUiFields(prev: AppSettings, next: AppSettings): AppSettings {
   return {
     ...prev,
+    // These values are owned by other windows or live runtime tracking and must
+    // always follow the newest backend event, even while this window has an
+    // unrelated unsaved draft.
+    selected_client: next.selected_client,
+    happ_path: next.happ_path,
+    happ_allow_ui_automation: next.happ_allow_ui_automation,
+    window_position: next.window_position,
     language: next.language,
     theme: next.theme,
     always_on_top: next.always_on_top,
-    allow_restart_fallback: next.allow_restart_fallback,
     time_format: next.time_format,
     show_clock: next.show_clock,
     show_info_status: next.show_info_status,
@@ -117,7 +123,13 @@ export function SettingsWindow(): JSX.Element {
   const [pathError, setPathError] = useState<string | null>(null);
   const [diagnosticsUrlError, setDiagnosticsUrlError] = useState<string | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
+  const draftDirtyRef = useRef(false);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+
+  const updateDraftDirty = (value: boolean): void => {
+    draftDirtyRef.current = value;
+    setDraftDirty(value);
+  };
 
   useEffect(() => {
     const load = async (): Promise<void> => {
@@ -143,9 +155,9 @@ export function SettingsWindow(): JSX.Element {
             return event.payload;
           }
 
-          return draftDirty ? mergeUiFields(prev, event.payload) : event.payload;
+          return draftDirtyRef.current ? mergeUiFields(prev, event.payload) : event.payload;
         });
-        if (!draftDirty) {
+        if (!draftDirtyRef.current) {
           setConnectivityEndpointsText(linesToText(event.payload.connectivity_endpoints));
           setIpEndpointsText(linesToText(event.payload.ip_endpoints));
         }
@@ -162,7 +174,7 @@ export function SettingsWindow(): JSX.Element {
     });
 
     return () => dispose?.();
-  }, [draftDirty, i18n]);
+  }, [i18n]);
 
   const pathIsManual = settings?.v2rayn_path_mode === "manual";
 
@@ -254,7 +266,7 @@ export function SettingsWindow(): JSX.Element {
 
       const saved = await updateSettings(next);
       setSettings(saved);
-      setDraftDirty(false);
+      updateDraftDirty(false);
       await closeSettingsWindow();
     } finally {
       setBusy(false);
@@ -272,7 +284,7 @@ export function SettingsWindow(): JSX.Element {
 
   const discardAndClose = async (): Promise<void> => {
     setConfirmDiscardOpen(false);
-    setDraftDirty(false);
+    updateDraftDirty(false);
     await closeSettingsWindow();
   };
 
@@ -473,7 +485,7 @@ export function SettingsWindow(): JSX.Element {
                 type="checkbox"
                 checked={settings.autostart_with_windows}
                 onChange={(event) => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setSettings((prev) => (prev ? { ...prev, autostart_with_windows: event.target.checked } : prev));
                 }}
               />
@@ -485,7 +497,7 @@ export function SettingsWindow(): JSX.Element {
                 type="checkbox"
                 checked={settings.allow_restart_fallback}
                 onChange={(event) => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setSettings((prev) => (prev ? { ...prev, allow_restart_fallback: event.target.checked } : prev));
                 }}
               />
@@ -502,7 +514,7 @@ export function SettingsWindow(): JSX.Element {
                 value={settings.poll_interval_sec}
                 onChange={(event) => {
                   setPollError(null);
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   const value = Number.parseInt(event.target.value, 10);
                   setSettings((prev) => (prev ? { ...prev, poll_interval_sec: Number.isFinite(value) ? value : 10 } : prev));
                 }}
@@ -523,7 +535,7 @@ export function SettingsWindow(): JSX.Element {
                 type="checkbox"
                 checked={settings.diagnostics_enabled}
                 onChange={(event) => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setSettings((prev) => (prev ? { ...prev, diagnostics_enabled: event.target.checked } : prev));
                 }}
               />
@@ -536,7 +548,7 @@ export function SettingsWindow(): JSX.Element {
                 value={settings.diagnostics_url}
                 placeholder={DEFAULT_DIAGNOSTICS_URL}
                 onChange={(event) => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setDiagnosticsUrlError(null);
                   setSettings((prev) => (prev ? { ...prev, diagnostics_url: event.target.value } : prev));
                 }}
@@ -554,7 +566,7 @@ export function SettingsWindow(): JSX.Element {
                 className="w-full rounded-xl border bg-white/90 px-3 py-2 dark:bg-slate-900/90"
                 value={settings.latency_mode}
                 onChange={(event) => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setSettings((prev) =>
                     prev ? { ...prev, latency_mode: event.target.value as AppSettings["latency_mode"] } : prev
                   );
@@ -571,7 +583,7 @@ export function SettingsWindow(): JSX.Element {
                 className="min-h-24 w-full resize-y rounded-xl border bg-white/90 px-3 py-2 text-xs leading-5 dark:bg-slate-900/90"
                 value={connectivityEndpointsText}
                 onChange={(event) => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setConnectivityEndpointsText(event.target.value);
                 }}
               />
@@ -581,7 +593,7 @@ export function SettingsWindow(): JSX.Element {
                 type="button"
                 className="rounded-lg border px-2 py-1 text-xs"
                 onClick={() => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setConnectivityEndpointsText(linesToText(DEFAULT_CONNECTIVITY_ENDPOINTS));
                 }}
               >
@@ -595,7 +607,7 @@ export function SettingsWindow(): JSX.Element {
                 className="min-h-24 w-full resize-y rounded-xl border bg-white/90 px-3 py-2 text-xs leading-5 dark:bg-slate-900/90"
                 value={ipEndpointsText}
                 onChange={(event) => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setIpEndpointsText(event.target.value);
                 }}
               />
@@ -605,7 +617,7 @@ export function SettingsWindow(): JSX.Element {
                 type="button"
                 className="rounded-lg border px-2 py-1 text-xs"
                 onClick={() => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setIpEndpointsText(linesToText(DEFAULT_IP_ENDPOINTS));
                 }}
               >
@@ -622,7 +634,7 @@ export function SettingsWindow(): JSX.Element {
                 type="radio"
                 checked={settings.v2rayn_path_mode === "auto"}
                 onChange={() => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setPathError(null);
                   setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "auto", v2rayn_path: null } : prev));
                 }}
@@ -635,7 +647,7 @@ export function SettingsWindow(): JSX.Element {
                 type="radio"
                 checked={settings.v2rayn_path_mode === "manual"}
                 onChange={() => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setPathError(null);
                   setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "manual" } : prev));
                 }}
@@ -649,7 +661,7 @@ export function SettingsWindow(): JSX.Element {
               value={settings.v2rayn_path ?? ""}
               placeholder={t("settings.pathPlaceholder")}
               onChange={(event) => {
-                setDraftDirty(true);
+                updateDraftDirty(true);
                 setPathError(null);
                 setSettings((prev) => (prev ? { ...prev, v2rayn_path: event.target.value } : prev));
               }}
@@ -662,7 +674,7 @@ export function SettingsWindow(): JSX.Element {
                 onClick={async () => {
                   const detected = await detectV2RayNPath();
                   if (detected) {
-                    setDraftDirty(true);
+                    updateDraftDirty(true);
                     setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "manual", v2rayn_path: detected } : prev));
                     setPathValidation(t("settings.pathDetected"));
                   } else {
@@ -685,7 +697,7 @@ export function SettingsWindow(): JSX.Element {
                     return;
                   }
                   const result = await validateV2RayNPath(path);
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setSettings((prev) => (prev ? { ...prev, v2rayn_path: result.normalized_path } : prev));
                   setPathValidation(t(result.message_key));
                   if (!result.is_valid) {
@@ -702,7 +714,7 @@ export function SettingsWindow(): JSX.Element {
                 type="button"
                 className="rounded-lg border px-2 py-1"
                 onClick={() => {
-                  setDraftDirty(true);
+                  updateDraftDirty(true);
                   setPathError(null);
                   setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "auto", v2rayn_path: null } : prev));
                   setPathValidation(t("settings.pathAutoMode"));

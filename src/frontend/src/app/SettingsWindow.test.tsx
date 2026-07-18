@@ -27,7 +27,7 @@ vi.mock("@tauri-apps/api/window", () => ({
   }))
 }));
 
-import { SettingsWindow } from "@/app/SettingsWindow";
+import { mergeUiFields, SettingsWindow } from "@/app/SettingsWindow";
 
 const baseSettings: AppSettings = {
   selected_client: "v2rayn",
@@ -131,4 +131,28 @@ describe("SettingsWindow", () => {
       expect(apiMocks.closeWindow).toHaveBeenCalledWith("settings");
     });
   });
+  it("keeps current adapter-owned fields while preserving an unrelated dirty draft", () => {
+    const dirtyDraft: AppSettings = {
+      ...baseSettings,
+      autostart_with_windows: true,
+      allow_restart_fallback: true
+    };
+    const external: AppSettings = {
+      ...baseSettings,
+      selected_client: "happ",
+      happ_path: "C:\\Happ\\Happ.exe",
+      happ_allow_ui_automation: true,
+      window_position: { x: 10, y: 20, width: 360, height: 500 }
+    };
+
+    const merged = mergeUiFields(dirtyDraft, external);
+
+    expect(merged.autostart_with_windows).toBe(true);
+    expect(merged.allow_restart_fallback).toBe(true);
+    expect(merged.selected_client).toBe("happ");
+    expect(merged.happ_path).toBe("C:\\Happ\\Happ.exe");
+    expect(merged.happ_allow_ui_automation).toBe(true);
+    expect(merged.window_position).toEqual(external.window_position);
+  });
+
 });

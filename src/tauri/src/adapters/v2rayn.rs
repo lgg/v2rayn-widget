@@ -15,7 +15,7 @@ pub fn descriptor() -> ClientDescriptor {
         id: ProxyClientId::V2rayn,
         display_name: "v2rayN".to_owned(),
         maturity: "stable_with_experimental_profile_switching".to_owned(),
-        status_note: "Current v2rayN integration preserved behind an adapter boundary. Subscription operations are not supported.".to_owned(),
+        status_note: "Current v2rayN TUN integration is preserved behind an adapter boundary. Generic transport-mode reporting and all subscription operations are not supported.".to_owned(),
         capabilities: ClientCapabilities {
             detect_application: CapabilityState::Supported,
             read_process_state: CapabilityState::Supported,
@@ -25,7 +25,7 @@ pub fn descriptor() -> ClientDescriptor {
             list_items: CapabilityState::Supported,
             select_item: CapabilityState::Experimental,
             restart_application: CapabilityState::Supported,
-            read_transport_mode: CapabilityState::Experimental,
+            read_transport_mode: CapabilityState::Unsupported,
             list_subscriptions: CapabilityState::Unsupported,
             switch_subscription: CapabilityState::Unsupported,
             refresh_subscription: CapabilityState::Unsupported,

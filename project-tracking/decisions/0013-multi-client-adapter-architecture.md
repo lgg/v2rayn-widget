@@ -2,112 +2,152 @@
 
 ## Status
 
-Accepted for staged implementation.
+Accepted and implemented.
 
 ## Context
 
-The application currently exposes a reusable Tauri/React widget but directly couples commands, settings and frontend labels to v2rayN. Happ and future clients require different status and control sources. Some clients may support profiles, servers, transport modes or subscriptions, while others may not.
+The application began with reusable Tauri/React UI but commands, settings and labels were directly coupled to v2rayN. Happ and future clients require different status/control sources and may support different combinations of profiles, servers, transport modes and subscriptions.
 
-A simple rename or one-off conditional implementation would spread client-specific branching across the frontend and backend and would make future integrations harder to validate.
+A rename or one-off conditional implementation would spread client-specific branching through the frontend and backend.
 
 ## Decision
 
-Introduce a backend adapter registry with explicit client descriptors and capabilities.
+Use a compile-time adapter registry with explicit client descriptors, capabilities, diagnostics and operational methods.
 
 The shared application layer owns:
 
 - persisted selected client;
-- generic status and action contracts;
+- generic command contracts;
+- selected-adapter dispatch;
 - external connectivity/IP/latency diagnostics;
-- adapter selection/dispatch;
 - capability gating;
-- shared Tauri window, tray, settings and frontend UX.
+- shared Tauri windows, tray, settings and frontend UX.
 
 Each adapter owns:
 
 - application detection;
 - executable/config path validation;
-- process/status signals specific to the client;
+- client-specific status signals;
 - application open/restart/reload behavior;
 - connect/disconnect implementation;
 - profile/server enumeration and selection;
 - transport-mode interpretation;
 - adapter-specific errors and diagnostics.
 
+`ProxyClientAdapter` must own descriptor, refresh, toggle, list/select item, open and diagnostics operations. The generic command dispatcher must not branch by client.
+
 ## Compatibility Strategy
 
 - Default selected client is v2rayN.
-- Existing persisted settings load through serde defaults.
-- Legacy Tauri commands remain as wrappers during migration.
-- Existing fields such as `tun_enabled` and `active_profile_name` may remain as compatibility aliases until frontend migration is complete.
-- New adapters must not depend on those compatibility fields.
+- Existing persisted settings load through Serde defaults.
+- Legacy Tauri commands remain during staged migration.
+- Existing `tun_enabled` and `active_profile_name` fields remain compatibility aliases.
+- New adapters must not depend on compatibility fields.
 
 ## Capability Strategy
 
 The adapter descriptor is the source of truth for supported actions.
 
-The frontend must not infer capabilities from client name.
+Capability states:
 
-Unsupported actions are handled twice:
+- supported;
+- experimental;
+- unsupported;
+- research required.
 
-1. hidden or disabled in the frontend;
-2. rejected explicitly in the backend.
+Unsupported actions are protected twice:
+
+1. hidden or disabled in frontend;
+2. rejected explicitly in backend.
 
 Subscription capabilities are separate from profile/server capabilities.
 
-At decision time, v2rayN subscription list/switch/refresh/add/remove are all unsupported. Profile switching does not imply subscription switching.
+v2rayN subscription list/switch/refresh/add/remove/manage remain unsupported. Profile switching does not imply subscription switching.
 
 ## Happ Strategy
 
-The Happ adapter starts read-only and conservative.
+### Safe baseline
 
-Integration source priority:
+The Happ adapter must start conservative:
 
-1. official CLI/API;
+- detect process/PID and executable;
+- open the application;
+- expose generic network diagnostics;
+- never report Connected from process existence alone;
+- never mutate undocumented config, database or subscription files.
+
+### Control-source priority
+
+1. official documented CLI/API;
 2. stable documented or safely validated daemon IPC;
 3. read-only config/database inspection;
-4. UI Automation/tray automation;
-5. direct config mutation only after an explicit separate security/reliability decision.
+4. Windows UI Automation/tray automation;
+5. direct mutation only after a separate security/reliability decision.
 
-A running Happ process must not be reported as Connected without an additional reliable connection-state signal.
+### Implemented control decision
+
+No stable documented public CLI/API/daemon IPC contract was selected for production control. Direct internal mutation is rejected.
+
+Windows UI Automation is permitted only as an explicitly experimental, disabled-by-default fallback when all safeguards apply:
+
+- user gives persisted explicit consent;
+- search is scoped to the detected Happ PID;
+- only exact explicit Connect/Disconnect labels are accepted;
+- generic Connection, Auto connect, Reconnect, settings and extended labels are rejected;
+- a high confidence threshold is required;
+- no action occurs on ambiguity;
+- adapter diagnostics expose the detected window/action/confidence/UI tree;
+- the feature remains marked experimental and version-sensitive.
+
+Server/profile and subscription operations remain unavailable until a safer stable contract exists.
 
 ## Alternatives Considered
 
-### Separate fork/application for Happ
+### Separate Happ fork/application
 
-Rejected as the default architecture because it would duplicate UI, settings, packaging and diagnostics and would make future adapters equally expensive.
+Rejected because it duplicates UI, settings, packaging and diagnostics and makes every future adapter expensive.
 
-### Conditional branches inside existing commands
+### Conditional branches inside generic commands
 
-Rejected as the long-term design because app-specific logic would continue spreading through commands and frontend code.
+Rejected. Client-specific dispatch belongs in the adapter implementation/registry.
 
 ### Fully dynamic plugin loading
 
-Deferred. Runtime DLL/plugin loading adds versioning, security and packaging complexity that is not required for the first adapters. Compile-time adapters behind a registry are sufficient.
+Deferred. Runtime DLL/plugin loading adds versioning, security and packaging complexity. Compile-time adapters are sufficient.
 
-### Remove all legacy commands immediately
+### Immediate removal of legacy commands
 
-Rejected because it would combine architecture migration and behavior changes into one high-risk step.
+Rejected because it combines architecture migration with behavior changes.
+
+### Happ internal config/database mutation
+
+Rejected due to compatibility, corruption and security risks.
+
+### Unrestricted UI text matching
+
+Rejected. Substring matching could click unrelated Connection or Connect-to-server controls. Only exact recognized action names are accepted.
 
 ## Consequences
 
 Positive:
 
-- future clients can be added behind a stable boundary;
-- UI can accurately represent partial implementations;
-- v2rayN behavior can be migrated incrementally;
-- Happ research can proceed without unsafe claims or mutations;
-- subscription limitations become explicit.
+- future clients can be added behind a stable operational boundary;
+- generic commands remain client-agnostic;
+- UI accurately represents partial implementations;
+- v2rayN behavior migrates without breaking compatibility;
+- Happ gets safe baseline behavior and diagnosable experimental control;
+- subscription limitations remain explicit.
 
 Negative:
 
-- temporary compatibility fields and wrappers increase short-term code size;
-- some v2rayN services remain legacy-shaped during extraction;
-- adapter capabilities and shared status require additional tests and documentation;
-- full Happ control remains blocked on research.
+- compatibility fields and wrappers temporarily increase code size;
+- some v2rayN services remain legacy-shaped;
+- Happ UI Automation is version-sensitive;
+- users must validate the installed Happ UI through the setup probe before enabling experimental control.
 
 ## Follow-Up
 
-- Implement task 0013.
 - Complete task 0011 before strengthening claims around v2rayN subscription-driven profile switching.
-- Create a dedicated Happ IPC/control research report before implementing undocumented control paths.
+- Build subscription support as a separate abstraction/task.
+- Add future clients through the operational adapter contract without changing the generic dispatcher.
+- Remove compatibility commands/fields only in a separate reviewed cleanup.

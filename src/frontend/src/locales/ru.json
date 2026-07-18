@@ -17,6 +17,7 @@
   "connectionButton.connecting": "ПОДКЛ.",
   "actions.refresh": "обновить",
   "actions.open": "открыть v2rayN",
+  "actions.openClient": "открыть приложение",
   "actions.restart": "Перезапуск",
   "actions.copyIp": "копировать IP",
   "actions.toggle": "Переключить",
@@ -26,8 +27,9 @@
   "actions.openDebugTools": "Открыть Debug Tools",
   "actions.relaunchAdmin": "Перезапустить виджет от администратора",
   "actions.diagnostics": "diagnostics",
+  "fields.client": "Клиентское приложение",
   "fields.connection": "Статус",
-  "fields.profile": "Профиль",
+  "fields.profile": "Профиль / сервер",
   "fields.externalIp": "Внешний IP",
   "fields.latency": "Задержка",
   "fields.lastEvent": "Последнее событие",
@@ -61,7 +63,7 @@
   "settings.showExternalIp": "Показывать внешний IP",
   "settings.showLatency": "Показывать задержку",
   "settings.showActionButtons": "Показывать action-кнопки",
-  "settings.showProfileSelector": "Показывать селектор профиля",
+  "settings.showProfileSelector": "Показывать селектор профиля/сервера, если поддерживается",
   "settings.mockMode": "Мокап-режим (скрыть реальные данные)",
   "settings.latencyMode": "Источник задержки",
   "settings.latencyModeActive": "Активная сетевая проверка",
@@ -105,10 +107,11 @@
   "debug.probeResult": "Результат пробы",
   "debug.log": "Debug лог",
   "errors.refreshFailed": "Не удалось обновить статус",
-  "errors.toggleFailed": "Не удалось переключить TUN",
-  "errors.profileSwitchFailed": "Не удалось переключить профиль",
+  "errors.toggleFailed": "Не удалось управлять подключением",
+  "errors.clientSwitchFailed": "Не удалось переключить клиентское приложение",
+  "errors.profileSwitchFailed": "Не удалось переключить профиль/сервер",
   "errors.settingsSaveFailed": "Не удалось сохранить настройки",
-  "errors.openFailed": "Не удалось открыть v2rayN",
+  "errors.openFailed": "Не удалось открыть выбранное приложение",
   "errors.restartFailed": "Не удалось перезапустить v2rayN",
   "errors.diagnosticsOpenFailed": "Не удалось открыть diagnostics page",
   "errors.copyIpMissing": "Внешний IP пока недоступен",
@@ -117,10 +120,3 @@
   "notices.ipCopied": "Внешний IP скопирован",
   "dashboard.pathConfigMissing": "Путь к v2rayN не настроен. Откройте настройки и выберите папку v2rayN."
 }
-
-
-
-
-
-
-

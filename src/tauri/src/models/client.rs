@@ -77,26 +77,6 @@ pub struct ClientDiagnostics {
     pub note: String,
 }
 
-impl ClientDiagnostics {
-    pub fn unavailable(client_id: ProxyClientId, note: impl Into<String>) -> Self {
-        Self {
-            client_id,
-            application_running: false,
-            process_id: None,
-            executable_path: None,
-            window_found: false,
-            window_title: None,
-            connection_state: ConnectionState::Unknown,
-            transport_mode: TransportMode::Unknown,
-            control_source: None,
-            action_label: None,
-            action_score: None,
-            ui_nodes: Vec::new(),
-            note: note.into(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,7 +92,10 @@ mod tests {
             serde_json::to_string(&ProxyClientId::V2rayn).unwrap(),
             "\"v2rayn\""
         );
-        assert_eq!(serde_json::to_string(&ProxyClientId::Happ).unwrap(), "\"happ\"");
+        assert_eq!(
+            serde_json::to_string(&ProxyClientId::Happ).unwrap(),
+            "\"happ\""
+        );
     }
 
     #[test]

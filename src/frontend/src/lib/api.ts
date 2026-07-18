@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getAllWindows } from "@tauri-apps/api/window";
 import type {
   AppSettings,
   ClientDescriptor,
@@ -43,14 +42,7 @@ export async function validateHappPath(path: string): Promise<PathValidation> {
 }
 
 export async function openHappSetupWindow(): Promise<void> {
-  const windows = await getAllWindows();
-  const target = windows.find((window) => window.label === "happ-setup");
-  if (!target) {
-    throw new Error("Happ setup window is not registered");
-  }
-  await target.show();
-  await target.unminimize();
-  await target.setFocus();
+  return invoke("open_happ_setup_window");
 }
 
 export async function refreshSelectedClient(): Promise<DashboardStatus> {

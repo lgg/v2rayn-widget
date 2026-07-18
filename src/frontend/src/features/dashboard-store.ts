@@ -1,26 +1,36 @@
 import { create } from "zustand";
 import {
+  getClientCatalog,
   getSettings,
   getStatus,
-  listProfiles,
+  listSelectedClientItems,
   openDebugWindow,
   openDiagnosticsWindow,
+  openSelectedClient,
   openSettingsWindow,
-  openV2RayN,
-  refreshStatus,
-  refreshStatusBackground,
-  refreshStatusPostRoute,
-  refreshStatusStartup,
+  refreshSelectedClient,
+  refreshSelectedClientBackground,
+  refreshSelectedClientPostRoute,
+  refreshSelectedClientStartup,
   relaunchWidgetAsAdmin,
-  setActiveProfile as setActiveProfileApi,
-  toggleTunViaUi
+  selectClient as selectClientApi,
+  selectClientItem as selectClientItemApi,
+  toggleSelectedClient
 } from "@/lib/api";
 import i18n from "@/lib/i18n";
-import type { AppSettings, DashboardStatus, ProfileSummary, UiNotice } from "@/lib/types";
+import type {
+  AppSettings,
+  ClientDescriptor,
+  DashboardStatus,
+  ProfileSummary,
+  ProxyClientId,
+  UiNotice
+} from "@/lib/types";
 
 interface DashboardState {
   status: DashboardStatus | null;
   settings: AppSettings | null;
+  clients: ClientDescriptor[];
   profiles: ProfileSummary[];
   loading: boolean;
   actionLoading: boolean;
@@ -29,9 +39,10 @@ interface DashboardState {
   pathNoticeKey: string | null;
   bootstrap: () => Promise<void>;
   refresh: (options?: { background?: boolean }) => Promise<void>;
-  toggleTun: () => Promise<void>;
-  setActiveProfile: (profileId: string) => Promise<void>;
-  openV2RayN: () => Promise<void>;
+  selectClient: (clientId: ProxyClientId) => Promise<void>;
+  toggleConnection: () => Promise<void>;
+  setActiveItem: (itemId: string) => Promise<void>;
+  openClient: () => Promise<void>;
   openSettings: () => Promise<void>;
   openDebug: () => Promise<void>;
   openDiagnostics: () => Promise<void>;
@@ -65,6 +76,16 @@ function applyVisualSettings(settings: AppSettings): void {
   const opacity = Math.max(10, Math.min(100, Math.round(settings.window_opacity_percent)));
   root.style.setProperty("--widget-opacity", `${opacity / 100}`);
   body.classList.toggle("widget-effect-disabled", !settings.window_effect_enabled);
+}
+
+function pathNoticeFor(settings: AppSettings): string | null {
+  if (settings.selected_client !== "v2rayn") {
+    return null;
+  }
+
+  return settings.v2rayn_path_mode === "manual" && !settings.v2rayn_path
+    ? "dashboard.pathConfigMissing"
+    : null;
 }
 
 function defaultStatus(): DashboardStatus {
@@ -117,6 +138,7 @@ function buildNoticeFromError(error: unknown, fallback: string): UiNotice {
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   status: null,
   settings: null,
+  clients: [],
   profiles: [],
   loading: true,
   actionLoading: false,
@@ -128,22 +150,22 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const settings = await getSettings();
+      const [settings, clients] = await Promise.all([getSettings(), getClientCatalog()]);
       applyTheme(settings.theme);
       applyLanguage(settings.language);
       applyVisualSettings(settings);
 
       const [status, profiles] = await Promise.all([
-        refreshStatusStartup().catch(() => getStatus().catch(() => defaultStatus())),
-        listProfiles().catch(() => [])
+        refreshSelectedClientStartup().catch(() => getStatus().catch(() => defaultStatus())),
+        listSelectedClientItems().catch(() => [])
       ]);
 
       set({
         settings,
+        clients,
         status,
         profiles,
-        pathNoticeKey:
-          settings.v2rayn_path_mode === "manual" && !settings.v2rayn_path ? "dashboard.pathConfigMissing" : null,
+        pathNoticeKey: pathNoticeFor(settings),
         loading: false,
         error: null
       });
@@ -152,8 +174,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         loading: false,
         status: defaultStatus(),
         settings: null,
+        clients: [],
         profiles: [],
-        pathNoticeKey: "dashboard.pathConfigMissing",
+        pathNoticeKey: null,
         error: error instanceof Error ? error.message : "bootstrap_failed"
       });
     }
@@ -175,8 +198,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
     refreshInFlight = true;
     try {
-      const status = background ? await refreshStatusBackground() : await refreshStatus();
-      const profiles = await listProfiles().catch(() => []);
+      const status = background ? await refreshSelectedClientBackground() : await refreshSelectedClient();
+      const profiles = await listSelectedClientItems().catch(() => []);
 
       set((prev) => ({
         status,
@@ -200,10 +223,44 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     }
   },
 
-  toggleTun: async () => {
+  selectClient: async (clientId) => {
+    const current = get().settings;
+    if (!current || current.selected_client === clientId) {
+      return;
+    }
+
+    set({ actionLoading: true, error: null, profiles: [], status: defaultStatus() });
+    try {
+      const settings = await selectClientApi(clientId);
+      applyTheme(settings.theme);
+      applyLanguage(settings.language);
+      applyVisualSettings(settings);
+
+      const [status, profiles] = await Promise.all([
+        refreshSelectedClientStartup().catch(() => defaultStatus()),
+        listSelectedClientItems().catch(() => [])
+      ]);
+
+      set({
+        settings,
+        status,
+        profiles,
+        actionLoading: false,
+        pathNoticeKey: pathNoticeFor(settings)
+      });
+    } catch (error) {
+      set({
+        actionLoading: false,
+        error: error instanceof Error ? error.message : "select_client_failed",
+        notice: buildNoticeFromError(error, i18n.t("errors.clientSwitchFailed"))
+      });
+    }
+  },
+
+  toggleConnection: async () => {
     set({ actionLoading: true, error: null });
     try {
-      const status = await toggleTunViaUi();
+      const status = await toggleSelectedClient();
       set({ status, actionLoading: false });
 
       if (postRouteRefreshTimer !== null) {
@@ -213,14 +270,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       postRouteRefreshTimer = window.setTimeout(() => {
         void (async () => {
           try {
-            const refreshedStatus = await refreshStatusPostRoute();
-            const profiles = await listProfiles().catch(() => []);
+            const refreshedStatus = await refreshSelectedClientPostRoute();
+            const profiles = await listSelectedClientItems().catch(() => []);
             set((prev) => ({
               status: refreshedStatus,
               profiles: profiles.length > 0 ? profiles : prev.profiles
             }));
           } catch {
-            // keep fast route-change UX even if delayed network refresh fails
+            // Keep fast route-change UX even if delayed network refresh fails.
           } finally {
             postRouteRefreshTimer = null;
           }
@@ -235,15 +292,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     }
   },
 
-  setActiveProfile: async (profileId) => {
-    if (!profileId) {
+  setActiveItem: async (itemId) => {
+    if (!itemId) {
       return;
     }
 
     set({ actionLoading: true, error: null });
     try {
-      const status = await setActiveProfileApi(profileId);
-      const profiles = await listProfiles().catch(() => []);
+      const status = await selectClientItemApi(itemId);
+      const profiles = await listSelectedClientItems().catch(() => []);
       set({ status, profiles, actionLoading: false });
 
       if (postRouteRefreshTimer !== null) {
@@ -253,14 +310,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       postRouteRefreshTimer = window.setTimeout(() => {
         void (async () => {
           try {
-            const refreshedStatus = await refreshStatusPostRoute();
-            const refreshedProfiles = await listProfiles().catch(() => []);
+            const refreshedStatus = await refreshSelectedClientPostRoute();
+            const refreshedProfiles = await listSelectedClientItems().catch(() => []);
             set((prev) => ({
               status: refreshedStatus,
               profiles: refreshedProfiles.length > 0 ? refreshedProfiles : prev.profiles
             }));
           } catch {
-            // keep fast profile-switch UX even if delayed network refresh fails
+            // Keep fast item-switch UX even if delayed network refresh fails.
           } finally {
             postRouteRefreshTimer = null;
           }
@@ -269,15 +326,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     } catch (error) {
       set({
         actionLoading: false,
-        error: error instanceof Error ? error.message : "set_profile_failed",
+        error: error instanceof Error ? error.message : "set_item_failed",
         notice: buildNoticeFromError(error, i18n.t("errors.profileSwitchFailed"))
       });
     }
   },
 
-  openV2RayN: async () => {
+  openClient: async () => {
     try {
-      await openV2RayN();
+      await openSelectedClient();
     } catch (error) {
       set({
         notice: buildNoticeFromError(error, i18n.t("errors.openFailed"))
@@ -311,7 +368,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     applyTheme(settings.theme);
     applyLanguage(settings.language);
     applyVisualSettings(settings);
-    set({ settings });
+    set({ settings, pathNoticeKey: pathNoticeFor(settings) });
   },
 
   showNotice: (notice) =>
@@ -324,4 +381,3 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   clearNotice: () => set({ notice: null })
 }));
-

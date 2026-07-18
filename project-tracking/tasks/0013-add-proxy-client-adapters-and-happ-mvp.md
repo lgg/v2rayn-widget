@@ -9,7 +9,7 @@
 | Type | architecture / feature |
 | Created | 2026-07-18 |
 | Labels | adapters, v2rayn, happ, tauri, frontend |
-| Public redaction | Required before commit/update |
+| Public redaction | Reviewed for current PR |
 
 ## Context
 
@@ -26,15 +26,16 @@ Introduce a real adapter boundary, preserve current v2rayN functionality, expose
 Included:
 
 - shared proxy client models;
-- adapter registry and descriptors;
+- `ProxyClientAdapter` trait and adapter registry;
 - persisted selected client;
 - compatibility-safe v2rayN adapter;
 - generic Tauri commands and frontend API;
 - client selector UX;
 - capability-gated actions;
 - initial Happ process detection/open/status adapter;
-- documentation, roadmap and tests;
-- explicit unsupported subscription capabilities.
+- documentation, roadmap, report and tests;
+- explicit unsupported subscription capabilities;
+- Windows quality workflow.
 
 Out of scope for this first task:
 
@@ -47,7 +48,7 @@ Out of scope for this first task:
 
 ## Current v2rayN Capability Baseline
 
-Supported:
+Supported in the existing implementation:
 
 - detect/open/restart application;
 - process/config/log status signals;
@@ -57,8 +58,9 @@ Supported:
 - active profile switching, experimental;
 - privilege diagnostics.
 
-Unsupported:
+Explicitly unsupported:
 
+- generic transport-mode reporting;
 - subscription listing;
 - subscription switching;
 - subscription refresh/update;
@@ -67,64 +69,71 @@ Unsupported:
 
 ## Initial Happ Capability Baseline
 
-Targeted in this task:
+Implemented in this task:
 
 - application descriptor;
 - process detection;
 - executable path from running process;
-- optional manual executable path;
+- optional persisted manual executable path field;
+- common Windows install-path detection;
 - open application;
 - partial status and generic network diagnostics;
-- accurate unsupported/research-required control capabilities.
+- accurate research-required control capabilities;
+- conservative Unknown status while process is running.
 
 Not targeted until research:
 
 - connect/disconnect;
+- reliable active connection state;
 - active transport mode;
 - server/profile list and selection;
 - subscriptions;
-- daemon restart/reload.
+- daemon restart/reload;
+- settings-window editor for the optional Happ path.
 
 ## Affected Areas
 
 - `src/tauri/src/models/`
 - `src/tauri/src/adapters/`
-- `src/tauri/src/commands/`
+- `src/tauri/src/client_commands.rs`
 - `src/tauri/src/main.rs`
 - settings persistence
 - frontend API/types/store/components
 - EN/RU localization
 - README and architecture docs
 - project tracking
+- Windows CI
 
 ## Acceptance Criteria
 
-- [ ] `selected_client` is persisted and defaults to v2rayN for existing settings.
-- [ ] Backend exposes a catalog containing v2rayN and Happ.
-- [ ] Each catalog entry includes accurate capabilities and maturity.
-- [ ] Existing v2rayN users keep current behavior by default.
-- [ ] Current v2rayN integration is reachable through a dedicated adapter boundary.
-- [ ] Legacy v2rayN commands remain available during migration.
-- [ ] Frontend lets the user choose v2rayN or Happ.
-- [ ] UI clears stale profiles/status after switching clients.
-- [ ] Unsupported Happ controls are disabled or return explicit unsupported errors.
-- [ ] Happ process existence alone never produces a false Connected state.
-- [ ] v2rayN subscription capabilities are explicitly unsupported.
-- [ ] Documentation describes actual implementation and remaining research.
-- [ ] Public redaction review passes.
+- [x] `selected_client` is persisted and defaults to v2rayN for existing settings.
+- [x] Backend exposes a catalog containing v2rayN and Happ.
+- [x] Each catalog entry includes explicit capabilities and maturity.
+- [x] Existing settings select v2rayN by default.
+- [x] Current v2rayN integration is reachable through a dedicated adapter boundary.
+- [x] Legacy v2rayN commands remain available during migration.
+- [x] Frontend lets the user choose v2rayN or Happ.
+- [x] UI clears stale profiles/status after switching clients.
+- [x] Unsupported Happ controls are disabled and rejected by backend commands.
+- [x] Happ process existence alone never produces a Connected state.
+- [x] v2rayN subscription capabilities are explicitly unsupported.
+- [x] Documentation describes actual implementation and remaining research.
+- [x] Public redaction review passes for the current diff.
+- [ ] Existing v2rayN behavior is regression-tested on a real Windows machine.
+- [ ] Happ detection/open is validated against an installed Happ version.
 
 ## Verification Plan
 
-- [ ] Rust formatting and compile check.
-- [ ] Rust unit tests.
-- [ ] Frontend type check/tests/build.
-- [ ] Existing v2rayN resolver regression tests.
-- [ ] Adapter registry/default settings tests.
+- [ ] Rust formatting and compile check - workflow added; no run/status was created yet.
+- [ ] Rust unit tests - tests added; execution pending.
+- [ ] Frontend type check/tests/build - selector test and workflow added; execution pending.
+- [ ] Existing v2rayN resolver regression tests - existing test suite execution pending.
+- [ ] Adapter registry/default settings tests - added; execution pending.
 - [ ] Manual Windows validation: existing v2rayN flow.
 - [ ] Manual Windows validation: Happ process detection/open.
 - [ ] Manual UI validation: switch adapters and capability-gated controls.
-- [ ] Documentation consistency review.
-- [ ] Public redaction review.
+- [x] Documentation consistency review.
+- [x] Public redaction review.
 
 ## Questions and Decisions
 
@@ -135,19 +144,22 @@ Not targeted until research:
 | Can Happ running process mean Connected? | Decided | No. Use Unknown/partial until a reliable internal signal exists. |
 | Are profiles and subscriptions the same abstraction? | Decided | No. Subscriptions will be modeled separately. |
 | Does v2rayN currently support subscription switching? | Decided | No; explicitly unsupported. |
+| Is this PR ready to merge without Windows validation? | Decided | No. Keep it as draft. |
 
 ## Risks
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Large command module makes extraction risky | High | Add adapter boundary and compatibility wrappers incrementally |
-| Persisted settings schema changes | High | Use serde defaults and v2rayN migration default |
-| Happ executable/process naming differs by version | Medium | Multiple candidates, path validation and manual override |
-| Generic UI leaks v2rayN-specific terms | Medium | Add generic types/actions and migrate labels |
+| Large legacy command module makes extraction risky | High | Compatibility adapter and staged extraction |
+| Persisted settings schema changes | High | Serde defaults and v2rayN migration default |
+| Happ executable/process naming differs by version | Medium | Multiple candidates, path validation and future manual UI |
+| Generic UI leaks v2rayN-specific terms | Medium | Generic API/types/actions and selected-client labels |
 | Unsupported capabilities accidentally shown | High | Backend descriptors plus frontend gating |
+| Workflow is not running for the PR | Medium | Keep verification explicitly pending; do not mark the PR ready |
 
 ## Links
 
 - Roadmap: `project-tracking/roadmap/0013-proxy-client-adapter-roadmap.md`
 - Decision: `project-tracking/decisions/0013-multi-client-adapter-architecture.md`
+- Report: `project-tracking/reports/0013-add-proxy-client-adapters-and-happ-mvp-report.md`
 - Existing subscription QA task: `project-tracking/tasks/0011-build-subscription-mode-profile-switch-validation-matrix.md`

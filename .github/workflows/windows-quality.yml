@@ -14,9 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
+  frontend:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -34,12 +34,39 @@ jobs:
         run: npm ci
 
       - name: Run frontend tests
+        id: frontend_tests
+        continue-on-error: true
         working-directory: src/frontend
-        run: npm test
+        shell: pwsh
+        run: |
+          npm test 2>&1 | Tee-Object -FilePath frontend-test-output.txt
+          exit $LASTEXITCODE
+
+      - name: Upload frontend test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-output
+          path: src/frontend/frontend-test-output.txt
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Build frontend
         working-directory: src/frontend
         run: npm run build
+
+      - name: Fail when frontend tests failed
+        if: steps.frontend_tests.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
+
+  rust:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable

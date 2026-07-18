@@ -4,6 +4,7 @@ use crate::{
     adapters::{self, happ, v2rayn},
     models::{
         client::{ClientDescriptor, ProxyClientId},
+        path_validation::PathValidation,
         profile::ProfileSummary,
         settings::AppSettings,
         status::DashboardStatus,
@@ -19,7 +20,9 @@ pub async fn get_client_catalog() -> Result<Vec<ClientDescriptor>, String> {
 
 #[tauri::command]
 pub async fn get_selected_client(state: State<'_, AppState>) -> Result<ClientDescriptor, String> {
-    Ok(adapters::descriptor(state.snapshot().settings.selected_client))
+    Ok(adapters::descriptor(
+        state.snapshot().settings.selected_client,
+    ))
 }
 
 #[tauri::command]
@@ -45,6 +48,37 @@ pub async fn select_client(
         .map_err(|error| error.to_string())?;
 
     Ok(snapshot.settings)
+}
+
+#[tauri::command]
+pub async fn detect_happ_path(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    Ok(happ::detect_executable(&state.snapshot().settings)
+        .map(|path| path.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub async fn validate_happ_path(path: String) -> Result<PathValidation, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Ok(PathValidation {
+            is_valid: false,
+            message_key: "settings.happPathEmpty".to_owned(),
+            normalized_path: String::new(),
+        });
+    }
+
+    match happ::validate_executable_candidate(trimmed) {
+        Some(normalized) => Ok(PathValidation {
+            is_valid: true,
+            message_key: "settings.happPathValid".to_owned(),
+            normalized_path: normalized.to_string_lossy().to_string(),
+        }),
+        None => Ok(PathValidation {
+            is_valid: false,
+            message_key: "settings.happPathInvalid".to_owned(),
+            normalized_path: trimmed.to_owned(),
+        }),
+    }
 }
 
 #[tauri::command]

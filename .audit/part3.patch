@@ -1,0 +1,475 @@
++++ b/src/frontend/src/locales/en.json
+@@ -145,5 +145,14 @@
+   "errors.copyIpFailed": "Could not copy IP",
+   "errors.uipiMismatch": "Permission mismatch: v2rayN is running as Administrator, but widget is not. Run both apps with the same rights or restart widget as Administrator.",
+   "notices.ipCopied": "External IP copied",
+-  "dashboard.pathConfigMissing": "v2rayN path is not configured. Open Settings and select your v2rayN folder."
++  "dashboard.pathConfigMissing": "v2rayN path is not configured. Open Settings and select your v2rayN folder.",
++  "happSetup.loadFailed": "Could not load Happ adapter settings.",
++  "happSetup.detectFailed": "Happ executable detection failed.",
++  "happSetup.probeRequired": "Open Happ and run a successful probe before enabling experimental control.",
++  "happSetup.probeNoAction": "The probe did not find one unique high-confidence Connect or Disconnect control.",
++  "happSetup.probeBeforeEnable": "Run a successful Happ probe to unlock this option.",
++  "transport.unknown": "Unknown",
++  "transport.proxy": "Proxy",
++  "transport.tun": "TUN",
++  "transport.mixed": "Mixed"
+ }
+diff --git a/src/frontend/src/locales/ru.json b/src/frontend/src/locales/ru.json
+index ac55c3a..1756ede 100644
+--- a/src/frontend/src/locales/ru.json
++++ b/src/frontend/src/locales/ru.json
+@@ -145,5 +145,14 @@
+   "errors.copyIpFailed": "Не удалось скопировать IP",
+   "errors.uipiMismatch": "Несовпадение прав: v2rayN запущен от администратора, а виджет — нет. Запустите оба приложения с одинаковыми правами или перезапустите виджет от администратора.",
+   "notices.ipCopied": "Внешний IP скопирован",
+-  "dashboard.pathConfigMissing": "Путь к v2rayN не настроен. Откройте настройки и выберите папку v2rayN."
++  "dashboard.pathConfigMissing": "Путь к v2rayN не настроен. Откройте настройки и выберите папку v2rayN.",
++  "happSetup.loadFailed": "Не удалось загрузить настройки адаптера Happ.",
++  "happSetup.detectFailed": "Не удалось определить исполняемый файл Happ.",
++  "happSetup.probeRequired": "Откройте Happ и выполните успешную диагностику перед включением экспериментального управления.",
++  "happSetup.probeNoAction": "Диагностика не нашла единственный надёжно определённый элемент Connect или Disconnect.",
++  "happSetup.probeBeforeEnable": "Выполните успешную диагностику Happ, чтобы разблокировать эту настройку.",
++  "transport.unknown": "Неизвестно",
++  "transport.proxy": "Прокси",
++  "transport.tun": "TUN",
++  "transport.mixed": "Смешанный"
+ }
+diff --git a/src/tauri/src/adapters/happ.rs b/src/tauri/src/adapters/happ.rs
+index 8f4b9cb..f77bfef 100644
+--- a/src/tauri/src/adapters/happ.rs
++++ b/src/tauri/src/adapters/happ.rs
+@@ -86,20 +86,33 @@ pub fn read_process_snapshot() -> HappProcessSnapshot {
+     let mut system = System::new_all();
+     system.refresh_processes(ProcessesToUpdate::All, true);
+ 
+-    for (pid, process) in system.processes() {
+-        let process_name = process.name().to_string_lossy().to_lowercase();
+-        if !is_happ_process_name(&process_name) {
+-            continue;
+-        }
++    system
++        .processes()
++        .iter()
++        .filter_map(|(pid, process)| {
++            let process_name = process.name().to_string_lossy().to_lowercase();
++            if !is_happ_process_name(&process_name) {
++                return None;
++            }
+ 
+-        return HappProcessSnapshot {
++            let executable = process.exe().map(Path::to_path_buf);
++            let rank = process_candidate_rank(
++                &process_name,
++                executable
++                    .as_deref()
++                    .map(is_valid_happ_executable)
++                    .unwrap_or(false),
++                pid.as_u32(),
++            );
++            Some((rank, pid.as_u32(), executable))
++        })
++        .max_by_key(|(rank, pid, _)| (*rank, *pid))
++        .map(|(_, pid, executable)| HappProcessSnapshot {
+             running: true,
+-            pid: Some(pid.as_u32()),
+-            executable: process.exe().map(Path::to_path_buf),
+-        };
+-    }
+-
+-    HappProcessSnapshot::default()
++            pid: Some(pid),
++            executable,
++        })
++        .unwrap_or_default()
+ }
+ 
+ pub fn detect_executable(settings: &AppSettings) -> Option<PathBuf> {
+@@ -208,17 +221,39 @@ pub async fn toggle(settings: &AppSettings) -> Result<DashboardStatus, String> {
+     let mut process = read_process_snapshot();
+     if !process.running {
+         open(settings)?;
+-        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+-        process = read_process_snapshot();
++        for _ in 0..20 {
++            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
++            process = read_process_snapshot();
++            if process.running {
++                break;
++            }
++        }
++    }
++
++    if !process.running {
++        return Err("HAPP_START_TIMEOUT: Happ was launched but its process was not detected".to_owned());
+     }
+ 
+-    let action = happ_ui::toggle_connection(process.pid).map_err(|error| error.to_string())?;
+-    tokio::time::sleep(std::time::Duration::from_millis(650)).await;
+-    let mut status = refresh(settings, true, true, false)
+-        .await
+-        .map_err(|error| error.to_string())?;
+-    status.last_event = Some(action);
+-    Ok(status)
++    let outcome = happ_ui::toggle_connection(process.pid).map_err(|error| error.to_string())?;
++    for _ in 0..20 {
++        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
++        let observed = happ_ui::probe(process.pid);
++        if observed.connection_state == outcome.expected_state {
++            let mut status = refresh(settings, true, true, false)
++                .await
++                .map_err(|error| error.to_string())?;
++            status.last_event = Some(format!(
++                "{}; confirmed state={:?}",
++                outcome.note, outcome.expected_state
++            ));
++            return Ok(status);
++        }
++    }
++
++    Err(format!(
++        "HAPP_TOGGLE_UNCONFIRMED: {}. The click was sent, but Happ did not expose the expected {:?} state within 5 seconds.",
++        outcome.note, outcome.expected_state
++    ))
+ }
+ 
+ pub fn diagnostics(settings: &AppSettings) -> ClientDiagnostics {
+@@ -272,6 +307,16 @@ pub fn unsupported_control_error(action: &str) -> String {
+     )
+ }
+ 
++fn process_candidate_rank(name: &str, executable_is_valid: bool, pid: u32) -> u64 {
++    let executable_score = if executable_is_valid { 1_000_000_u64 } else { 0 };
++    let name_score = if matches!(name, "happ.exe" | "happ") {
++        100_000_u64
++    } else {
++        0
++    };
++    executable_score + name_score + u64::from(pid)
++}
++
+ fn is_happ_process_name(name: &str) -> bool {
+     HAPP_PROCESS_NAMES
+         .iter()
+@@ -344,6 +389,18 @@ mod tests {
+         assert!(!is_happ_process_name("unrelated.exe"));
+     }
+ 
++    #[test]
++    fn process_selection_prefers_valid_gui_executable_deterministically() {
++        assert!(
++            process_candidate_rank("happ.exe", true, 10)
++                > process_candidate_rank("happ-desktop.exe", false, 9999)
++        );
++        assert!(
++            process_candidate_rank("happ.exe", true, 20)
++                > process_candidate_rank("happ.exe", true, 10)
++        );
++    }
++
+     #[test]
+     fn invalid_happ_path_is_rejected() {
+         assert!(validate_executable_candidate("definitely-not-a-real-happ-path").is_none());
+diff --git a/src/tauri/src/adapters/mod.rs b/src/tauri/src/adapters/mod.rs
+index 63668e5..c619fbd 100644
+--- a/src/tauri/src/adapters/mod.rs
++++ b/src/tauri/src/adapters/mod.rs
+@@ -22,6 +22,7 @@ pub enum RefreshKind {
+     PostRoute,
+ }
+ 
++#[allow(async_fn_in_trait)]
+ pub trait ProxyClientAdapter: Send + Sync {
+     fn id(&self) -> ProxyClientId;
+     fn descriptor(&self, settings: &AppSettings) -> ClientDescriptor;
+@@ -92,8 +93,15 @@ impl ProxyClientAdapter for RegisteredAdapter {
+                     .await
+                     .map_err(|error| error.to_string())?;
+                 let merged = merge_with_previous(status, &snapshot.status);
+-                state.update_status(merged.clone());
+-                Ok(merged)
++                if state.update_status_if_context(
++                    ProxyClientId::Happ,
++                    snapshot.client_epoch,
++                    merged.clone(),
++                ) {
++                    Ok(merged)
++                } else {
++                    Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running".to_owned())
++                }
+             }
+         }
+     }
+@@ -102,10 +110,17 @@ impl ProxyClientAdapter for RegisteredAdapter {
+         match self {
+             Self::V2rayn => v2rayn::toggle(state).await,
+             Self::Happ => {
+-                let settings = state.snapshot().settings;
+-                let status = happ::toggle(&settings).await?;
+-                state.update_status(status.clone());
+-                Ok(status)
++                let snapshot = state.snapshot();
++                let status = happ::toggle(&snapshot.settings).await?;
++                if state.update_status_if_context(
++                    ProxyClientId::Happ,
++                    snapshot.client_epoch,
++                    status.clone(),
++                ) {
++                    Ok(status)
++                } else {
++                    Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running".to_owned())
++                }
+             }
+         }
+     }
+diff --git a/src/tauri/src/commands/mod.rs b/src/tauri/src/commands/mod.rs
+index 05be38c..0dd7e95 100644
+--- a/src/tauri/src/commands/mod.rs
++++ b/src/tauri/src/commands/mod.rs
+@@ -10,6 +10,7 @@ use tracing::{error, info, warn};
+ 
+ use crate::{
+     models::{
++        client::ProxyClientId,
+         debug::{DebugRuntimeSnapshot, UiDebugReport},
+         locale::LocaleInfo,
+         path_validation::PathValidation,
+@@ -47,8 +48,7 @@ pub async fn refresh_status(state: State<'_, AppState>) -> Result<DashboardStatu
+ 
+     if snapshot.settings.mock_mode_enabled {
+         let mock = build_mock_status(&snapshot.status, &snapshot.settings, None, None);
+-        state.update_status(mock.clone());
+-        return Ok(mock);
++        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
+     }
+ 
+     let status = refresh_status_from_settings(&snapshot.settings, true, true, false)
+@@ -59,8 +59,7 @@ pub async fn refresh_status(state: State<'_, AppState>) -> Result<DashboardStatu
+         })?;
+ 
+     let merged = merge_with_previous(status, &snapshot.status);
+-    state.update_status(merged.clone());
+-    Ok(merged)
++    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
+ }
+ 
+ #[tauri::command]
+@@ -69,8 +68,7 @@ pub async fn refresh_status_post_route(state: State<'_, AppState>) -> Result<Das
+ 
+     if snapshot.settings.mock_mode_enabled {
+         let mock = build_mock_status(&snapshot.status, &snapshot.settings, None, None);
+-        state.update_status(mock.clone());
+-        return Ok(mock);
++        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
+     }
+ 
+     let status = refresh_status_from_settings(&snapshot.settings, false, true, false)
+@@ -81,8 +79,7 @@ pub async fn refresh_status_post_route(state: State<'_, AppState>) -> Result<Das
+         })?;
+ 
+     let merged = merge_with_previous(status, &snapshot.status);
+-    state.update_status(merged.clone());
+-    Ok(merged)
++    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
+ }
+ #[tauri::command]
+ pub async fn refresh_status_background(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
+@@ -90,8 +87,7 @@ pub async fn refresh_status_background(state: State<'_, AppState>) -> Result<Das
+ 
+     if snapshot.settings.mock_mode_enabled {
+         let mock = build_mock_status(&snapshot.status, &snapshot.settings, None, None);
+-        state.update_status(mock.clone());
+-        return Ok(mock);
++        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
+     }
+ 
+     let status = refresh_status_from_settings(&snapshot.settings, true, false, false)
+@@ -119,8 +115,7 @@ pub async fn refresh_status_background(state: State<'_, AppState>) -> Result<Das
+         merged = merge_with_previous(with_external_ip, &merged);
+     }
+ 
+-    state.update_status(merged.clone());
+-    Ok(merged)
++    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
+ }
+ 
+ #[tauri::command]
+@@ -129,8 +124,7 @@ pub async fn refresh_status_startup(state: State<'_, AppState>) -> Result<Dashbo
+ 
+     if snapshot.settings.mock_mode_enabled {
+         let mock = build_mock_status(&snapshot.status, &snapshot.settings, None, None);
+-        state.update_status(mock.clone());
+-        return Ok(mock);
++        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
+     }
+ 
+     let status = refresh_status_from_settings(&snapshot.settings, true, true, true)
+@@ -141,8 +135,7 @@ pub async fn refresh_status_startup(state: State<'_, AppState>) -> Result<Dashbo
+         })?;
+ 
+     let merged = merge_with_previous(status, &snapshot.status);
+-    state.update_status(merged.clone());
+-    Ok(merged)
++    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
+ }
+ 
+ #[tauri::command]
+@@ -156,8 +149,7 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
+             Some(!snapshot.status.tun_enabled),
+             None,
+         );
+-        state.update_status(mock.clone());
+-        return Ok(mock);
++        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
+     }
+ 
+     ensure_uipi_compatible_for_control()?;
+@@ -237,8 +229,7 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
+         })?;
+ 
+     let merged = merge_with_previous(status, &snapshot.status);
+-    state.update_status(merged.clone());
+-    Ok(merged)
++    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
+ }
+ 
+ #[tauri::command]
+@@ -266,8 +257,7 @@ pub async fn set_active_profile(
+             None,
+             Some(target_profile.name.clone()),
+         );
+-        state.update_status(mock.clone());
+-        return Ok(mock);
++        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
+     }
+ 
+     ensure_uipi_compatible_for_control()?;
+@@ -297,8 +287,7 @@ pub async fn set_active_profile(
+             })?;
+ 
+         let merged = merge_with_previous(status, &snapshot.status);
+-        state.update_status(merged.clone());
+-        return Ok(merged);
++        return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged);
+     }
+ 
+     let process_snapshot = process_monitor::read_process_snapshot();
+@@ -385,8 +374,7 @@ pub async fn set_active_profile(
+         })?;
+ 
+     let merged = merge_with_previous(status, &snapshot.status);
+-    state.update_status(merged.clone());
+-    Ok(merged)
++    commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
+ }
+ 
+ #[tauri::command]
+@@ -420,16 +408,16 @@ pub async fn update_settings(
+     app: AppHandle,
+     state: State<'_, AppState>,
+ ) -> Result<AppSettings, String> {
+-    let settings = normalize_settings(payload);
++    let snapshot = state.snapshot();
++    let settings = merge_general_settings_payload(payload, &snapshot.settings);
++    let status = if settings.mock_mode_enabled {
++        build_mock_status(&snapshot.status, &settings, None, None)
++    } else {
++        snapshot.status
++    };
+ 
+     settings_store::save_settings(&settings).map_err(|error| error.to_string())?;
+-    state.update_settings(settings.clone());
+-
+-    if settings.mock_mode_enabled {
+-        let snapshot = state.snapshot();
+-        let mock = build_mock_status(&snapshot.status, &settings, None, None);
+-        state.update_status(mock);
+-    }
++    state.replace_settings_and_status_invalidating_context(settings.clone(), status);
+ 
+     apply_runtime_settings(&app, &settings);
+     emit_settings_updated(&app, &settings);
+@@ -444,6 +432,8 @@ pub async fn apply_ui_settings(
+     state: State<'_, AppState>,
+ ) -> Result<AppSettings, String> {
+     let snapshot = state.snapshot();
++    let previous_mock_mode = snapshot.settings.mock_mode_enabled;
++    let previous_status = snapshot.status;
+     let mut merged = snapshot.settings;
+ 
+     if let Some(value) = payload.language {
+@@ -488,12 +478,15 @@ pub async fn apply_ui_settings(
+     let settings = normalize_settings(merged);
+ 
+     settings_store::save_settings(&settings).map_err(|error| error.to_string())?;
+-    state.update_settings(settings.clone());
+-
+-    if settings.mock_mode_enabled {
+-        let snapshot = state.snapshot();
+-        let mock = build_mock_status(&snapshot.status, &settings, None, None);
+-        state.update_status(mock);
++    if previous_mock_mode != settings.mock_mode_enabled {
++        let status = if settings.mock_mode_enabled {
++            build_mock_status(&previous_status, &settings, None, None)
++        } else {
++            DashboardStatus::default()
++        };
++        state.replace_settings_and_status_invalidating_context(settings.clone(), status);
++    } else {
++        state.update_settings(settings.clone());
+     }
+ 
+     apply_runtime_settings(&app, &settings);
+@@ -847,10 +840,24 @@ fn resolve_v2rayn_base_path(settings: &AppSettings) -> Option<PathBuf> {
+     })
+ }
+ 
++fn merge_general_settings_payload(payload: AppSettings, current: &AppSettings) -> AppSettings {
++    let mut settings = normalize_settings(payload);
++
++    // This payload is owned by the general settings window. Preserve fields that
++    // are managed by client selection, Happ setup, or live window tracking so a
++    // stale draft cannot overwrite newer state from another window.
++    settings.selected_client = current.selected_client;
++    settings.happ_path = current.happ_path.clone();
++    settings.happ_allow_ui_automation = current.happ_allow_ui_automation;
++    settings.window_position = current.window_position.clone();
++    settings
++}
++
+ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
+     settings.poll_interval_sec = settings.poll_interval_sec.clamp(1, 3600);
+     settings.window_opacity_percent = settings.window_opacity_percent.clamp(10, 100);
+     settings.v2rayn_path = normalize_manual_path(settings.v2rayn_path);
++    settings.happ_path = normalize_manual_path(settings.happ_path);
+     settings.diagnostics_url = normalize_diagnostics_url(&settings.diagnostics_url)
+         .map(|url| url.to_string())
+         .unwrap_or_else(default_diagnostics_url);
+@@ -1034,6 +1041,20 @@ fn build_mock_status(
+     }
+ }
+ 
++fn commit_client_status(
++    state: &State<'_, AppState>,
++    client_id: ProxyClientId,
++    client_epoch: u64,
++    status: DashboardStatus,
++) -> Result<DashboardStatus, String> {
++    if state.update_status_if_context(client_id, client_epoch, status.clone()) {
++        Ok(status)
++    } else {
++        Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running"
++            .to_owned())
++    }
++}
++
+ fn ensure_uipi_compatible_for_control() -> Result<(), String> {
+     let diagnostics = privilege::collect_v2rayn_privilege_diagnostics().map_err(|error| {
+         warn!(?error, "privilege diagnostics failed");
+@@ -1078,7 +1099,7 @@ fn restart_v2rayn_process(base_path: &Path) -> anyhow::Result<()> {
+ }
+ 
+ fn apply_runtime_settings(app: &AppHandle, settings: &AppSettings) {
+-    for label in ["main", "settings", "debug"] {
++    for label in ["main", "settings", "debug", "happ-setup"] {
+         if let Some(window) = app.get_webview_window(label) {

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Этот файл фиксирует верхнеуровневый roadmap Windows desktop-виджета. Проект начался как `v2rayN Widget`, но теперь развивается в сторону единого интерфейса с адаптерами v2rayN, Happ и будущих proxy/VPN client applications.
+Этот файл фиксирует верхнеуровневый roadmap Windows desktop-виджета. Проект начался как `v2rayN Widget`, но теперь развивается как единый интерфейс с адаптерами v2rayN, Happ и будущих proxy/VPN client applications.
 
 Подробный multi-client roadmap: `project-tracking/roadmap/0013-proxy-client-adapter-roadmap.md`.
 
@@ -27,13 +27,6 @@ Goals:
 - Создать `project-tracking/`.
 - Перенести актуальное состояние Beads в Markdown.
 - Добавить публичный redaction policy.
-
-Acceptance criteria:
-
-- Новый участник или агент понимает процесс работы.
-- README явно ссылается на `AGENTS.md`.
-- Есть task/report/decision/checklist/templates.
-- Beads-задачи представлены в Markdown.
 
 ## Phase 1 - MVP Reliability
 
@@ -76,7 +69,7 @@ Goals:
 
 - Добавить installer packaging flow.
 - Обновить architecture docs и command API list.
-- Зафиксировать текущие fixes/docs в git history.
+- Зафиксировать fixes/docs в git history.
 
 Related tasks:
 
@@ -105,39 +98,47 @@ Current limitation:
 
 ## Phase 5 - Multi-Client Adapter Architecture
 
-Status: In Progress
+Status: Done
 
-Goals:
+Completed:
 
-- Ввести настоящий `ProxyClientAdapter` boundary и registry.
-- Сохранить текущую v2rayN интеграцию за v2rayN adapter.
-- Добавить persisted выбор v2rayN/Happ.
-- Перевести основной frontend и tray на generic client commands.
-- Показывать действия только по adapter capabilities.
-- Добавить безопасный read-only Happ MVP.
-- Зафиксировать отдельный roadmap для Happ API/IPC research, control и subscriptions.
+- operational `ProxyClientAdapter` boundary and registry;
+- v2rayN compatibility adapter;
+- persisted v2rayN/Happ selection;
+- generic frontend, tray and Tauri command dispatch;
+- capability-gated controls;
+- shared transport and diagnostics models;
+- safe Happ detection/open baseline;
+- dedicated Happ Setup and probe;
+- opt-in experimental Happ connect/disconnect through conservative Windows UI Automation;
+- automated Windows frontend/Rust verification;
+- updated roadmap, decision, task, report, README and architecture docs.
 
 Related work:
 
-- `0013-add-proxy-client-adapters-and-happ-mvp` - In Progress
+- `0013-add-proxy-client-adapters-and-happ-mvp` - Done
 - `project-tracking/roadmap/0013-proxy-client-adapter-roadmap.md`
 - `project-tracking/decisions/0013-multi-client-adapter-architecture.md`
 
 Current Happ limitation:
 
-- reliable connection state, connect/disconnect, transport mode, server selection and subscriptions require further API/IPC research.
+- UI Automation control is experimental and disabled by default;
+- server/profile selection, restart/reload and subscriptions remain unavailable;
+- process existence alone never means Connected.
 
-## Phase 6 - Happ Control Research and Implementation
+## Phase 6 - Happ Stable Control Contract
 
-Status: Planned
+Status: Deferred pending a documented stable contract
 
-Goals:
+Completed research decision:
 
-- Проверить официальный CLI/API.
-- Исследовать daemon IPC только в redacted и version-aware формате.
-- Выбрать безопасный supported control path.
-- Реализовать status/control только после отдельного decision.
-- Не определять Connected только по наличию процесса.
+- no stable documented public CLI/API/daemon IPC contract was selected;
+- internal config/database mutation was rejected;
+- experimental PID-scoped UI Automation was implemented with explicit opt-in, exact action matching, confidence threshold, diagnostics and fail-closed behavior.
+
+Future goal:
+
+- replace or complement experimental UI Automation only if Happ exposes a documented stable control contract.
 
 ## Phase 7 - Subscription Abstraction
 
@@ -154,7 +155,17 @@ Baseline:
 - v2rayN subscription capabilities - Unsupported.
 - Happ subscription capabilities - Research Required.
 
-## Phase 8 - Cross-Platform Feasibility
+## Phase 8 - Additional Adapters
+
+Status: Planned
+
+Goals:
+
+- Добавлять Windows clients через существующий operational adapter contract.
+- Не изменять generic `client_commands` для каждого нового приложения.
+- Начинать с descriptor/capabilities/detection/diagnostics и только затем добавлять control.
+
+## Phase 9 - Cross-Platform Feasibility
 
 Status: Planned
 
@@ -171,9 +182,9 @@ Related tasks:
 
 | ID | Task | Priority | Status | Notes |
 | --- | --- | --- | --- | --- |
-| 0011 | Build subscription-mode profile switch validation matrix | P2 | Open | QA matrix; subscriptions themselves remain unsupported |
+| 0011 | Build subscription-mode profile switch validation matrix | P2 | Open | QA matrix; subscriptions remain unsupported |
 | 0012 | Assess Linux and macOS feasibility after platform control path validation | P3 | Open | После стабилизации Windows adapters |
-| 0013 | Add proxy client adapters and Happ MVP | P1 | In Progress | Trait/registry, generic UI/API, v2rayN compatibility, Happ read-only MVP |
+| 0013 | Add proxy client adapters and Happ MVP | P1 | Done | Operational adapters, generic UI/API, v2rayN compatibility, Happ baseline and experimental opt-in control |
 
 ## Public Data Rule
 

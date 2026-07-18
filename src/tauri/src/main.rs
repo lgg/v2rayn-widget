@@ -302,6 +302,7 @@ fn main() {
             client_commands::get_selected_client,
             client_commands::get_selected_client_diagnostics,
             client_commands::get_happ_diagnostics,
+            client_commands::open_happ_setup_window,
             client_commands::select_client,
             client_commands::detect_happ_path,
             client_commands::validate_happ_path,

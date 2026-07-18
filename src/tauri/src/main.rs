@@ -108,7 +108,7 @@ fn prepare_webview2_candidate(path: &std::path::Path) -> bool {
 fn restore_visible_aux_windows(app: &tauri::AppHandle, context: &str) {
     let settings = app.state::<AppState>().snapshot().settings;
 
-    for label in ["settings", "debug"] {
+    for label in ["settings", "debug", "happ-setup"] {
         if let Some(window) = app.get_webview_window(label) {
             if window.is_visible().unwrap_or(false) {
                 let _ = window.show();
@@ -230,7 +230,7 @@ fn main() {
                 let _ = main_window.unminimize();
             }
 
-            for label in ["main", "settings", "debug"] {
+            for label in ["main", "settings", "debug", "happ-setup"] {
                 if let Some(window) = app_handle.get_webview_window(label) {
                     let _ = window.set_always_on_top(settings.always_on_top);
                     let _ = window.set_resizable(false);
@@ -287,7 +287,7 @@ fn main() {
                     }
                     _ => {}
                 },
-                "settings" | "debug" => match event {
+                "settings" | "debug" | "happ-setup" => match event {
                     WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
                         let _ = window.hide();
@@ -300,6 +300,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             client_commands::get_client_catalog,
             client_commands::get_selected_client,
+            client_commands::get_selected_client_diagnostics,
+            client_commands::get_happ_diagnostics,
             client_commands::select_client,
             client_commands::detect_happ_path,
             client_commands::validate_happ_path,

@@ -51,7 +51,6 @@ pub fn descriptor() -> ClientDescriptor {
 #[derive(Debug, Clone, Default)]
 pub struct HappProcessSnapshot {
     pub running: bool,
-    pub pid: Option<u32>,
     pub executable: Option<PathBuf>,
 }
 
@@ -59,7 +58,7 @@ pub fn read_process_snapshot() -> HappProcessSnapshot {
     let mut system = System::new_all();
     system.refresh_processes(ProcessesToUpdate::All, true);
 
-    for (pid, process) in system.processes() {
+    for process in system.processes().values() {
         let process_name = process.name().to_string_lossy().to_lowercase();
         if !is_happ_process_name(&process_name) {
             continue;
@@ -67,7 +66,6 @@ pub fn read_process_snapshot() -> HappProcessSnapshot {
 
         return HappProcessSnapshot {
             running: true,
-            pid: Some(pid.as_u32()),
             executable: process.exe().map(Path::to_path_buf),
         };
     }

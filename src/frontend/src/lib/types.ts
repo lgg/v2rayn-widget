@@ -12,6 +12,33 @@ export interface DashboardStatus {
   updated_at: string;
 }
 
+export type ProxyClientId = "v2rayn" | "happ";
+export type CapabilityState = "supported" | "experimental" | "unsupported" | "research_required";
+
+export interface ClientCapabilities {
+  detect_application: CapabilityState;
+  read_process_state: CapabilityState;
+  read_connection_state: CapabilityState;
+  open_application: CapabilityState;
+  toggle_connection: CapabilityState;
+  list_items: CapabilityState;
+  select_item: CapabilityState;
+  restart_application: CapabilityState;
+  read_transport_mode: CapabilityState;
+  list_subscriptions: CapabilityState;
+  switch_subscription: CapabilityState;
+  refresh_subscription: CapabilityState;
+  manage_subscriptions: CapabilityState;
+}
+
+export interface ClientDescriptor {
+  id: ProxyClientId;
+  display_name: string;
+  maturity: string;
+  status_note: string;
+  capabilities: ClientCapabilities;
+}
+
 export type ThemeMode = "light" | "dark";
 export type PathMode = "auto" | "manual";
 export type TimeFormat = "system" | "24h" | "12h";
@@ -25,6 +52,7 @@ export interface WindowPosition {
 }
 
 export interface AppSettings {
+  selected_client: ProxyClientId;
   language: string;
   theme: ThemeMode;
   always_on_top: boolean;
@@ -48,6 +76,7 @@ export interface AppSettings {
   ip_endpoints: string[];
   v2rayn_path_mode: PathMode;
   v2rayn_path: string | null;
+  happ_path: string | null;
   window_position: WindowPosition | null;
 }
 
@@ -137,6 +166,3 @@ export interface UiDebugReport {
   privilege: PrivilegeDiagnostics;
   note: string;
 }
-
-
-

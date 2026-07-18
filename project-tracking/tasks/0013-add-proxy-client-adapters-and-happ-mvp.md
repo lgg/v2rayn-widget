@@ -13,7 +13,7 @@
 
 ## Context
 
-The project is currently implemented as a v2rayN-specific widget. Its frontend is reusable, but backend commands, settings, status fields and UI labels directly assume v2rayN, TUN mode and profiles.
+The project was implemented as a v2rayN-specific widget. Its frontend is reusable, but backend commands, settings, status fields and UI labels directly assumed v2rayN, TUN mode and profiles.
 
 The product must support selecting v2rayN, Happ and future proxy/VPN desktop applications through explicit adapters.
 
@@ -76,6 +76,7 @@ Implemented in this task:
 - executable path from running process;
 - optional persisted manual executable path field;
 - common Windows install-path detection;
+- path detect/validate backend commands and frontend API;
 - open application;
 - partial status and generic network diagnostics;
 - accurate research-required control capabilities;
@@ -119,16 +120,18 @@ Not targeted until research:
 - [x] v2rayN subscription capabilities are explicitly unsupported.
 - [x] Documentation describes actual implementation and remaining research.
 - [x] Public redaction review passes for the current diff.
-- [ ] Existing v2rayN behavior is regression-tested on a real Windows machine.
+- [ ] Existing v2rayN behavior is regression-tested manually on a real Windows machine.
 - [ ] Happ detection/open is validated against an installed Happ version.
 
 ## Verification Plan
 
-- [ ] Rust formatting and compile check - workflow added; no run/status was created yet.
-- [ ] Rust unit tests - tests added; execution pending.
-- [ ] Frontend type check/tests/build - selector test and workflow added; execution pending.
-- [ ] Existing v2rayN resolver regression tests - existing test suite execution pending.
-- [ ] Adapter registry/default settings tests - added; execution pending.
+- [x] Changed Rust source formatting check.
+- [x] Rust unit tests: 26 passed.
+- [x] Rust compile check: `cargo check --locked` passed.
+- [x] Frontend tests: 11 passed.
+- [x] Frontend production build passed.
+- [x] Existing v2rayN resolver regression tests passed in the Rust suite.
+- [x] Adapter registry/default settings tests passed.
 - [ ] Manual Windows validation: existing v2rayN flow.
 - [ ] Manual Windows validation: Happ process detection/open.
 - [ ] Manual UI validation: switch adapters and capability-gated controls.
@@ -155,7 +158,7 @@ Not targeted until research:
 | Happ executable/process naming differs by version | Medium | Multiple candidates, path validation and future manual UI |
 | Generic UI leaks v2rayN-specific terms | Medium | Generic API/types/actions and selected-client labels |
 | Unsupported capabilities accidentally shown | High | Backend descriptors plus frontend gating |
-| Workflow is not running for the PR | Medium | Keep verification explicitly pending; do not mark the PR ready |
+| Real Windows behavior differs from automated checks | High | Keep the PR draft until v2rayN and Happ manual validation is completed |
 
 ## Links
 

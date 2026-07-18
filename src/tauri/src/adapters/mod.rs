@@ -68,17 +68,12 @@ mod tests {
         assert!(entries
             .iter()
             .any(|entry| entry.id == ProxyClientId::V2rayn));
-        assert!(entries
-            .iter()
-            .any(|entry| entry.id == ProxyClientId::Happ));
+        assert!(entries.iter().any(|entry| entry.id == ProxyClientId::Happ));
     }
 
     #[test]
     fn every_client_id_resolves_through_adapter_trait() {
-        assert_eq!(
-            adapter(ProxyClientId::V2rayn).id(),
-            ProxyClientId::V2rayn
-        );
+        assert_eq!(adapter(ProxyClientId::V2rayn).id(), ProxyClientId::V2rayn);
         assert_eq!(adapter(ProxyClientId::Happ).id(), ProxyClientId::Happ);
     }
 

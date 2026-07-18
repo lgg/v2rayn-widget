@@ -37,10 +37,7 @@ fn classify_connection_action(value: &str) -> Option<(ConnectionState, i32)> {
         "отключить",
         "разорвать соединение",
     ];
-    if disconnect_tokens
-        .iter()
-        .any(|token| normalized == *token)
-    {
+    if disconnect_tokens.iter().any(|token| normalized == *token) {
         return Some((ConnectionState::Connected, 320));
     }
 
@@ -62,10 +59,7 @@ fn classify_connection_action(value: &str) -> Option<(ConnectionState, i32)> {
     }
 
     let connect_tokens = ["connect", "connect now", "подключиться", "подключить"];
-    if connect_tokens
-        .iter()
-        .any(|token| normalized == *token)
-    {
+    if connect_tokens.iter().any(|token| normalized == *token) {
         return Some((ConnectionState::Disconnected, 280));
     }
 

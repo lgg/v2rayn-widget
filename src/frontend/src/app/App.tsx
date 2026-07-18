@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Copy, Globe, RefreshCcw, Settings, SquareArrowOutUpRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ClientSelector } from "@/components/client-selector";
 import { ConnectButton } from "@/components/connect-button";
 import { InfoPanel } from "@/components/info-panel";
 import { ProfileSelector } from "@/components/profile-selector";
@@ -9,7 +10,11 @@ import { StatusBadge } from "@/components/status-badge";
 import { useDashboardStore } from "@/features/dashboard-store";
 import { setMainWindowHeight } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import type { AppSettings } from "@/lib/types";
+import type { AppSettings, CapabilityState } from "@/lib/types";
+
+function capabilityAvailable(value: CapabilityState | undefined): boolean {
+  return value === "supported" || value === "experimental";
+}
 
 export function App(): JSX.Element {
   const { t } = useTranslation();
@@ -19,10 +24,12 @@ export function App(): JSX.Element {
   const {
     bootstrap,
     refresh,
-    toggleTun,
-    setActiveProfile,
+    selectClient,
+    toggleConnection,
+    setActiveItem,
     status,
     settings,
+    clients,
     profiles,
     loading,
     actionLoading,
@@ -30,7 +37,7 @@ export function App(): JSX.Element {
     pathNoticeKey,
     openDiagnostics,
     openSettings,
-    openV2RayN,
+    openClient,
     relaunchAsAdmin,
     showNotice,
     clearNotice,
@@ -52,6 +59,7 @@ export function App(): JSX.Element {
 
     return () => window.clearInterval(timer);
   }, [refresh, settings]);
+
   useEffect(() => {
     if (!settings) {
       return;
@@ -138,7 +146,7 @@ export function App(): JSX.Element {
       }
       observer.disconnect();
     };
-  }, [loading, settings, showInfoPanel, notice, status, actionLoading, profiles.length]);
+  }, [loading, settings, showInfoPanel, notice, status, actionLoading, profiles.length, clients.length]);
 
   if (loading || !status || !settings) {
     return (
@@ -148,6 +156,11 @@ export function App(): JSX.Element {
     );
   }
 
+  const selectedClient = clients.find((client) => client.id === settings.selected_client);
+  const canToggle = capabilityAvailable(selectedClient?.capabilities.toggle_connection);
+  const canListItems = capabilityAvailable(selectedClient?.capabilities.list_items);
+  const canSelectItems = capabilityAvailable(selectedClient?.capabilities.select_item);
+  const showProfileSelector = settings.show_profile_selector && canListItems;
   const selectedProfileId =
     profiles.find((profile) => profile.name === status.active_profile_name)?.id ?? profiles[0]?.id ?? "";
 
@@ -185,49 +198,57 @@ export function App(): JSX.Element {
           </div>
         )}
 
-        {settings.show_profile_selector ? (
-          <header className="mb-4 flex items-center gap-3">
-            <div className="min-w-0 flex-1 rounded-xl border border-white/45 bg-white/70 px-3 py-2 dark:border-slate-600/60 dark:bg-slate-900/70">
+        <header className="mb-4 grid grid-cols-[1fr_auto] gap-2">
+          <div className="min-w-0 rounded-xl border border-white/45 bg-white/70 px-3 py-2 dark:border-slate-600/60 dark:bg-slate-900/70">
+            <p className="mb-1 text-xs text-muted">{t("fields.client")}</p>
+            <ClientSelector
+              clients={clients}
+              selectedClientId={settings.selected_client}
+              disabled={actionLoading}
+              onSelect={(clientId) => void selectClient(clientId)}
+            />
+          </div>
+
+          <button
+            type="button"
+            aria-label={t("actions.openSettings")}
+            className="no-drag rounded-xl border border-white/50 bg-white/70 p-2 dark:border-slate-600/60 dark:bg-slate-900/70"
+            onClick={() => void openSettings()}
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+
+          {showProfileSelector && (
+            <div className="col-span-2 min-w-0 rounded-xl border border-white/45 bg-white/70 px-3 py-2 dark:border-slate-600/60 dark:bg-slate-900/70">
               <p className="mb-1 text-xs text-muted">{t("fields.profile")}</p>
               <ProfileSelector
                 profiles={profiles}
                 selectedProfileId={selectedProfileId}
                 activeProfileName={status.active_profile_name}
-                disabled={actionLoading}
-                onSelect={(profileId) => void setActiveProfile(profileId)}
+                disabled={actionLoading || !canSelectItems}
+                onSelect={(profileId) => void setActiveItem(profileId)}
               />
             </div>
+          )}
+        </header>
 
-            <button
-              type="button"
-              aria-label={t("actions.openSettings")}
-              className="no-drag rounded-xl border border-white/50 bg-white/70 p-2 dark:border-slate-600/60 dark:bg-slate-900/70"
-              onClick={() => void openSettings()}
-            >
-              <Settings className="h-5 w-5" />
-            </button>
-          </header>
-        ) : (
-          <div className="relative mb-2 text-center">
-            <StatusBadge status={status.status} />
-            <button
-              type="button"
-              aria-label={t("actions.openSettings")}
-              className="no-drag absolute right-0 top-1/2 -translate-y-1/2 rounded-xl border border-white/50 bg-white/70 p-2 dark:border-slate-600/60 dark:bg-slate-900/70"
-              onClick={() => void openSettings()}
-            >
-              <Settings className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="mb-4 text-center">
+          <StatusBadge status={status.status} />
+        </div>
+
+        <div title={canToggle ? undefined : selectedClient?.status_note}>
+          <ConnectButton
+            status={status.connection_state}
+            disabled={actionLoading || !canToggle}
+            onClick={() => void toggleConnection()}
+          />
+        </div>
+
+        {selectedClient && !canToggle && (
+          <p className="mt-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-center text-[11px] leading-4 text-muted">
+            {selectedClient.status_note}
+          </p>
         )}
-
-        {settings.show_profile_selector && (
-          <div className="mb-4 text-center">
-            <StatusBadge status={status.status} />
-          </div>
-        )}
-
-        <ConnectButton status={status.connection_state} disabled={actionLoading} onClick={() => void toggleTun()} />
 
         {showLowerBlock && (
           <div className="mt-4">
@@ -245,10 +266,10 @@ export function App(): JSX.Element {
                 </button>
                 <button
                   className="group rounded-2xl border border-white/25 bg-white/5 px-2 py-2 transition hover:bg-white/10"
-                  onClick={() => void openV2RayN()}
+                  onClick={() => void openClient()}
                 >
                   <SquareArrowOutUpRight className="mx-auto mb-1 h-4 w-4 text-indigo-200 transition group-hover:-translate-y-0.5" />
-                  <span className="text-[12px] lowercase">{t("actions.open")}</span>
+                  <span className="text-[12px] lowercase">{t("actions.openClient")}</span>
                 </button>
                 <button
                   className="group rounded-2xl border border-white/25 bg-white/5 px-2 py-2 transition hover:bg-white/10"
@@ -296,5 +317,3 @@ export function App(): JSX.Element {
     </main>
   );
 }
-
-

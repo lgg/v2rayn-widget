@@ -116,6 +116,7 @@ pub struct AppSettings {
     pub v2rayn_path_mode: V2RayNPathMode,
     pub v2rayn_path: Option<String>,
     pub happ_path: Option<String>,
+    pub happ_allow_ui_automation: bool,
     pub window_position: Option<WindowPosition>,
 }
 
@@ -147,6 +148,7 @@ impl Default for AppSettings {
             v2rayn_path_mode: V2RayNPathMode::Auto,
             v2rayn_path: None,
             happ_path: None,
+            happ_allow_ui_automation: false,
             window_position: None,
         }
     }
@@ -180,5 +182,6 @@ mod tests {
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert_eq!(settings.selected_client, ProxyClientId::V2rayn);
         assert!(settings.happ_path.is_none());
+        assert!(!settings.happ_allow_ui_automation);
     }
 }

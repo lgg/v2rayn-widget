@@ -1,7 +1,4 @@
-use crate::models::{
-    client::TransportMode,
-    status::ConnectionState,
-};
+use crate::models::{client::TransportMode, status::ConnectionState};
 
 #[derive(Debug, Clone, Default)]
 pub struct HappUiSnapshot {
@@ -42,7 +39,7 @@ fn classify_connection_action(value: &str) -> Option<(ConnectionState, i32)> {
     ];
     if disconnect_tokens
         .iter()
-        .any(|token| normalized == *token || normalized.contains(token))
+        .any(|token| normalized == *token)
     {
         return Some((ConnectionState::Connected, 320));
     }
@@ -67,7 +64,7 @@ fn classify_connection_action(value: &str) -> Option<(ConnectionState, i32)> {
     let connect_tokens = ["connect", "connect now", "подключиться", "подключить"];
     if connect_tokens
         .iter()
-        .any(|token| normalized == *token || normalized.contains(token))
+        .any(|token| normalized == *token)
     {
         return Some((ConnectionState::Disconnected, 280));
     }
@@ -80,7 +77,9 @@ fn classify_transport(value: &str) -> TransportMode {
     match normalized.as_str() {
         "proxy" | "proxy mode" | "прокси" | "режим прокси" => TransportMode::Proxy,
         "tun" | "tun mode" | "режим tun" => TransportMode::Tun,
-        "mixed" | "mixed mode" | "смешанный" | "смешанный режим" => TransportMode::Mixed,
+        "mixed" | "mixed mode" | "смешанный" | "смешанный режим" => {
+            TransportMode::Mixed
+        }
         _ => TransportMode::Unknown,
     }
 }
@@ -99,19 +98,17 @@ mod windows_impl {
             },
             UI::{
                 Accessibility::{
-                    CUIAutomation, IUIAutomation, IUIAutomationElement,
-                    IUIAutomationInvokePattern, IUIAutomationLegacyIAccessiblePattern,
-                    IUIAutomationSelectionItemPattern, IUIAutomationTogglePattern,
-                    TreeScope_Subtree, UIA_ButtonControlTypeId, UIA_CheckBoxControlTypeId,
-                    UIA_CustomControlTypeId, UIA_HyperlinkControlTypeId,
-                    UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId,
-                    UIA_MenuItemControlTypeId, UIA_SelectionItemPatternId,
-                    UIA_TogglePatternId,
+                    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationInvokePattern,
+                    IUIAutomationLegacyIAccessiblePattern, IUIAutomationSelectionItemPattern,
+                    IUIAutomationTogglePattern, TreeScope_Subtree, UIA_ButtonControlTypeId,
+                    UIA_CheckBoxControlTypeId, UIA_CustomControlTypeId, UIA_HyperlinkControlTypeId,
+                    UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId, UIA_MenuItemControlTypeId,
+                    UIA_SelectionItemPatternId, UIA_TogglePatternId,
                 },
                 WindowsAndMessaging::{
-                    BM_CLICK, EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
-                    GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_MINIMIZE, SW_RESTORE,
-                    SendMessageW, SetForegroundWindow, ShowWindow,
+                    EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
+                    GetWindowThreadProcessId, IsIconic, IsWindowVisible, SendMessageW,
+                    SetForegroundWindow, ShowWindow, BM_CLICK, SW_MINIMIZE, SW_RESTORE,
                 },
             },
         },
@@ -180,7 +177,8 @@ mod windows_impl {
 
         let Some(hwnd) = find_happ_window(process_id) else {
             return HappUiSnapshot {
-                note: "Happ process was found, but no visible application window was found".to_owned(),
+                note: "Happ process was found, but no visible application window was found"
+                    .to_owned(),
                 connection_state: ConnectionState::Unknown,
                 ..HappUiSnapshot::default()
             };
@@ -197,7 +195,10 @@ mod windows_impl {
                     .map(|candidate| candidate.inferred_state)
                     .unwrap_or(ConnectionState::Unknown),
                 transport_mode: scan.transport_mode,
-                action_label: scan.action.as_ref().map(|candidate| candidate.label.clone()),
+                action_label: scan
+                    .action
+                    .as_ref()
+                    .map(|candidate| candidate.label.clone()),
                 action_score: scan.action.as_ref().map(|candidate| candidate.score),
                 ui_nodes: scan.nodes,
                 note: if scan.action.is_some() {
@@ -302,7 +303,7 @@ mod windows_impl {
             }
 
             if is_clickable(control_type) {
-                if let Some((state, base_score)) = classify_connection_action(&label) {
+                if let Some((state, base_score)) = classify_connection_action(&name) {
                     let score = base_score + clickable_score(control_type);
                     if score >= MIN_ACTION_SCORE
                         && result
@@ -378,18 +379,15 @@ mod windows_impl {
         if let Ok(native_hwnd) = unsafe { element.CurrentNativeWindowHandle() } {
             if !native_hwnd.is_invalid() {
                 unsafe {
-                    let _ = SendMessageW(
-                        native_hwnd,
-                        BM_CLICK,
-                        Some(WPARAM(0)),
-                        Some(LPARAM(0)),
-                    );
+                    let _ = SendMessageW(native_hwnd, BM_CLICK, Some(WPARAM(0)), Some(LPARAM(0)));
                 }
                 return Ok("bm_click_fallback");
             }
         }
 
-        Err(anyhow!("No supported UI Automation click pattern was available"))
+        Err(anyhow!(
+            "No supported UI Automation click pattern was available"
+        ))
     }
 
     fn is_clickable(control_type: Option<i32>) -> bool {
@@ -456,11 +454,7 @@ mod windows_impl {
             0
         };
         let score = title_score + area.min(40_000);
-        if search
-            .best
-            .map(|current| score > current.1)
-            .unwrap_or(true)
-        {
+        if search.best.map(|current| score > current.1).unwrap_or(true) {
             search.best = Some((hwnd, score));
         }
 
@@ -542,6 +536,8 @@ mod tests {
         assert_eq!(classify_connection_action("Auto connect"), None);
         assert_eq!(classify_connection_action("Connection settings"), None);
         assert_eq!(classify_connection_action("Reconnect"), None);
+        assert_eq!(classify_connection_action("Connection"), None);
+        assert_eq!(classify_connection_action("Connect to server"), None);
     }
 
     #[test]

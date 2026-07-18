@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::status::ConnectionState;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum ProxyClientId {
@@ -20,6 +22,16 @@ pub enum CapabilityState {
     Experimental,
     Unsupported,
     ResearchRequired,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportMode {
+    #[default]
+    Unknown,
+    Proxy,
+    Tun,
+    Mixed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -48,6 +60,43 @@ pub struct ClientDescriptor {
     pub capabilities: ClientCapabilities,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ClientDiagnostics {
+    pub client_id: ProxyClientId,
+    pub application_running: bool,
+    pub process_id: Option<u32>,
+    pub executable_path: Option<String>,
+    pub window_found: bool,
+    pub window_title: Option<String>,
+    pub connection_state: ConnectionState,
+    pub transport_mode: TransportMode,
+    pub control_source: Option<String>,
+    pub action_label: Option<String>,
+    pub action_score: Option<i32>,
+    pub ui_nodes: Vec<String>,
+    pub note: String,
+}
+
+impl ClientDiagnostics {
+    pub fn unavailable(client_id: ProxyClientId, note: impl Into<String>) -> Self {
+        Self {
+            client_id,
+            application_running: false,
+            process_id: None,
+            executable_path: None,
+            window_found: false,
+            window_title: None,
+            connection_state: ConnectionState::Unknown,
+            transport_mode: TransportMode::Unknown,
+            control_source: None,
+            action_label: None,
+            action_score: None,
+            ui_nodes: Vec::new(),
+            note: note.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,9 +112,11 @@ mod tests {
             serde_json::to_string(&ProxyClientId::V2rayn).unwrap(),
             "\"v2rayn\""
         );
-        assert_eq!(
-            serde_json::to_string(&ProxyClientId::Happ).unwrap(),
-            "\"happ\""
-        );
+        assert_eq!(serde_json::to_string(&ProxyClientId::Happ).unwrap(), "\"happ\"");
+    }
+
+    #[test]
+    fn transport_mode_defaults_to_unknown() {
+        assert_eq!(TransportMode::default(), TransportMode::Unknown);
     }
 }

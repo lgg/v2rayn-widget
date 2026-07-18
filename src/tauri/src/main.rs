@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod adapters;
+mod client_commands;
 mod commands;
 mod models;
 mod services;
@@ -112,7 +114,6 @@ fn restore_visible_aux_windows(app: &tauri::AppHandle, context: &str) {
                 let _ = window.show();
                 let _ = window.unminimize();
 
-                // Raise visible secondary windows without stealing focus.
                 let _ = window.set_always_on_top(true);
                 if !settings.always_on_top {
                     let _ = window.set_always_on_top(false);
@@ -140,7 +141,7 @@ fn main() {
             let show_item = MenuItemBuilder::with_id("show", "Show Widget").build(app)?;
             let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
             let refresh_item = MenuItemBuilder::with_id("refresh", "Refresh Status").build(app)?;
-            let open_item = MenuItemBuilder::with_id("open_v2rayn", "Open v2rayN").build(app)?;
+            let open_item = MenuItemBuilder::with_id("open_client", "Open Selected Client").build(app)?;
             let exit_item = MenuItemBuilder::with_id("exit", "Exit").build(app)?;
 
             let menu = MenuBuilder::new(app)
@@ -154,7 +155,7 @@ fn main() {
 
             let app_handle = app.handle().clone();
 
-            let mut tray_builder = TrayIconBuilder::new().tooltip("v2rayN Widget").menu(&menu);
+            let mut tray_builder = TrayIconBuilder::new().tooltip("Proxy Client Widget").menu(&menu);
             if let Some(icon) = app.default_window_icon().cloned() {
                 tray_builder = tray_builder.icon(icon);
             }
@@ -180,17 +181,17 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
-                            if let Ok(status) = commands::refresh_status(state).await {
+                            if let Ok(status) = client_commands::refresh_selected_client(state).await {
                                 info!(?status.connection_state, "refresh from tray succeeded");
                             }
                         });
                     }
-                    "open_v2rayn" => {
+                    "open_client" => {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
-                            if let Err(error) = commands::open_v2rayn(state).await {
-                                error!(?error, "open_v2rayn from tray failed");
+                            if let Err(error) = client_commands::open_selected_client(state).await {
+                                error!(?error, "open selected client from tray failed");
                             }
                         });
                     }
@@ -286,6 +287,17 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            client_commands::get_client_catalog,
+            client_commands::get_selected_client,
+            client_commands::select_client,
+            client_commands::refresh_selected_client,
+            client_commands::refresh_selected_client_background,
+            client_commands::refresh_selected_client_startup,
+            client_commands::refresh_selected_client_post_route,
+            client_commands::toggle_selected_client,
+            client_commands::list_selected_client_items,
+            client_commands::select_client_item,
+            client_commands::open_selected_client,
             commands::get_status,
             commands::refresh_status,
             commands::refresh_status_post_route,
@@ -319,4 +331,3 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

@@ -175,10 +175,7 @@ pub async fn refresh(
     let last_event = if !process.running {
         Some("Happ process is not running".to_owned())
     } else if let Some(snapshot) = &ui {
-        Some(format!(
-            "{}; transport={:?}",
-            snapshot.note, transport_mode
-        ))
+        Some(format!("{}; transport={:?}", snapshot.note, transport_mode))
     } else {
         Some(
             "Happ process detected; experimental UI Automation is disabled in Happ setup"
@@ -232,8 +229,7 @@ pub fn diagnostics(settings: &AppSettings) -> ClientDiagnostics {
         client_id: ProxyClientId::Happ,
         application_running: process.running,
         process_id: process.pid,
-        executable_path: detect_executable(settings)
-            .map(|path| path.to_string_lossy().to_string()),
+        executable_path: detect_executable(settings).map(|path| path.to_string_lossy().to_string()),
         window_found: ui.window_found,
         window_title: ui.window_title,
         connection_state: if process.running {
@@ -365,9 +361,6 @@ mod tests {
         enabled_settings.happ_allow_ui_automation = true;
         let enabled = descriptor(&enabled_settings).capabilities;
         assert_eq!(enabled.toggle_connection, CapabilityState::Experimental);
-        assert_eq!(
-            enabled.read_connection_state,
-            CapabilityState::Experimental
-        );
+        assert_eq!(enabled.read_connection_state, CapabilityState::Experimental);
     }
 }

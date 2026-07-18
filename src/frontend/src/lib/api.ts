@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getAllWindows } from "@tauri-apps/api/window";
 import type {
   AppSettings,
   ClientDescriptor,
+  ClientDiagnostics,
   DashboardStatus,
   DebugRuntimeSnapshot,
   LocaleInfo,
@@ -20,6 +22,14 @@ export async function getSelectedClient(): Promise<ClientDescriptor> {
   return invoke<ClientDescriptor>("get_selected_client");
 }
 
+export async function getSelectedClientDiagnostics(): Promise<ClientDiagnostics> {
+  return invoke<ClientDiagnostics>("get_selected_client_diagnostics");
+}
+
+export async function getHappDiagnostics(): Promise<ClientDiagnostics> {
+  return invoke<ClientDiagnostics>("get_happ_diagnostics");
+}
+
 export async function selectClient(clientId: ProxyClientId): Promise<AppSettings> {
   return invoke<AppSettings>("select_client", { clientId });
 }
@@ -30,6 +40,17 @@ export async function detectHappPath(): Promise<string | null> {
 
 export async function validateHappPath(path: string): Promise<PathValidation> {
   return invoke<PathValidation>("validate_happ_path", { path });
+}
+
+export async function openHappSetupWindow(): Promise<void> {
+  const windows = await getAllWindows();
+  const target = windows.find((window) => window.label === "happ-setup");
+  if (!target) {
+    throw new Error("Happ setup window is not registered");
+  }
+  await target.show();
+  await target.unminimize();
+  await target.setFocus();
 }
 
 export async function refreshSelectedClient(): Promise<DashboardStatus> {

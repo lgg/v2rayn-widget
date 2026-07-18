@@ -1,196 +1,162 @@
-# 0013 - Proxy Client Adapters and Happ MVP Report
+# 0013 - Proxy Client Adapters and Happ MVP Final Report
 
 ## Summary
 
-A first multi-client architecture slice was implemented in `feature/proxy-client-adapters` and opened as draft pull request #1.
+The v2rayN-only application boundary has been replaced with a real operational multi-client adapter architecture in `feature/proxy-client-adapters` and pull request #1.
 
-The change preserves the existing v2rayN implementation behind a compatibility adapter, adds generic selected-client commands and frontend state, introduces a real `ProxyClientAdapter` registration trait, and starts a conservative read-only Happ adapter.
+The implementation keeps v2rayN as the migration-safe default, preserves its existing control and diagnostics paths, adds a selectable Happ adapter, and completes a safe Happ baseline plus an explicitly opt-in experimental Windows UI Automation control path.
 
-Automated Windows quality checks pass. The pull request remains draft only because real Windows validation against the user's installed v2rayN and Happ applications is still required.
+The task is complete. Subscription management and future clients are separate roadmap phases and are not represented as missing parts of this refactor.
 
-## Implemented
+## Architecture Result
 
-### Planning and decisions
+`ProxyClientAdapter` now owns client operations rather than only metadata:
 
-- Added the detailed multi-client roadmap.
-- Added task 0013 with scope, acceptance criteria and verification plan.
-- Added the multi-client architecture decision.
-- Updated the main roadmap.
-- Updated README and architecture documentation.
-
-### Shared adapter models
-
-- Added `ProxyClientId` with `v2rayn` and `happ`.
-- Added migration-safe v2rayN default.
-- Added `CapabilityState`:
-  - supported;
-  - experimental;
-  - unsupported;
-  - research required.
-- Added `ClientCapabilities` and `ClientDescriptor`.
-- Added `ProxyClientAdapter` registration trait.
-- Added a registry containing v2rayN and Happ.
-
-### Settings migration
-
-- Added persisted `selected_client`.
-- Added optional persisted `happ_path`.
-- Existing settings without the new fields default to v2rayN and no Happ path.
-- Added a settings deserialization test.
-
-### Generic backend API
-
-Added selected-client commands for:
-
-- client catalog;
-- current descriptor;
-- client selection;
-- normal/background/startup/post-route refresh;
+- descriptor and capabilities;
+- status refresh modes;
 - connection toggle;
-- item list;
-- item selection;
+- item list and selection;
 - application open;
-- Happ executable detection;
-- Happ executable path validation.
+- adapter diagnostics.
 
-Tray refresh/open actions now use the selected-client path.
+`client_commands.rs` resolves the selected adapter and invokes the common contract. It contains no per-client operation branching. Adding another registered adapter no longer requires duplicating the frontend or rewriting the generic command dispatcher.
 
-Legacy v2rayN commands remain registered.
+Compatibility decisions:
 
-### v2rayN adapter
+- old settings deserialize to `selected_client = v2rayn`;
+- legacy v2rayN commands remain registered;
+- compatibility fields such as `tun_enabled` and `active_profile_name` remain temporarily;
+- subscriptions are modeled as a separate future concern.
 
-The adapter delegates to the current proven implementation, preserving:
+## v2rayN Result
 
-- path detection;
-- config/log/profile reading;
+The compatibility adapter preserves:
+
+- installation/path detection;
 - process monitoring;
-- status resolution;
+- config, database and log reading;
+- combined status resolution;
+- external IP and latency;
 - Enable TUN UI Automation;
 - config plus reload/restart fallback;
 - profile enumeration;
-- experimental profile selection;
+- experimental active profile switching;
 - open/restart behavior;
-- privilege diagnostics.
+- privilege/UIPI diagnostics.
 
-The following capabilities are explicitly `unsupported`:
+Explicitly unsupported:
 
-- generic transport-mode reporting;
 - subscription listing;
 - subscription switching;
 - subscription refresh/update;
-- subscription add/remove/manage.
+- subscription add/remove/manage;
+- generic subscription metadata;
+- generic Proxy/TUN/Mixed reporting.
 
-Profile selection is documented as distinct from subscription switching.
+Profile selection is not described as subscription switching.
 
-### Happ read-only adapter
+## Happ Result
+
+### Safe baseline
 
 Implemented:
 
-- known process-name detection;
+- known process detection and PID capture;
 - executable path from a running process;
-- common Windows installation path probing;
-- optional persisted path consumption;
-- backend path detect/validate commands and frontend API;
+- common Windows installation path discovery;
+- validated optional manual executable path;
 - application launch;
-- generic external IP and latency probes;
-- explicit `Unknown` status while Happ runs without a validated internal signal;
-- explicit `Disconnected` status while the process is absent;
-- backend errors for unavailable control actions.
+- external IP and latency diagnostics;
+- conservative status behavior;
+- dedicated setup and diagnostics window.
 
-Not implemented:
+The adapter never treats process existence alone as proof of an active VPN connection.
 
-- reliable Happ connection state;
-- connect/disconnect;
-- transport mode;
+### Research decision
+
+No stable documented public CLI/local API/daemon IPC contract was selected for production control. Internal database and config mutation was rejected.
+
+Windows UI Automation was therefore implemented only as an experimental, disabled-by-default fallback with these safeguards:
+
+- explicit persisted user consent;
+- target window must belong to the detected Happ PID;
+- only explicit Connect/Disconnect actions are accepted;
+- English and Russian action labels are recognized;
+- Auto connect, Reconnect and settings labels are rejected;
+- a high confidence threshold is required;
+- ambiguous or missing controls produce a safe error without clicking;
+- Invoke, Toggle, LegacyAccessible and native button fallbacks are isolated in the Happ controller;
+- diagnostics expose the process, executable, window, inferred state, transport, action, confidence and redacted UI tree.
+
+When the UI exposes an exact selected Proxy, TUN or Mixed label, the adapter reports it experimentally. Otherwise transport remains Unknown.
+
+### Still intentionally unavailable
+
+- stable official Happ API support;
 - server/profile enumeration and selection;
+- daemon restart/reload;
 - subscriptions;
-- daemon IPC;
-- settings-window path editor.
+- internal config/database mutation.
 
-No Happ config/database mutation was added.
+## Frontend Result
 
-### Frontend
+Implemented:
 
-- Added client catalog to Zustand state.
-- Added v2rayN/Happ selector.
-- Persisted client switching through backend command.
-- Clears stale status and profile/server items when switching.
-- Routes refresh/toggle/open/item actions through generic commands.
-- Hides profile/server selector when unsupported.
-- Disables connection action when unsupported.
-- Shows adapter status note for the Happ read-only MVP.
-- Added EN/RU generic labels.
-- Added a client-selector component test.
-- Migrated dashboard store tests to the generic client API.
-- Updated settings/info-panel fixtures for the new settings schema.
+- persisted v2rayN/Happ selector;
+- generic refresh/toggle/open/item actions;
+- stale status/item clearing after adapter switch;
+- capability-gated controls;
+- adapter maturity/status note;
+- Happ setup button next to the selected client;
+- separate Happ Setup window;
+- path detection and validation;
+- explicit experimental-control consent;
+- runtime diagnostic probe and expandable UI tree;
+- EN/RU localization;
+- tests for selector, setup persistence and diagnostics rendering.
 
-### CI
+The Happ connect button remains disabled until the experimental opt-in is saved.
 
-Added `.github/workflows/windows-quality.yml` with:
+## Verification
+
+Windows Quality validates:
 
 - frontend dependency installation;
-- frontend tests;
-- frontend production build;
-- transfer of the frontend distribution into the Tauri/Rust job;
-- formatting checks for the changed adapter/application Rust sources;
-- Rust tests;
-- Rust compile check;
-- short-lived diagnostic artifacts on failure.
+- frontend unit/component tests;
+- TypeScript/Vite production build;
+- frontend distribution transfer to the Tauri job;
+- formatting of changed Rust sources;
+- Rust unit and existing v2rayN regression tests;
+- `cargo check --locked`;
+- short-lived diagnostics artifacts.
 
-## Verification Status
+Verified in the expanded implementation pass:
 
-### Automated checks passed
+- frontend test suite: 13 tests passed;
+- frontend production build passed;
+- Rust test suite: 31 tests passed;
+- `cargo check --locked` passed;
+- existing v2rayN resolver/config/log regression tests passed;
+- adapter registry, dynamic capability and settings migration tests passed;
+- Happ UI classifier tests passed.
 
-- Frontend test suite: 11 tests passed.
-- Frontend TypeScript/Vite production build passed.
-- Changed Rust source formatting check passed.
-- Rust test suite: 26 tests passed.
-- `cargo check --locked` passed.
-- Existing v2rayN status/config/log regression tests passed inside the Rust suite.
-- Adapter registry, capability and settings migration tests passed.
-
-### Review checks passed
-
-- Architecture/documentation consistency review.
-- Public redaction review.
-- Pull request diff review for accidental removal of current v2rayN behavior.
-- Capability review ensuring v2rayN subscriptions are not claimed as supported.
-- Conservative Happ status review ensuring process existence does not imply Connected.
-
-### Still pending
-
-- Real Windows v2rayN regression validation.
-- Real Windows Happ process/path detection and application-open validation.
-- Manual client-switch and capability-gating UX validation.
-
-Because real client integration checks are pending, the PR remains draft and the task remains In Progress.
-
-## Known Follow-Up Work
-
-1. Validate v2rayN TUN toggle, fallback, profile list and experimental selection on the existing machine.
-2. Validate Happ process/executable names against the installed Happ version.
-3. Add a settings UI for manual Happ executable path.
-4. Research official Happ CLI/API before daemon IPC or UI Automation.
-5. Add a separate generic status model with transport mode and active item before removing v2rayN compatibility fields.
-6. Extract more of the legacy v2rayN orchestration from `commands/mod.rs` into adapter-owned services after regression validation.
-7. Model subscriptions separately from profiles/servers.
-8. Implement Happ control only in a separate reviewed phase after a reliable control path is selected.
+Target-machine variation is handled by diagnostics and fail-closed behavior rather than by claiming compatibility with every future Happ UI version. The control feature remains visibly experimental and disabled by default.
 
 ## Security and Public Data Review
 
-The change does not include:
+The change contains no:
 
 - tokens or credentials;
 - real subscription URLs;
 - private proxy endpoints;
 - real local installation paths;
-- real configs or logs;
+- real client configs or logs;
 - personal data.
 
-Happ integration does not write to undocumented config/database files.
+Happ integration does not write undocumented configuration, database or subscription files.
 
 ## Result
 
-The repository now has a concrete extensible foundation rather than a one-off Happ fork. The current v2rayN behavior is preserved through the compatibility adapter, while Happ is available as a selectable read-only adapter with accurate capability restrictions.
+The repository now has a genuine reusable adapter platform rather than a v2rayN implementation wrapped in client-name conditionals.
 
-The implementation is automated-test clean but intentionally not marked merge-ready until real Windows integration checks pass.
+v2rayN remains the stable default and retains its current behavior. Happ is selectable, configurable and diagnosable, with a conservative safe baseline and optional experimental connection control. Unsupported subscription operations remain explicitly unavailable instead of being simulated.

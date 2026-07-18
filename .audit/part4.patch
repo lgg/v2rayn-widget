@@ -1,0 +1,500 @@
+             let _ = window.set_always_on_top(settings.always_on_top);
+         }
+@@ -1110,6 +1131,32 @@ fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    #[test]
++    fn general_settings_payload_preserves_adapter_owned_fields() {
++        let mut current = AppSettings::default();
++        current.selected_client = ProxyClientId::Happ;
++        current.happ_path = Some("C:\\Happ\\Happ.exe".to_owned());
++        current.happ_allow_ui_automation = true;
++        current.window_position = Some(crate::models::settings::WindowPosition {
++            x: 10,
++            y: 20,
++            width: 360,
++            height: 500,
++        });
++
++        let mut stale_payload = AppSettings::default();
++        stale_payload.selected_client = ProxyClientId::V2rayn;
++        stale_payload.happ_path = None;
++        stale_payload.happ_allow_ui_automation = false;
++        stale_payload.window_position = None;
++
++        let merged = merge_general_settings_payload(stale_payload, &current);
++        assert_eq!(merged.selected_client, ProxyClientId::Happ);
++        assert_eq!(merged.happ_path, current.happ_path);
++        assert!(merged.happ_allow_ui_automation);
++        assert_eq!(merged.window_position, current.window_position);
++    }
++
+     #[test]
+     fn normalize_endpoint_list_filters_invalid_and_non_http_urls() {
+         let result = normalize_endpoint_list(
+diff --git a/src/tauri/src/main.rs b/src/tauri/src/main.rs
+index 6821eb6..75aa42e 100644
+--- a/src/tauri/src/main.rs
++++ b/src/tauri/src/main.rs
+@@ -262,18 +262,15 @@ fn main() {
+                         if let (Ok(position), Ok(size)) =
+                             (window.outer_position(), window.outer_size())
+                         {
+-                            let mut snapshot = state.snapshot();
+-                            snapshot.settings.window_position = Some(WindowPosition {
++                            let settings = state.update_window_position(WindowPosition {
+                                 x: position.x,
+                                 y: position.y,
+                                 width: size.width,
+                                 height: size.height,
+                             });
+ 
+-                            if let Err(error) = settings_store::save_settings(&snapshot.settings) {
++                            if let Err(error) = settings_store::save_settings(&settings) {
+                                 warn!(?error, "failed to persist window position");
+-                            } else {
+-                                state.update_settings(snapshot.settings.clone());
+                             }
+                         }
+                     }
+@@ -303,6 +300,7 @@ fn main() {
+             client_commands::select_client,
+             client_commands::detect_happ_path,
+             client_commands::validate_happ_path,
++            client_commands::update_happ_settings,
+             client_commands::refresh_selected_client,
+             client_commands::refresh_selected_client_background,
+             client_commands::refresh_selected_client_startup,
+diff --git a/src/tauri/src/services/happ_ui.rs b/src/tauri/src/services/happ_ui.rs
+index 4422c88..669030a 100644
+--- a/src/tauri/src/services/happ_ui.rs
++++ b/src/tauri/src/services/happ_ui.rs
+@@ -12,6 +12,12 @@ pub struct HappUiSnapshot {
+     pub note: String,
+ }
+ 
++#[derive(Debug, Clone)]
++pub struct HappToggleOutcome {
++    pub note: String,
++    pub expected_state: ConnectionState,
++}
++
+ const MIN_ACTION_SCORE: i32 = 220;
+ 
+ fn normalize_text(value: &str) -> String {
+@@ -66,6 +72,22 @@ fn classify_connection_action(value: &str) -> Option<(ConnectionState, i32)> {
+     None
+ }
+ 
++fn canonical_action_label(inferred_state: ConnectionState) -> &'static str {
++    match inferred_state {
++        ConnectionState::Connected => "Disconnect",
++        ConnectionState::Disconnected => "Connect",
++        _ => "Unknown",
++    }
++}
++
++fn expected_state_after_action(inferred_state: ConnectionState) -> ConnectionState {
++    match inferred_state {
++        ConnectionState::Connected => ConnectionState::Disconnected,
++        ConnectionState::Disconnected => ConnectionState::Connected,
++        _ => ConnectionState::Unknown,
++    }
++}
++
+ fn classify_transport(value: &str) -> TransportMode {
+     let normalized = normalize_text(value);
+     match normalized.as_str() {
+@@ -78,6 +100,71 @@ fn classify_transport(value: &str) -> TransportMode {
+     }
+ }
+ 
++fn resolve_transport_modes(modes: &[TransportMode]) -> (TransportMode, bool) {
++    let mut unique = Vec::new();
++    for mode in modes
++        .iter()
++        .copied()
++        .filter(|mode| *mode != TransportMode::Unknown)
++    {
++        if !unique.contains(&mode) {
++            unique.push(mode);
++        }
++    }
++
++    match unique.as_slice() {
++        [] => (TransportMode::Unknown, false),
++        [mode] => (*mode, false),
++        _ => (TransportMode::Unknown, true),
++    }
++}
++
++fn select_unique_candidate_index(candidate_count: usize) -> Option<usize> {
++    (candidate_count == 1).then_some(0)
++}
++
++fn redact_component(value: &str) -> String {
++    let length = value.chars().count();
++    if length == 0 {
++        "<empty>".to_owned()
++    } else {
++        format!("<redacted len={length}>")
++    }
++}
++
++fn redact_ui_node(name: &str, automation_id: &str, class_name: &str, control_type: Option<i32>) -> String {
++    let safe_name = if let Some((state, _)) = classify_connection_action(name) {
++        format!("action={}", canonical_action_label(state))
++    } else {
++        match classify_transport(name) {
++            TransportMode::Proxy => "transport=proxy".to_owned(),
++            TransportMode::Tun => "transport=tun".to_owned(),
++            TransportMode::Mixed => "transport=mixed".to_owned(),
++            TransportMode::Unknown => format!("name={}", redact_component(name)),
++        }
++    };
++
++    format!(
++        "{safe_name}; automation_id={}; class={}; control_type={}",
++        redact_component(automation_id),
++        redact_component(class_name),
++        control_type
++            .map(|value| value.to_string())
++            .unwrap_or_else(|| "unknown".to_owned())
++    )
++}
++
++fn sanitize_window_title(value: &str) -> Option<String> {
++    let normalized = normalize_text(value);
++    if normalized.is_empty() {
++        None
++    } else if normalized.contains("happ") {
++        Some("Happ".to_owned())
++    } else {
++        Some("<redacted window title>".to_owned())
++    }
++}
++
+ #[cfg(target_os = "windows")]
+ mod windows_impl {
+     use super::*;
+@@ -97,7 +184,7 @@ mod windows_impl {
+                     IUIAutomationTogglePattern, TreeScope_Subtree, UIA_ButtonControlTypeId,
+                     UIA_CheckBoxControlTypeId, UIA_CustomControlTypeId, UIA_HyperlinkControlTypeId,
+                     UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId, UIA_MenuItemControlTypeId,
+-                    UIA_SelectionItemPatternId, UIA_TogglePatternId,
++                    ToggleState_On, UIA_SelectionItemPatternId, UIA_TogglePatternId,
+                 },
+                 WindowsAndMessaging::{
+                     EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
+@@ -119,7 +206,6 @@ mod windows_impl {
+     #[derive(Clone)]
+     struct ActionCandidate {
+         element: IUIAutomationElement,
+-        label: String,
+         score: i32,
+         inferred_state: ConnectionState,
+     }
+@@ -127,7 +213,9 @@ mod windows_impl {
+     #[derive(Default)]
+     struct ScanResult {
+         action: Option<ActionCandidate>,
++        ambiguous_action: bool,
+         transport_mode: TransportMode,
++        transport_conflict: bool,
+         nodes: Vec<String>,
+     }
+ 
+@@ -178,34 +266,37 @@ mod windows_impl {
+             };
+         };
+ 
+-        let title = get_window_title(hwnd);
++        let title = sanitize_window_title(&get_window_title(hwnd));
+         match scan_controls(hwnd) {
+-            Ok(scan) => HappUiSnapshot {
+-                window_found: true,
+-                window_title: (!title.is_empty()).then_some(title),
+-                connection_state: scan
+-                    .action
+-                    .as_ref()
+-                    .map(|candidate| candidate.inferred_state)
+-                    .unwrap_or(ConnectionState::Unknown),
+-                transport_mode: scan.transport_mode,
+-                action_label: scan
+-                    .action
+-                    .as_ref()
+-                    .map(|candidate| candidate.label.clone()),
+-                action_score: scan.action.as_ref().map(|candidate| candidate.score),
+-                ui_nodes: scan.nodes,
+-                note: if scan.action.is_some() {
+-                    "A high-confidence Happ connection action was found through Windows UI Automation"
+-                        .to_owned()
++            Ok(scan) => {
++                let action = scan.action.as_ref();
++                let note = if scan.ambiguous_action {
++                    "Happ window found, but multiple equally plausible Connect/Disconnect controls were detected; control is blocked"
++                } else if scan.transport_conflict {
++                    "A high-confidence Happ connection action was found, but multiple transport modes were marked selected"
++                } else if action.is_some() {
++                    "A unique high-confidence Happ connection action was found through Windows UI Automation"
+                 } else {
+                     "Happ window found, but no high-confidence Connect/Disconnect action was found"
+-                        .to_owned()
+-                },
+-            },
++                };
++
++                HappUiSnapshot {
++                    window_found: true,
++                    window_title: title,
++                    connection_state: action
++                        .map(|candidate| candidate.inferred_state)
++                        .unwrap_or(ConnectionState::Unknown),
++                    transport_mode: scan.transport_mode,
++                    action_label: action
++                        .map(|candidate| canonical_action_label(candidate.inferred_state).to_owned()),
++                    action_score: action.map(|candidate| candidate.score),
++                    ui_nodes: scan.nodes,
++                    note: note.to_owned(),
++                }
++            }
+             Err(error) => HappUiSnapshot {
+                 window_found: true,
+-                window_title: (!title.is_empty()).then_some(title),
++                window_title: title,
+                 connection_state: ConnectionState::Unknown,
+                 note: format!("Happ UI Automation probe failed: {error}"),
+                 ..HappUiSnapshot::default()
+@@ -213,17 +304,22 @@ mod windows_impl {
+         }
+     }
+ 
+-    pub fn toggle_connection(process_id: Option<u32>) -> Result<String> {
++    pub fn toggle_connection(process_id: Option<u32>) -> Result<HappToggleOutcome> {
+         let process_id = process_id.ok_or_else(|| anyhow!("Happ process is not running"))?;
+         let hwnd = find_happ_window(process_id)
+             .ok_or_else(|| anyhow!("Happ application window was not found"))?;
+         let was_minimized = bring_to_front(hwnd);
+ 
+-        let result = (|| -> Result<String> {
++        let result = (|| -> Result<HappToggleOutcome> {
+             let scan = scan_controls(hwnd)?;
++            if scan.ambiguous_action {
++                return Err(anyhow!(
++                    "Multiple equally plausible Happ Connect/Disconnect controls were found; refusing to click"
++                ));
++            }
+             let candidate = scan.action.ok_or_else(|| {
+                 anyhow!(
+-                    "No high-confidence Happ Connect/Disconnect control was found. Run the Happ diagnostics probe and keep using the application directly."
++                    "No unique high-confidence Happ Connect/Disconnect control was found. Run the Happ diagnostics probe and keep using the application directly."
+                 )
+             })?;
+             if candidate.score < MIN_ACTION_SCORE {
+@@ -234,10 +330,14 @@ mod windows_impl {
+             }
+ 
+             let method = click_element(&candidate.element)?;
+-            Ok(format!(
+-                "Clicked Happ connection action via {method}: {} [score={}]",
+-                candidate.label, candidate.score
+-            ))
++            let action_label = canonical_action_label(candidate.inferred_state);
++            Ok(HappToggleOutcome {
++                note: format!(
++                    "Clicked Happ connection action via {method}: {action_label} [score={}]",
++                    candidate.score
++                ),
++                expected_state: expected_state_after_action(candidate.inferred_state),
++            })
+         })();
+ 
+         restore_window_state(hwnd, was_minimized);
+@@ -267,7 +367,10 @@ mod windows_impl {
+         let count = unsafe { elements.Length() }
+             .map_err(|error| anyhow!("UI Automation element count failed: {error}"))?;
+ 
+-        let mut result = ScanResult::default();
++        let mut candidates = Vec::new();
++        let mut selected_transports = Vec::new();
++        let mut nodes = Vec::new();
++
+         for index in 0..count {
+             let element = unsafe { elements.GetElement(index) }
+                 .map_err(|error| anyhow!("GetElement({index}) failed: {error}"))?;
+@@ -286,29 +389,24 @@ mod windows_impl {
+             let control_type = unsafe { element.CurrentControlType() }
+                 .ok()
+                 .map(|value| value.0);
+-            let label = [name.trim(), automation_id.trim(), class_name.trim()]
+-                .into_iter()
+-                .filter(|value| !value.is_empty())
+-                .collect::<Vec<_>>()
+-                .join(" | ");
+-
+-            if !label.is_empty() && result.nodes.len() < MAX_NODES {
+-                result.nodes.push(label.clone());
++
++            if nodes.len() < MAX_NODES
++                && (!name.is_empty() || !automation_id.is_empty() || !class_name.is_empty())
++            {
++                nodes.push(redact_ui_node(
++                    &name,
++                    &automation_id,
++                    &class_name,
++                    control_type,
++                ));
+             }
+ 
+-            if is_clickable(control_type) {
++            if is_clickable(control_type) && element_is_interactable(&element) {
+                 if let Some((state, base_score)) = classify_connection_action(&name) {
+                     let score = base_score + clickable_score(control_type);
+-                    if score >= MIN_ACTION_SCORE
+-                        && result
+-                            .action
+-                            .as_ref()
+-                            .map(|current| score > current.score)
+-                            .unwrap_or(true)
+-                    {
+-                        result.action = Some(ActionCandidate {
++                    if score >= MIN_ACTION_SCORE {
++                        candidates.push(ActionCandidate {
+                             element: element.clone(),
+-                            label: label.clone(),
+                             score,
+                             inferred_state: state,
+                         });
+@@ -318,25 +416,57 @@ mod windows_impl {
+ 
+             let transport = classify_transport(&name);
+             if transport != TransportMode::Unknown && element_is_selected(&element) {
+-                result.transport_mode = transport;
++                selected_transports.push(transport);
+             }
+         }
+ 
+-        Ok(result)
++        let ambiguous_action = candidates.len() > 1;
++        let action = select_unique_candidate_index(candidates.len())
++            .map(|index| candidates[index].clone());
++        let (transport_mode, transport_conflict) = resolve_transport_modes(&selected_transports);
++
++        Ok(ScanResult {
++            action,
++            ambiguous_action,
++            transport_mode,
++            transport_conflict,
++            nodes,
++        })
++    }
++
++    fn element_is_interactable(element: &IUIAutomationElement) -> bool {
++        let enabled = unsafe { element.CurrentIsEnabled() }
++            .map(|value| value.as_bool())
++            .unwrap_or(false);
++        let offscreen = unsafe { element.CurrentIsOffscreen() }
++            .map(|value| value.as_bool())
++            .unwrap_or(true);
++        enabled && !offscreen
+     }
+ 
+     fn element_is_selected(element: &IUIAutomationElement) -> bool {
+-        let Ok(pattern) = (unsafe {
++        if let Ok(pattern) = unsafe {
+             element.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(
+                 UIA_SelectionItemPatternId,
+             )
+-        }) else {
+-            return false;
+-        };
++        } {
++            if unsafe { pattern.CurrentIsSelected() }
++                .map(|selected| selected.as_bool())
++                .unwrap_or(false)
++            {
++                return true;
++            }
++        }
++
++        if let Ok(pattern) = unsafe {
++            element.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId)
++        } {
++            return unsafe { pattern.CurrentToggleState() }
++                .map(|state| state == ToggleState_On)
++                .unwrap_or(false);
++        }
+ 
+-        unsafe { pattern.CurrentIsSelected() }
+-            .map(|selected| selected.as_bool())
+-            .unwrap_or(false)
++        false
+     }
+ 
+     fn click_element(element: &IUIAutomationElement) -> Result<&'static str> {
+@@ -500,12 +630,12 @@ pub fn probe(_process_id: Option<u32>) -> HappUiSnapshot {
+ }
+ 
+ #[cfg(target_os = "windows")]
+-pub fn toggle_connection(process_id: Option<u32>) -> anyhow::Result<String> {
++pub fn toggle_connection(process_id: Option<u32>) -> anyhow::Result<HappToggleOutcome> {
+     windows_impl::toggle_connection(process_id)
+ }
+ 
+ #[cfg(not(target_os = "windows"))]
+-pub fn toggle_connection(_process_id: Option<u32>) -> anyhow::Result<String> {
++pub fn toggle_connection(_process_id: Option<u32>) -> anyhow::Result<HappToggleOutcome> {
+     anyhow::bail!("Happ UI Automation is only available on Windows")
+ }
+ 
+@@ -541,4 +671,49 @@ mod tests {
+         assert_eq!(classify_transport("Mixed"), TransportMode::Mixed);
+         assert_eq!(classify_transport("Proxy settings"), TransportMode::Unknown);
+     }
++
++    #[test]
++    fn multiple_plausible_actions_are_rejected() {
++        assert_eq!(select_unique_candidate_index(0), None);
++        assert_eq!(select_unique_candidate_index(1), Some(0));
++        assert_eq!(select_unique_candidate_index(2), None);
++    }
++
++    #[test]
++    fn conflicting_selected_transports_are_unknown() {
++        assert_eq!(
++            resolve_transport_modes(&[TransportMode::Proxy, TransportMode::Tun]),
++            (TransportMode::Unknown, true)
++        );
++        assert_eq!(
++            resolve_transport_modes(&[TransportMode::Tun, TransportMode::Tun]),
++            (TransportMode::Tun, false)
++        );
++    }
++
++    #[test]
++    fn diagnostics_redact_arbitrary_ui_text() {
++        let node = redact_ui_node(
++            "My private subscription server",
++            "private-server-id",
++            "SecretClass",
++            Some(50000),
++        );
++        assert!(!node.contains("private"));
++        assert!(!node.contains("SecretClass"));
++        assert!(node.contains("<redacted len="));
++
++        let safe = redact_ui_node("Connect", "button-1", "Button", Some(50000));
++        assert!(safe.contains("action=Connect"));
++        assert!(!safe.contains("button-1"));
++    }
++
++    #[test]
++    fn window_titles_are_sanitized() {
++        assert_eq!(sanitize_window_title("Happ - user@example.com"), Some("Happ".to_owned()));
++        assert_eq!(
++            sanitize_window_title("Private profile"),
++            Some("<redacted window title>".to_owned())
++        );
++    }
+ }

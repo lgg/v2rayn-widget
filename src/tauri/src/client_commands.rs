@@ -190,7 +190,9 @@ async fn refresh_with_kind(
     let snapshot = state.snapshot();
     let client_id = snapshot.settings.selected_client;
     let client_epoch = snapshot.client_epoch;
-    let result = adapters::adapter(client_id).refresh(state.clone(), kind).await?;
+    let result = adapters::adapter(client_id)
+        .refresh(state.clone(), kind)
+        .await?;
 
     if state.context_matches(client_id, client_epoch) {
         Ok(result)
@@ -246,7 +248,9 @@ pub async fn list_selected_client_items(
 ) -> Result<Vec<ProfileSummary>, String> {
     let snapshot = state.snapshot();
     let client_id = snapshot.settings.selected_client;
-    let result = adapters::adapter(client_id).list_items(state.clone()).await?;
+    let result = adapters::adapter(client_id)
+        .list_items(state.clone())
+        .await?;
 
     if state.context_matches(client_id, snapshot.client_epoch) {
         Ok(result)

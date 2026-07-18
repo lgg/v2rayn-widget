@@ -231,7 +231,9 @@ pub async fn toggle(settings: &AppSettings) -> Result<DashboardStatus, String> {
     }
 
     if !process.running {
-        return Err("HAPP_START_TIMEOUT: Happ was launched but its process was not detected".to_owned());
+        return Err(
+            "HAPP_START_TIMEOUT: Happ was launched but its process was not detected".to_owned(),
+        );
     }
 
     let outcome = happ_ui::toggle_connection(process.pid).map_err(|error| error.to_string())?;
@@ -308,7 +310,11 @@ pub fn unsupported_control_error(action: &str) -> String {
 }
 
 fn process_candidate_rank(name: &str, executable_is_valid: bool, pid: u32) -> u64 {
-    let executable_score = if executable_is_valid { 1_000_000_u64 } else { 0 };
+    let executable_score = if executable_is_valid {
+        1_000_000_u64
+    } else {
+        0
+    };
     let name_score = if matches!(name, "happ.exe" | "happ") {
         100_000_u64
     } else {

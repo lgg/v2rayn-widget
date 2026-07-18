@@ -5,7 +5,9 @@ use std::{
     time::Duration,
 };
 
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, State, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, State, Url, WebviewUrl, WebviewWindowBuilder,
+};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -24,9 +26,7 @@ use crate::{
     services::{
         config_reader,
         health_check::{self, HealthCheckOptions},
-        log_reader,
-        privilege,
-        process_monitor,
+        log_reader, privilege, process_monitor,
         status_service::{self, StatusInputs},
         ui_controller,
     },
@@ -63,7 +63,9 @@ pub async fn refresh_status(state: State<'_, AppState>) -> Result<DashboardStatu
 }
 
 #[tauri::command]
-pub async fn refresh_status_post_route(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
+pub async fn refresh_status_post_route(
+    state: State<'_, AppState>,
+) -> Result<DashboardStatus, String> {
     let snapshot = state.snapshot();
 
     if snapshot.settings.mock_mode_enabled {
@@ -82,7 +84,9 @@ pub async fn refresh_status_post_route(state: State<'_, AppState>) -> Result<Das
     commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged)
 }
 #[tauri::command]
-pub async fn refresh_status_background(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
+pub async fn refresh_status_background(
+    state: State<'_, AppState>,
+) -> Result<DashboardStatus, String> {
     let snapshot = state.snapshot();
 
     if snapshot.settings.mock_mode_enabled {
@@ -108,7 +112,10 @@ pub async fn refresh_status_background(state: State<'_, AppState>) -> Result<Das
         let with_external_ip = refresh_status_from_settings(&snapshot.settings, true, true, false)
             .await
             .map_err(|error| {
-                error!(?error, "refresh_status_background profile-change external-ip refresh failed");
+                error!(
+                    ?error,
+                    "refresh_status_background profile-change external-ip refresh failed"
+                );
                 error.to_string()
             })?;
 
@@ -155,8 +162,8 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
     ensure_uipi_compatible_for_control()?;
 
     let allow_restart_fallback = snapshot.settings.allow_restart_fallback;
-    let base_path =
-        resolve_v2rayn_base_path(&snapshot.settings).ok_or_else(|| "v2rayN path not found".to_owned())?;
+    let base_path = resolve_v2rayn_base_path(&snapshot.settings)
+        .ok_or_else(|| "v2rayN path not found".to_owned())?;
 
     let before = config_reader::read_config(&base_path)
         .ok()
@@ -174,13 +181,19 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
 
     if need_fallback {
         if !allow_restart_fallback {
-            return Err("UI toggle did not apply and restart fallback is disabled in Settings".to_owned());
+            return Err(
+                "UI toggle did not apply and restart fallback is disabled in Settings".to_owned(),
+            );
         }
 
         if let Err(error) = &automation_result {
             warn!(?error, "UI toggle failed, using config fallback");
         } else {
-            warn!(?before, ?after_ui, "UI toggle did not change config state, using fallback");
+            warn!(
+                ?before,
+                ?after_ui,
+                "UI toggle did not change config state, using fallback"
+            );
         }
 
         let expected_enable_tun = config_reader::toggle_tun_mode(&base_path)
@@ -209,13 +222,17 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
                     }
                 }
                 Err(error) => {
-                    warn!(?error, "UI Reload is unavailable, using process restart fallback");
+                    warn!(
+                        ?error,
+                        "UI Reload is unavailable, using process restart fallback"
+                    );
                 }
             }
 
             if !reloaded_without_restart {
-                restart_v2rayn_process(&base_path)
-                    .map_err(|error| format!("toggle fallback changed config but restart failed: {error}"))?;
+                restart_v2rayn_process(&base_path).map_err(|error| {
+                    format!("toggle fallback changed config but restart failed: {error}")
+                })?;
                 tokio::time::sleep(Duration::from_millis(1200)).await;
             }
         }
@@ -278,11 +295,17 @@ pub async fn set_active_profile(
         .cloned()
         .ok_or_else(|| format!("Profile not found: {requested_profile_id}"))?;
 
-    if profile_name_matches(config_before.active_profile_name.as_deref(), &target_profile.name) {
+    if profile_name_matches(
+        config_before.active_profile_name.as_deref(),
+        &target_profile.name,
+    ) {
         let status = refresh_status_from_settings(&snapshot.settings, true, true, true)
             .await
             .map_err(|error| {
-                error!(?error, "status refresh after set_active_profile no-op failed");
+                error!(
+                    ?error,
+                    "status refresh after set_active_profile no-op failed"
+                );
                 error.to_string()
             })?;
 
@@ -321,7 +344,10 @@ pub async fn set_active_profile(
 
     if !applied_via_ui {
         if !allow_restart_fallback {
-            return Err("UI profile switch did not apply and restart fallback is disabled in Settings".to_owned());
+            return Err(
+                "UI profile switch did not apply and restart fallback is disabled in Settings"
+                    .to_owned(),
+            );
         }
 
         config_reader::set_active_profile(&base_path, &requested_profile_id).map_err(|error| {
@@ -517,8 +543,9 @@ pub async fn open_diagnostics_window(
         return Err("Diagnostics page is disabled".to_owned());
     }
 
-    let url = normalize_diagnostics_url(&settings.diagnostics_url)
-        .unwrap_or_else(|| Url::parse(&default_diagnostics_url()).expect("default diagnostics URL is valid"));
+    let url = normalize_diagnostics_url(&settings.diagnostics_url).unwrap_or_else(|| {
+        Url::parse(&default_diagnostics_url()).expect("default diagnostics URL is valid")
+    });
 
     if let Some(window) = app.get_webview_window("diagnostics") {
         window.navigate(url).map_err(|error| error.to_string())?;
@@ -744,7 +771,8 @@ pub async fn refresh_status_from_settings(
     };
 
     let check_latency = include_latency_probe && (settings.show_latency || force_full_probe);
-    let check_external_ip = include_external_ip_probe && (settings.show_external_ip || force_full_probe);
+    let check_external_ip =
+        include_external_ip_probe && (settings.show_external_ip || force_full_probe);
 
     let health_options = HealthCheckOptions {
         enable_external_ip: check_external_ip,
@@ -1010,14 +1038,15 @@ fn build_mock_status(
 ) -> DashboardStatus {
     let mock_profiles = mock_profiles();
 
-    let active_profile_name = profile_override.or_else(|| {
-        previous
-            .active_profile_name
-            .as_ref()
-            .filter(|name| mock_profiles.iter().any(|item| item.name == **name))
-            .cloned()
-    })
-    .or_else(|| mock_profiles.first().map(|item| item.name.clone()));
+    let active_profile_name = profile_override
+        .or_else(|| {
+            previous
+                .active_profile_name
+                .as_ref()
+                .filter(|name| mock_profiles.iter().any(|item| item.name == **name))
+                .cloned()
+        })
+        .or_else(|| mock_profiles.first().map(|item| item.name.clone()));
 
     let tun_enabled = tun_override.unwrap_or(previous.tun_enabled);
     let connection_state = if tun_enabled {
@@ -1052,8 +1081,10 @@ fn commit_client_status(
     if state.update_status_if_context(client_id, client_epoch, status.clone()) {
         Ok(status)
     } else {
-        Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running"
-            .to_owned())
+        Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running"
+                .to_owned(),
+        )
     }
 }
 
@@ -1228,4 +1259,3 @@ mod tests {
         assert!(normalize_diagnostics_url("javascript:alert(1)").is_none());
     }
 }
-

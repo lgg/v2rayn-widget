@@ -285,7 +285,7 @@ fn main() {
                         api.prevent_close();
                         let _ = window.hide();
                     }
-                },
+                }
                 _ => {}
             }
         })

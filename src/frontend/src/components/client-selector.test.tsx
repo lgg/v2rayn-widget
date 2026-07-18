@@ -83,6 +83,6 @@ describe("ClientSelector", () => {
       />
     );
 
-    expect(screen.getByRole("combobox", { name: "Proxy client" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Proxy client" }).hasAttribute("disabled")).toBe(true);
   });
 });

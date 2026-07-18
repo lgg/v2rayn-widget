@@ -1,14 +1,60 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
+  ClientDescriptor,
   DashboardStatus,
   DebugRuntimeSnapshot,
   LocaleInfo,
   PathValidation,
   ProfileSummary,
+  ProxyClientId,
   UiDebugReport,
   UiSettingsPatch
 } from "@/lib/types";
+
+export async function getClientCatalog(): Promise<ClientDescriptor[]> {
+  return invoke<ClientDescriptor[]>("get_client_catalog");
+}
+
+export async function getSelectedClient(): Promise<ClientDescriptor> {
+  return invoke<ClientDescriptor>("get_selected_client");
+}
+
+export async function selectClient(clientId: ProxyClientId): Promise<AppSettings> {
+  return invoke<AppSettings>("select_client", { clientId });
+}
+
+export async function refreshSelectedClient(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("refresh_selected_client");
+}
+
+export async function refreshSelectedClientBackground(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("refresh_selected_client_background");
+}
+
+export async function refreshSelectedClientStartup(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("refresh_selected_client_startup");
+}
+
+export async function refreshSelectedClientPostRoute(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("refresh_selected_client_post_route");
+}
+
+export async function toggleSelectedClient(): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("toggle_selected_client");
+}
+
+export async function listSelectedClientItems(): Promise<ProfileSummary[]> {
+  return invoke<ProfileSummary[]>("list_selected_client_items");
+}
+
+export async function selectClientItem(itemId: string): Promise<DashboardStatus> {
+  return invoke<DashboardStatus>("select_client_item", { itemId });
+}
+
+export async function openSelectedClient(): Promise<void> {
+  return invoke("open_selected_client");
+}
 
 export async function getStatus(): Promise<DashboardStatus> {
   return invoke<DashboardStatus>("get_status");
@@ -125,4 +171,3 @@ export async function exitApp(): Promise<void> {
 export async function setMainWindowHeight(height: number): Promise<void> {
   return invoke("set_main_window_height", { height });
 }
-

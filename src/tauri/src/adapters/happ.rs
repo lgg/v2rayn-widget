@@ -1,4 +1,7 @@
-use std::{path::{Path, PathBuf}, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use chrono::Utc;
 use sysinfo::{ProcessesToUpdate, System};
@@ -14,7 +17,12 @@ use crate::{
 };
 
 const HAPP_PROCESS_NAMES: &[&str] = &["happ.exe", "happ", "happ-desktop.exe", "happ-desktop"];
-const HAPP_EXECUTABLE_NAMES: &[&str] = &["Happ.exe", "happ.exe", "Happ Desktop.exe", "happ-desktop.exe"];
+const HAPP_EXECUTABLE_NAMES: &[&str] = &[
+    "Happ.exe",
+    "happ.exe",
+    "Happ Desktop.exe",
+    "happ-desktop.exe",
+];
 
 pub fn descriptor() -> ClientDescriptor {
     ClientDescriptor {
@@ -72,7 +80,11 @@ pub fn detect_executable(settings: &AppSettings) -> Option<PathBuf> {
         .happ_path
         .as_deref()
         .and_then(normalize_candidate)
-        .or_else(|| read_process_snapshot().executable.filter(|path| is_valid_happ_executable(path)))
+        .or_else(|| {
+            read_process_snapshot()
+                .executable
+                .filter(|path| is_valid_happ_executable(path))
+        })
         .or_else(detect_common_install_path)
 }
 
@@ -90,7 +102,8 @@ pub async fn refresh(
     };
 
     let check_latency = include_latency_probe && (settings.show_latency || force_full_probe);
-    let check_external_ip = include_external_ip_probe && (settings.show_external_ip || force_full_probe);
+    let check_external_ip =
+        include_external_ip_probe && (settings.show_external_ip || force_full_probe);
 
     let health_options = HealthCheckOptions {
         enable_external_ip: check_external_ip,
@@ -117,7 +130,10 @@ pub async fn refresh(
     };
 
     let last_event = if process.running {
-        Some("Happ process detected; reliable connection-state source is not implemented yet".to_owned())
+        Some(
+            "Happ process detected; reliable connection-state source is not implemented yet"
+                .to_owned(),
+        )
     } else {
         Some("Happ process is not running".to_owned())
     };
@@ -136,8 +152,9 @@ pub async fn refresh(
 }
 
 pub fn open(settings: &AppSettings) -> Result<(), String> {
-    let executable = detect_executable(settings)
-        .ok_or_else(|| "Happ executable not found. Start Happ once or configure happ_path.".to_owned())?;
+    let executable = detect_executable(settings).ok_or_else(|| {
+        "Happ executable not found. Start Happ once or configure happ_path.".to_owned()
+    })?;
 
     Command::new(&executable)
         .spawn()
@@ -157,7 +174,9 @@ pub fn unsupported_control_error(action: &str) -> String {
 }
 
 fn is_happ_process_name(name: &str) -> bool {
-    HAPP_PROCESS_NAMES.iter().any(|candidate| name == *candidate)
+    HAPP_PROCESS_NAMES
+        .iter()
+        .any(|candidate| name == *candidate)
 }
 
 fn normalize_candidate(value: &str) -> Option<PathBuf> {

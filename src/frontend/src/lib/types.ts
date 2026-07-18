@@ -14,6 +14,7 @@ export interface DashboardStatus {
 
 export type ProxyClientId = "v2rayn" | "happ";
 export type CapabilityState = "supported" | "experimental" | "unsupported" | "research_required";
+export type TransportMode = "unknown" | "proxy" | "tun" | "mixed";
 
 export interface ClientCapabilities {
   detect_application: CapabilityState;
@@ -37,6 +38,22 @@ export interface ClientDescriptor {
   maturity: string;
   status_note: string;
   capabilities: ClientCapabilities;
+}
+
+export interface ClientDiagnostics {
+  client_id: ProxyClientId;
+  application_running: boolean;
+  process_id: number | null;
+  executable_path: string | null;
+  window_found: boolean;
+  window_title: string | null;
+  connection_state: StatusLevel;
+  transport_mode: TransportMode;
+  control_source: string | null;
+  action_label: string | null;
+  action_score: number | null;
+  ui_nodes: string[];
+  note: string;
 }
 
 export type ThemeMode = "light" | "dark";
@@ -77,6 +94,7 @@ export interface AppSettings {
   v2rayn_path_mode: PathMode;
   v2rayn_path: string | null;
   happ_path: string | null;
+  happ_allow_ui_automation: boolean;
   window_position: WindowPosition | null;
 }
 

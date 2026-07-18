@@ -154,9 +154,7 @@ pub async fn refresh_selected_client_post_route(
 }
 
 #[tauri::command]
-pub async fn toggle_selected_client(
-    state: State<'_, AppState>,
-) -> Result<DashboardStatus, String> {
+pub async fn toggle_selected_client(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
     match state.snapshot().settings.selected_client {
         ProxyClientId::V2rayn => v2rayn::toggle(state).await,
         ProxyClientId::Happ => Err(happ::unsupported_control_error("toggle_connection")),

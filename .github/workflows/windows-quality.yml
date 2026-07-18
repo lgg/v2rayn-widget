@@ -1,52 +1,157 @@
-name: Apply Audited Rustfmt
+name: Windows Quality
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: apply-audited-rustfmt-${{ github.event.pull_request.number }}
+  group: windows-quality-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  format:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+  frontend:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout PR branch
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
 
-      - name: Set up Rustfmt
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        id: frontend_tests
+        continue-on-error: true
+        working-directory: src/frontend
+        shell: pwsh
+        run: |
+          npm test 2>&1 | Tee-Object -FilePath frontend-test-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
+
+      - name: Build frontend
+        id: frontend_build
+        continue-on-error: true
+        working-directory: src/frontend
+        shell: pwsh
+        run: |
+          npm run build 2>&1 | Tee-Object -FilePath frontend-build-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
+
+      - name: Upload frontend distribution
+        if: steps.frontend_build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/frontend/dist
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-diagnostics
+          path: |
+            src/frontend/frontend-test-output.txt
+            src/frontend/frontend-build-output.txt
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Fail when frontend checks failed
+        if: steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
+
+  rust:
+    needs: frontend
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download frontend distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/frontend/dist
+
+      - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
 
-      - name: Format audited Rust sources
+      - name: Check changed Rust formatting
+        id: rust_format
+        continue-on-error: true
         working-directory: src/tauri
         shell: pwsh
         run: |
-          rustfmt --edition 2021 --config skip_children=true src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/commands/mod.rs src/models/client.rs src/models/settings.rs src/models/status.rs src/services/config_reader.rs src/services/happ_ui.rs src/services/ui_controller.rs src/state/app_state.rs src/utils/settings_store.rs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustfmt --edition 2021 --check --config skip_children=true src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/commands/mod.rs src/models/client.rs src/models/settings.rs src/models/status.rs src/services/config_reader.rs src/services/happ_ui.rs src/services/ui_controller.rs src/state/app_state.rs src/utils/settings_store.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
 
-      - name: Commit formatting
+      - name: Run Rust tests
+        id: rust_tests
+        continue-on-error: true
+        working-directory: src/tauri
         shell: pwsh
-        env:
-          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/tauri
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "No formatting changes"
-            exit 0
-          }
-          git commit -m "style: format audited Rust sources"
-          git push origin "HEAD:$env:HEAD_BRANCH"
+          cargo test --locked 2>&1 | Tee-Object -FilePath rust-test-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
+
+      - name: Run Rust clippy
+        id: rust_clippy
+        continue-on-error: true
+        working-directory: src/tauri
+        shell: pwsh
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings 2>&1 | Tee-Object -FilePath rust-clippy-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
+
+      - name: Check Rust build
+        id: rust_build
+        continue-on-error: true
+        working-directory: src/tauri
+        shell: pwsh
+        run: |
+          cargo check --locked 2>&1 | Tee-Object -FilePath rust-build-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
+
+      - name: Upload Rust diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-diagnostics
+          path: |
+            src/tauri/rust-format-output.txt
+            src/tauri/rust-test-output.txt
+            src/tauri/rust-clippy-output.txt
+            src/tauri/rust-build-output.txt
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Fail when Rust checks failed
+        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure'
+        shell: pwsh
+        run: exit 1

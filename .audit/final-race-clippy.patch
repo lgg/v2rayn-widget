@@ -1,0 +1,503 @@
+diff --git a/frontend/src/features/dashboard-store.test.ts b/frontend/src/features/dashboard-store.test.ts
+index e79a47f..1da8e9c 100644
+--- a/frontend/src/features/dashboard-store.test.ts
++++ b/frontend/src/features/dashboard-store.test.ts
+@@ -192,4 +192,35 @@ describe("dashboard store refresh", () => {
+     });
+   });
+ 
++  it("does not let an older catalog request overwrite newer Happ capabilities", async () => {
++    const olderCatalog = deferred<ClientDescriptor[]>();
++    const newerCatalog = deferred<ClientDescriptor[]>();
++    apiMocks.getClientCatalog
++      .mockReturnValueOnce(olderCatalog.promise)
++      .mockReturnValueOnce(newerCatalog.promise);
++
++    useDashboardStore.setState({ settings: { ...baseSettings, selected_client: "happ" } });
++    useDashboardStore.getState().applyExternalSettings({
++      ...baseSettings,
++      selected_client: "happ",
++      happ_allow_ui_automation: false
++    });
++    useDashboardStore.getState().applyExternalSettings({
++      ...baseSettings,
++      selected_client: "happ",
++      happ_allow_ui_automation: true
++    });
++
++    newerCatalog.resolve([descriptor("v2rayn", "supported"), descriptor("happ", "experimental")]);
++    await waitFor(() => {
++      expect(useDashboardStore.getState().clients.find((client) => client.id === "happ")?.capabilities.toggle_connection)
++        .toBe("experimental");
++    });
++
++    olderCatalog.resolve([descriptor("v2rayn", "supported"), descriptor("happ", "research_required")]);
++    await Promise.resolve();
++    expect(useDashboardStore.getState().clients.find((client) => client.id === "happ")?.capabilities.toggle_connection)
++      .toBe("experimental");
++  });
++
+ });
+diff --git a/frontend/src/features/dashboard-store.ts b/frontend/src/features/dashboard-store.ts
+index 8c17b19..976ab4b 100644
+--- a/frontend/src/features/dashboard-store.ts
++++ b/frontend/src/features/dashboard-store.ts
+@@ -449,8 +449,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
+   },
+ 
+   applyExternalSettings: (settings) => {
+-    const previousClient = get().settings?.selected_client;
+-    if (previousClient !== undefined && previousClient !== settings.selected_client) {
++    const previousSettings = get().settings;
++    const operationalContextChanged = previousSettings !== null
++      && (previousSettings.selected_client !== settings.selected_client
++        || previousSettings.happ_path !== settings.happ_path
++        || previousSettings.happ_allow_ui_automation !== settings.happ_allow_ui_automation);
++    const previousClient = previousSettings?.selected_client;
++    if (operationalContextChanged) {
+       invalidateClientOperations();
+     }
+     applyTheme(settings.theme);
+diff --git a/tauri/src/adapters/happ.rs b/tauri/src/adapters/happ.rs
+index f77bfef..1ef780a 100644
+--- a/tauri/src/adapters/happ.rs
++++ b/tauri/src/adapters/happ.rs
+@@ -318,9 +318,7 @@ fn process_candidate_rank(name: &str, executable_is_valid: bool, pid: u32) -> u6
+ }
+ 
+ fn is_happ_process_name(name: &str) -> bool {
+-    HAPP_PROCESS_NAMES
+-        .iter()
+-        .any(|candidate| name == *candidate)
++    HAPP_PROCESS_NAMES.contains(&name)
+ }
+ 
+ fn normalize_candidate(value: &str) -> Option<PathBuf> {
+@@ -414,8 +412,10 @@ mod tests {
+             CapabilityState::ResearchRequired
+         );
+ 
+-        let mut enabled_settings = AppSettings::default();
+-        enabled_settings.happ_allow_ui_automation = true;
++        let enabled_settings = AppSettings {
++            happ_allow_ui_automation: true,
++            ..AppSettings::default()
++        };
+         let enabled = descriptor(&enabled_settings).capabilities;
+         assert_eq!(enabled.toggle_connection, CapabilityState::Experimental);
+         assert_eq!(enabled.read_connection_state, CapabilityState::Experimental);
+diff --git a/tauri/src/client_commands.rs b/tauri/src/client_commands.rs
+index e717ad8..a3a5720 100644
+--- a/tauri/src/client_commands.rs
++++ b/tauri/src/client_commands.rs
+@@ -61,6 +61,7 @@ pub async fn select_client(
+     state: State<'_, AppState>,
+     app: AppHandle,
+ ) -> Result<AppSettings, String> {
++    let _settings_update = state.lock_settings_update();
+     let mut snapshot = state.snapshot();
+ 
+     if snapshot.settings.selected_client == client_id {
+@@ -99,6 +100,7 @@ pub async fn update_happ_settings(
+     app: AppHandle,
+     state: State<'_, AppState>,
+ ) -> Result<AppSettings, String> {
++    let _settings_update = state.lock_settings_update();
+     let snapshot = state.snapshot();
+     let mut settings = snapshot.settings.clone();
+ 
+diff --git a/tauri/src/commands/mod.rs b/tauri/src/commands/mod.rs
+index 0dd7e95..2210c7f 100644
+--- a/tauri/src/commands/mod.rs
++++ b/tauri/src/commands/mod.rs
+@@ -408,6 +408,7 @@ pub async fn update_settings(
+     app: AppHandle,
+     state: State<'_, AppState>,
+ ) -> Result<AppSettings, String> {
++    let _settings_update = state.lock_settings_update();
+     let snapshot = state.snapshot();
+     let settings = merge_general_settings_payload(payload, &snapshot.settings);
+     let status = if settings.mock_mode_enabled {
+@@ -431,6 +432,7 @@ pub async fn apply_ui_settings(
+     app: AppHandle,
+     state: State<'_, AppState>,
+ ) -> Result<AppSettings, String> {
++    let _settings_update = state.lock_settings_update();
+     let snapshot = state.snapshot();
+     let previous_mock_mode = snapshot.settings.mock_mode_enabled;
+     let previous_status = snapshot.status;
+@@ -1133,22 +1135,26 @@ mod tests {
+     use super::*;
+     #[test]
+     fn general_settings_payload_preserves_adapter_owned_fields() {
+-        let mut current = AppSettings::default();
+-        current.selected_client = ProxyClientId::Happ;
+-        current.happ_path = Some("C:\\Happ\\Happ.exe".to_owned());
+-        current.happ_allow_ui_automation = true;
+-        current.window_position = Some(crate::models::settings::WindowPosition {
+-            x: 10,
+-            y: 20,
+-            width: 360,
+-            height: 500,
+-        });
+-
+-        let mut stale_payload = AppSettings::default();
+-        stale_payload.selected_client = ProxyClientId::V2rayn;
+-        stale_payload.happ_path = None;
+-        stale_payload.happ_allow_ui_automation = false;
+-        stale_payload.window_position = None;
++        let current = AppSettings {
++            selected_client: ProxyClientId::Happ,
++            happ_path: Some("C:\\Happ\\Happ.exe".to_owned()),
++            happ_allow_ui_automation: true,
++            window_position: Some(crate::models::settings::WindowPosition {
++                x: 10,
++                y: 20,
++                width: 360,
++                height: 500,
++            }),
++            ..AppSettings::default()
++        };
++
++        let stale_payload = AppSettings {
++            selected_client: ProxyClientId::V2rayn,
++            happ_path: None,
++            happ_allow_ui_automation: false,
++            window_position: None,
++            ..AppSettings::default()
++        };
+ 
+         let merged = merge_general_settings_payload(stale_payload, &current);
+         assert_eq!(merged.selected_client, ProxyClientId::Happ);
+diff --git a/tauri/src/main.rs b/tauri/src/main.rs
+index 75aa42e..6f5a235 100644
+--- a/tauri/src/main.rs
++++ b/tauri/src/main.rs
+@@ -215,7 +215,7 @@ fn main() {
+                             let _ = window.show();
+                             let _ = window.unminimize();
+                             let _ = window.set_focus();
+-                            restore_visible_aux_windows(&app, "tray_left_click");
++                            restore_visible_aux_windows(app, "tray_left_click");
+                         }
+                     }
+                 })
+@@ -259,6 +259,7 @@ fn main() {
+                     }
+                     WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+                         let state = app.state::<AppState>();
++                        let _settings_update = state.lock_settings_update();
+                         if let (Ok(position), Ok(size)) =
+                             (window.outer_position(), window.outer_size())
+                         {
+@@ -274,19 +275,16 @@ fn main() {
+                             }
+                         }
+                     }
+-                    WindowEvent::Focused(is_focused) => {
+-                        if *is_focused {
+-                            restore_visible_aux_windows(&app, "main_focus_changed");
+-                        }
++                    WindowEvent::Focused(true) => {
++                        restore_visible_aux_windows(app, "main_focus_changed");
+                     }
+                     _ => {}
+                 },
+-                "settings" | "debug" | "happ-setup" => match event {
+-                    WindowEvent::CloseRequested { api, .. } => {
++                "settings" | "debug" | "happ-setup" => {
++                    if let WindowEvent::CloseRequested { api, .. } = event {
+                         api.prevent_close();
+                         let _ = window.hide();
+                     }
+-                    _ => {}
+                 },
+                 _ => {}
+             }
+diff --git a/tauri/src/models/client.rs b/tauri/src/models/client.rs
+index fbc4322..abc5047 100644
+--- a/tauri/src/models/client.rs
++++ b/tauri/src/models/client.rs
+@@ -2,19 +2,14 @@ use serde::{Deserialize, Serialize};
+ 
+ use crate::models::status::ConnectionState;
+ 
+-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
++#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+ #[serde(rename_all = "snake_case")]
+ pub enum ProxyClientId {
++    #[default]
+     V2rayn,
+     Happ,
+ }
+ 
+-impl Default for ProxyClientId {
+-    fn default() -> Self {
+-        Self::V2rayn
+-    }
+-}
+-
+ #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(rename_all = "snake_case")]
+ pub enum CapabilityState {
+diff --git a/tauri/src/models/settings.rs b/tauri/src/models/settings.rs
+index 136665d..679daf3 100644
+--- a/tauri/src/models/settings.rs
++++ b/tauri/src/models/settings.rs
+@@ -2,35 +2,26 @@ use serde::{Deserialize, Serialize};
+ 
+ use crate::models::client::ProxyClientId;
+ 
+-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
++#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+ #[serde(rename_all = "lowercase")]
+ pub enum ThemeMode {
+     Light,
++    #[default]
+     Dark,
+ }
+ 
+-impl Default for ThemeMode {
+-    fn default() -> Self {
+-        Self::Dark
+-    }
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
++#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+ #[serde(rename_all = "lowercase")]
+ pub enum V2RayNPathMode {
++    #[default]
+     Auto,
+     Manual,
+ }
+ 
+-impl Default for V2RayNPathMode {
+-    fn default() -> Self {
+-        Self::Auto
+-    }
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
++#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+ pub enum TimeFormat {
+     #[serde(rename = "system")]
++    #[default]
+     System,
+     #[serde(rename = "24h")]
+     H24,
+@@ -38,25 +29,14 @@ pub enum TimeFormat {
+     H12,
+ }
+ 
+-impl Default for TimeFormat {
+-    fn default() -> Self {
+-        Self::System
+-    }
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
++#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+ #[serde(rename_all = "snake_case")]
+ pub enum LatencyMode {
++    #[default]
+     Active,
+     LogSnapshot,
+ }
+ 
+-impl Default for LatencyMode {
+-    fn default() -> Self {
+-        Self::Active
+-    }
+-}
+-
+ #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+ pub struct WindowPosition {
+     pub x: i32,
+diff --git a/tauri/src/models/status.rs b/tauri/src/models/status.rs
+index 3dfac0f..03a1b17 100644
+--- a/tauri/src/models/status.rs
++++ b/tauri/src/models/status.rs
+@@ -1,22 +1,17 @@
+ use chrono::{DateTime, Utc};
+ use serde::{Deserialize, Serialize};
+ 
+-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
++#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+ #[serde(rename_all = "PascalCase")]
+ pub enum ConnectionState {
+     Connected,
+     Disconnected,
+     Error,
++    #[default]
+     Unknown,
+     Connecting,
+ }
+ 
+-impl Default for ConnectionState {
+-    fn default() -> Self {
+-        Self::Unknown
+-    }
+-}
+-
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct DashboardStatus {
+     pub status: ConnectionState,
+diff --git a/tauri/src/services/config_reader.rs b/tauri/src/services/config_reader.rs
+index 3e55610..9633c51 100644
+--- a/tauri/src/services/config_reader.rs
++++ b/tauri/src/services/config_reader.rs
+@@ -247,14 +247,12 @@ fn set_first_existing_bool_key(value: &mut Value, keys: &[&str], new_value: bool
+ }
+ 
+ fn extract_enable_tun(json: &Value) -> Option<bool> {
+-    if let Some(item) = find_value_by_key(json, "TunModeItem") {
+-        if let Value::Object(map) = item {
+-            if let Some(Value::Bool(flag)) = map.get("EnableTun") {
+-                return Some(*flag);
+-            }
+-            if let Some(Value::Bool(flag)) = map.get("enableTun") {
+-                return Some(*flag);
+-            }
++    if let Some(Value::Object(map)) = find_value_by_key(json, "TunModeItem") {
++        if let Some(Value::Bool(flag)) = map.get("EnableTun") {
++            return Some(*flag);
++        }
++        if let Some(Value::Bool(flag)) = map.get("enableTun") {
++            return Some(*flag);
+         }
+     }
+ 
+diff --git a/tauri/src/services/happ_ui.rs b/tauri/src/services/happ_ui.rs
+index 669030a..d193207 100644
+--- a/tauri/src/services/happ_ui.rs
++++ b/tauri/src/services/happ_ui.rs
+@@ -132,7 +132,12 @@ fn redact_component(value: &str) -> String {
+     }
+ }
+ 
+-fn redact_ui_node(name: &str, automation_id: &str, class_name: &str, control_type: Option<i32>) -> String {
++fn redact_ui_node(
++    name: &str,
++    automation_id: &str,
++    class_name: &str,
++    control_type: Option<i32>,
++) -> String {
+     let safe_name = if let Some((state, _)) = classify_connection_action(name) {
+         format!("action={}", canonical_action_label(state))
+     } else {
+@@ -181,10 +186,11 @@ mod windows_impl {
+                 Accessibility::{
+                     CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationInvokePattern,
+                     IUIAutomationLegacyIAccessiblePattern, IUIAutomationSelectionItemPattern,
+-                    IUIAutomationTogglePattern, TreeScope_Subtree, UIA_ButtonControlTypeId,
+-                    UIA_CheckBoxControlTypeId, UIA_CustomControlTypeId, UIA_HyperlinkControlTypeId,
+-                    UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId, UIA_MenuItemControlTypeId,
+-                    ToggleState_On, UIA_SelectionItemPatternId, UIA_TogglePatternId,
++                    IUIAutomationTogglePattern, ToggleState_On, TreeScope_Subtree,
++                    UIA_ButtonControlTypeId, UIA_CheckBoxControlTypeId, UIA_CustomControlTypeId,
++                    UIA_HyperlinkControlTypeId, UIA_InvokePatternId,
++                    UIA_LegacyIAccessiblePatternId, UIA_MenuItemControlTypeId,
++                    UIA_SelectionItemPatternId, UIA_TogglePatternId,
+                 },
+                 WindowsAndMessaging::{
+                     EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
+@@ -287,8 +293,9 @@ mod windows_impl {
+                         .map(|candidate| candidate.inferred_state)
+                         .unwrap_or(ConnectionState::Unknown),
+                     transport_mode: scan.transport_mode,
+-                    action_label: action
+-                        .map(|candidate| canonical_action_label(candidate.inferred_state).to_owned()),
++                    action_label: action.map(|candidate| {
++                        canonical_action_label(candidate.inferred_state).to_owned()
++                    }),
+                     action_score: action.map(|candidate| candidate.score),
+                     ui_nodes: scan.nodes,
+                     note: note.to_owned(),
+@@ -421,8 +428,8 @@ mod windows_impl {
+         }
+ 
+         let ambiguous_action = candidates.len() > 1;
+-        let action = select_unique_candidate_index(candidates.len())
+-            .map(|index| candidates[index].clone());
++        let action =
++            select_unique_candidate_index(candidates.len()).map(|index| candidates[index].clone());
+         let (transport_mode, transport_conflict) = resolve_transport_modes(&selected_transports);
+ 
+         Ok(ScanResult {
+@@ -710,7 +717,10 @@ mod tests {
+ 
+     #[test]
+     fn window_titles_are_sanitized() {
+-        assert_eq!(sanitize_window_title("Happ - user@example.com"), Some("Happ".to_owned()));
++        assert_eq!(
++            sanitize_window_title("Happ - user@example.com"),
++            Some("Happ".to_owned())
++        );
+         assert_eq!(
+             sanitize_window_title("Private profile"),
+             Some("<redacted window title>".to_owned())
+diff --git a/tauri/src/services/ui_controller.rs b/tauri/src/services/ui_controller.rs
+index 4a3ecd6..55071ee 100644
+--- a/tauri/src/services/ui_controller.rs
++++ b/tauri/src/services/ui_controller.rs
+@@ -410,7 +410,7 @@ mod windows_impl {
+                     Some(best) if best.score >= reload_score => {}
+                     _ => {
+                         result.best_reload = Some(UiActionCandidate {
+-                            element: element,
++                            element,
+                             label,
+                             score: reload_score,
+                         });
+diff --git a/tauri/src/state/app_state.rs b/tauri/src/state/app_state.rs
+index 5a555f9..33c0c5e 100644
+--- a/tauri/src/state/app_state.rs
++++ b/tauri/src/state/app_state.rs
+@@ -1,4 +1,4 @@
+-use std::sync::Mutex;
++use std::sync::{Mutex, MutexGuard};
+ 
+ use crate::models::{
+     client::ProxyClientId,
+@@ -23,6 +23,7 @@ struct AppStateInner {
+ #[derive(Debug)]
+ pub struct AppState {
+     inner: Mutex<AppStateInner>,
++    settings_update_lock: Mutex<()>,
+ }
+ 
+ impl AppState {
+@@ -33,9 +34,16 @@ impl AppState {
+                 status,
+                 client_epoch: 0,
+             }),
++            settings_update_lock: Mutex::new(()),
+         }
+     }
+ 
++    pub fn lock_settings_update(&self) -> MutexGuard<'_, ()> {
++        self.settings_update_lock
++            .lock()
++            .expect("Settings update lock poisoned")
++    }
++
+     pub fn snapshot(&self) -> Snapshot {
+         let guard = self.inner.lock().expect("AppState lock poisoned");
+         Snapshot {
+diff --git a/tauri/src/utils/settings_store.rs b/tauri/src/utils/settings_store.rs
+index 94abe77..b292571 100644
+--- a/tauri/src/utils/settings_store.rs
++++ b/tauri/src/utils/settings_store.rs
+@@ -96,7 +96,10 @@ mod tests {
+ 
+         assert_eq!(decoded.poll_interval_sec, initial.poll_interval_sec);
+         assert_eq!(decoded.language, initial.language);
+-        assert_eq!(decoded.window_opacity_percent, initial.window_opacity_percent);
++        assert_eq!(
++            decoded.window_opacity_percent,
++            initial.window_opacity_percent
++        );
+         assert_eq!(decoded.diagnostics_enabled, initial.diagnostics_enabled);
+         assert_eq!(decoded.diagnostics_url, initial.diagnostics_url);
+     }

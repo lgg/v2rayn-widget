@@ -2,6 +2,13 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import "@/lib/i18n";
+
+const apiMocks = vi.hoisted(() => ({
+  openHappSetupWindow: vi.fn().mockResolvedValue(undefined)
+}));
+
+vi.mock("@/lib/api", () => apiMocks);
 
 import { ClientSelector } from "@/components/client-selector";
 import type { ClientDescriptor } from "@/lib/types";
@@ -31,18 +38,18 @@ const clients: ClientDescriptor[] = [
   {
     id: "happ",
     display_name: "Happ",
-    maturity: "read_only_mvp",
-    status_note: "Research required",
+    maturity: "experimental_ui_automation",
+    status_note: "Experimental control",
     capabilities: {
       detect_application: "supported",
       read_process_state: "supported",
-      read_connection_state: "research_required",
+      read_connection_state: "experimental",
       open_application: "supported",
-      toggle_connection: "research_required",
+      toggle_connection: "experimental",
       list_items: "research_required",
       select_item: "research_required",
       restart_application: "research_required",
-      read_transport_mode: "research_required",
+      read_transport_mode: "experimental",
       list_subscriptions: "research_required",
       switch_subscription: "research_required",
       refresh_subscription: "research_required",
@@ -71,6 +78,19 @@ describe("ClientSelector", () => {
     });
 
     expect(onSelect).toHaveBeenCalledWith("happ");
+  });
+
+  it("opens adapter setup while Happ is selected", () => {
+    render(
+      <ClientSelector
+        clients={clients}
+        selectedClientId="happ"
+        onSelect={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure Happ adapter" }));
+    expect(apiMocks.openHappSetupWindow).toHaveBeenCalledTimes(1);
   });
 
   it("can be disabled while an adapter switch is in progress", () => {

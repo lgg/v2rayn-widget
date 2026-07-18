@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::client::ProxyClientId;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
@@ -86,6 +88,7 @@ pub fn default_diagnostics_url() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
+    pub selected_client: ProxyClientId,
     pub language: String,
     pub theme: ThemeMode,
     pub always_on_top: bool,
@@ -112,12 +115,14 @@ pub struct AppSettings {
     pub ip_endpoints: Vec<String>,
     pub v2rayn_path_mode: V2RayNPathMode,
     pub v2rayn_path: Option<String>,
+    pub happ_path: Option<String>,
     pub window_position: Option<WindowPosition>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            selected_client: ProxyClientId::V2rayn,
             language: "en".to_owned(),
             theme: ThemeMode::Dark,
             always_on_top: false,
@@ -141,6 +146,7 @@ impl Default for AppSettings {
             ip_endpoints: default_ip_endpoints(),
             v2rayn_path_mode: V2RayNPathMode::Auto,
             v2rayn_path: None,
+            happ_path: None,
             window_position: None,
         }
     }
@@ -164,6 +170,15 @@ pub struct UiSettingsPatch {
     pub window_opacity_percent: Option<u8>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-
-
+    #[test]
+    fn legacy_settings_default_to_v2rayn() {
+        let json = r#"{"language":"en"}"#;
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.selected_client, ProxyClientId::V2rayn);
+        assert!(settings.happ_path.is_none());
+    }
+}

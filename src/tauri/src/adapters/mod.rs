@@ -41,7 +41,7 @@ fn registered_adapters() -> [&'static dyn ProxyClientAdapter; 2] {
 pub fn catalog() -> Vec<ClientDescriptor> {
     registered_adapters()
         .into_iter()
-        .map(ProxyClientAdapter::descriptor)
+        .map(|adapter| adapter.descriptor())
         .collect()
 }
 
@@ -65,13 +65,20 @@ mod tests {
     fn registry_contains_v2rayn_and_happ() {
         let entries = catalog();
         assert_eq!(entries.len(), 2);
-        assert!(entries.iter().any(|entry| entry.id == ProxyClientId::V2rayn));
-        assert!(entries.iter().any(|entry| entry.id == ProxyClientId::Happ));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.id == ProxyClientId::V2rayn));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.id == ProxyClientId::Happ));
     }
 
     #[test]
     fn every_client_id_resolves_through_adapter_trait() {
-        assert_eq!(adapter(ProxyClientId::V2rayn).id(), ProxyClientId::V2rayn);
+        assert_eq!(
+            adapter(ProxyClientId::V2rayn).id(),
+            ProxyClientId::V2rayn
+        );
         assert_eq!(adapter(ProxyClientId::Happ).id(), ProxyClientId::Happ);
     }
 

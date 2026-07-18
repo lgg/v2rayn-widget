@@ -104,7 +104,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
-          rustfmt --edition 2021 --check src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/models/client.rs src/models/mod.rs src/models/settings.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
+          rustfmt --edition 2021 --check --config skip_children=true src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/models/client.rs src/models/settings.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 

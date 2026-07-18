@@ -1,48 +1,27 @@
-# v2rayN Widget (Multi-Client Adapter Preview)
+# Proxy Client Widget
 
-Portable Windows utility app with a compact always-visible proxy/VPN dashboard.
+Portable Windows utility with a compact always-visible dashboard for desktop proxy/VPN clients.
 
-The project started as a v2rayN TUN widget. It is now being refactored around explicit client adapters so the same UI can work with v2rayN, Happ and future desktop clients without duplicating the application.
+The project started as a v2rayN TUN widget. It now uses explicit operational adapters so the same frontend and Tauri command layer can work with v2rayN, Happ and future clients.
 
-## Contributor and agent workflow
-
-Before making changes, read `AGENTS.md`.
-
-Project planning, tasks, reports, decisions and checklists live in `project-tracking/`. The project is public: do not put tokens, private URLs, subscription links, local system paths, real client configs/logs or personal data into tasks, reports or docs.
-
-The active multi-client roadmap is documented in:
-
-- `project-tracking/roadmap/0013-proxy-client-adapter-roadmap.md`
-- `project-tracking/tasks/0013-add-proxy-client-adapters-and-happ-mvp.md`
-- `project-tracking/decisions/0013-multi-client-adapter-architecture.md`
-
-## UI Preview
-
-![Widget Full](docs/screenshots/widget-full.png)
-
-![Widget Compact](docs/screenshots/widget-compact.png)
-
-Existing screenshots show the original v2rayN-focused UI. Updated multi-client screenshots should be captured after Windows validation.
-
-## Current adapter status
+## Adapter status
 
 | Client | Detection/status | Open app | Connect/disconnect | Profile/server selection | Subscriptions |
 | --- | --- | --- | --- | --- | --- |
 | v2rayN | Supported | Supported | Supported for Enable TUN | Experimental | Unsupported |
-| Happ | Read-only MVP | Supported when executable is detected | Research required | Research required | Research required |
+| Happ | Supported baseline; UI status experimental | Supported | Experimental opt-in UI Automation | Research required | Research required |
 
-### v2rayN adapter
+### v2rayN
 
-The current v2rayN implementation is preserved behind the adapter boundary:
+Preserved behind the compatibility adapter:
 
 - installation/path detection;
-- process monitoring;
-- config and log reading;
-- combined connection-state resolution;
+- process, config and log signals;
+- combined status resolution;
 - external IP and latency checks;
-- Enable TUN control through Windows UI Automation;
+- Enable TUN through Windows UI Automation;
 - config toggle plus reload/restart fallback;
-- profile list reading;
+- profile list;
 - experimental active profile switching;
 - open/restart and privilege diagnostics.
 
@@ -51,113 +30,99 @@ Explicit limitations:
 - subscription listing is not supported;
 - subscription switching is not supported;
 - subscription refresh/update is not supported;
-- adding or removing subscriptions is not supported;
-- profile switching in subscription-driven setups remains experimental and must not be described as subscription switching;
-- generic Proxy/TUN/Mixed transport-mode reporting is not implemented.
+- adding/removing subscriptions is not supported;
+- profile selection is not subscription switching;
+- generic Proxy/TUN/Mixed reporting is not implemented for v2rayN.
 
-### Happ adapter
+### Happ
 
-The first Happ adapter is intentionally conservative:
+Safe baseline:
 
-- detects known Happ desktop process names;
-- obtains the executable path from a running process when possible;
+- detects known processes and PID;
+- detects or validates the executable path;
 - checks common Windows installation locations;
-- can open the detected application;
-- reports generic external IP and latency diagnostics;
-- reports `Unknown` while Happ is running because a reliable internal connection-state source has not yet been validated;
-- never treats process existence alone as proof that the VPN is connected.
+- opens Happ;
+- reports generic IP/latency diagnostics;
+- never infers Connected from process existence alone;
+- provides a dedicated Happ Setup and diagnostics window.
 
-Not implemented yet:
+Experimental connection control:
 
-- official or validated daemon IPC integration;
-- reliable connect/disconnect;
-- Proxy/TUN/Mixed mode detection;
-- server/profile list and selection;
-- subscription operations;
-- manual Happ path editor in the settings UI.
+- disabled by default;
+- requires explicit consent in Happ Setup;
+- scopes window discovery to the detected Happ PID;
+- accepts only a high-confidence Connect/Disconnect action;
+- rejects Auto connect, Reconnect and settings labels;
+- supports English and Russian action labels;
+- fails without clicking when the UI is ambiguous;
+- can report an exact selected Proxy/TUN/Mixed label when the current UI exposes one.
 
-## Important warning: permissions and user context
+The adapter does not modify Happ config, database or subscription files.
 
-For v2rayN control, run the widget under the same user account and privilege level as v2rayN.
+Still unavailable for Happ:
 
-If v2rayN is started as Administrator, start the widget as Administrator too. Mixed privilege context can break UI Automation for toggle/profile actions.
+- stable official CLI/API/daemon IPC;
+- server/profile list or selection;
+- restart/reload;
+- subscriptions.
 
-The current Happ adapter does not perform UI Automation or mutate Happ configuration.
+## Using Happ
 
-## Architecture summary
+1. Select **Happ** in the widget.
+2. Open the adapter setup with the sliders button beside the selector.
+3. Detect the executable automatically or enter a path to `Happ.exe`.
+4. Run the Happ probe.
+5. Review the detected process, window, action and confidence score.
+6. Enable experimental Windows UI Automation only after the probe identifies the current installed UI correctly.
 
-The application has three primary layers:
+The connect button remains disabled until experimental control is explicitly enabled.
 
-- frontend (`src/frontend`) - shared widget UI, selected-client UX, capability-gated controls, localization and polling;
-- application layer (`src/tauri/src/client_commands.rs`) - generic Tauri command dispatch and persisted selection;
-- adapters (`src/tauri/src/adapters`) - client descriptors, capabilities and client-specific implementation.
+## Architecture
 
-`ProxyClientAdapter` is the common registration boundary. The first registered adapters are `v2rayN` and `Happ`.
+Four responsibility layers:
 
-Legacy v2rayN Tauri commands remain available during the staged migration so existing debug and control flows are not removed in one high-risk change.
+- frontend (`src/frontend`) — shared UI, selected-client UX, setup/debug windows, capability gating, i18n and polling;
+- generic commands (`src/tauri/src/client_commands.rs`) — resolve the selected adapter and invoke its contract;
+- adapters (`src/tauri/src/adapters`) — client-specific operations and capability descriptors;
+- services (`src/tauri/src/services`, `src/tauri/src/utils`) — health checks, persistence, window behavior and automation helpers.
+
+`ProxyClientAdapter` owns:
+
+- descriptor/capabilities;
+- refresh;
+- toggle;
+- list/select items;
+- open;
+- diagnostics.
+
+`client_commands.rs` has no v2rayN/Happ operation branching. Future adapters are registered in the adapter module and implement the same contract.
+
+Legacy v2rayN commands remain registered during staged migration so existing debug/control workflows are not removed in this refactor.
+
+## Contributor workflow
+
+Read `AGENTS.md` before changing the project.
+
+Planning and decisions:
+
+- `project-tracking/roadmap/0013-proxy-client-adapter-roadmap.md`
+- `project-tracking/tasks/0013-add-proxy-client-adapters-and-happ-mvp.md`
+- `project-tracking/decisions/0013-multi-client-adapter-architecture.md`
+- `project-tracking/reports/0013-add-proxy-client-adapters-and-happ-mvp-report.md`
+
+The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 
 ## Stack
 
-- Rust backend + Tauri desktop runtime
-- React + TypeScript + Vite frontend
+- Rust + Tauri
+- React + TypeScript + Vite
 - Tailwind CSS
-- Zustand state store
-- i18next JSON localization
-
-## Shared widget capabilities
-
-- Rounded floating widget with light/dark themes
-- Tray icon menu and close-to-tray
-- Selectable client application
-- Startup, manual and periodic status refresh
-- Capability-gated connection and profile/server controls
-- External IP and latency display controls
-- EN/RU localization
-- Always-on-top and autostart settings
-- Mockup mode for screenshots/streams
-- Optional external diagnostics page
-- Window transparency effect and opacity control
-
-## Project layout
-
-```text
-project-root/
-  README.md
-  AGENTS.md
-  docs/
-    architecture.md
-    PRD.md
-    research-notes.md
-    ui-reference.md
-  project-tracking/
-    roadmap/
-    tasks/
-    reports/
-    decisions/
-    checklists/
-    templates/
-  scripts/
-    rust-env.ps1
-    test-rust.ps1
-    build-portable.ps1
-    build-installer.ps1
-  src/
-    frontend/
-    tauri/
-      src/
-        adapters/
-          mod.rs
-          v2rayn.rs
-          happ.rs
-        client_commands.rs
-        commands/
-        models/
-        services/
-```
+- Zustand
+- i18next
 
 ## Development
 
-### Frontend
+Frontend:
 
 ```bash
 cd src/frontend
@@ -165,7 +130,7 @@ npm install
 npm run dev
 ```
 
-### Tauri
+Tauri:
 
 ```bash
 cd src/tauri
@@ -185,7 +150,7 @@ npm run build
 ./scripts/test-rust.ps1
 ```
 
-The repository also contains a Windows CI workflow for frontend tests/build and Rust formatting/tests/checks.
+The Windows Quality workflow additionally transfers the built frontend into the Tauri job, checks changed Rust formatting, runs the Rust regression suite and executes `cargo check --locked`.
 
 ## Build portable executable
 
@@ -193,7 +158,7 @@ The repository also contains a Windows CI workflow for frontend tests/build and 
 ./scripts/build-portable.ps1
 ```
 
-Output: `dist/portable/v2rayn-widget.exe` or a timestamped file if the target executable is locked.
+Output: `dist/portable/v2rayn-widget.exe` or a timestamped file when the target executable is locked.
 
 ## Build Windows installer
 
@@ -203,8 +168,6 @@ Output: `dist/portable/v2rayn-widget.exe` or a timestamped file if the target ex
 
 Output: `src/tauri/target/release/bundle/nsis/*.exe`.
 
-Portable remains the primary artifact until installer behavior and the multi-client migration are validated on target Windows machines.
-
 ## v2rayN folder expectations
 
 A configured v2rayN folder must contain:
@@ -213,11 +176,17 @@ A configured v2rayN folder must contain:
 - `guiConfigs/`
 - `guiLogs/`
 
-The adapter currently reads:
+The adapter reads:
 
 - `guiConfigs/guiNConfig.json`
 - `guiConfigs/guiNDB.db`
 - the latest file in `guiLogs/`
+
+## Permissions
+
+For v2rayN control, run the widget under the same Windows account and privilege level as v2rayN. Mixed privilege levels can block UI Automation.
+
+Happ UI Automation is also affected by Windows privilege isolation. The setup probe fails safely when the current window cannot be inspected.
 
 ## Logging
 
@@ -225,11 +194,9 @@ Widget logs are written to the application config directory under:
 
 - `v2rayn-widget/logs/widget.log`
 
-## Next work
+## Future independent work
 
-- validate this adapter refactor on Windows with the existing v2rayN workflow;
-- validate Happ process detection and application launch against installed versions;
-- research an official CLI/API or stable daemon IPC before adding Happ control;
-- finish the v2rayN subscription-driven profile-switch validation matrix;
-- introduce subscriptions as a separate model only after safe client-specific operations exist;
-- consider repository/product renaming after multi-client behavior is stable.
+- separate subscription abstraction and client-specific implementation;
+- additional adapters using the existing operational contract;
+- eventual compatibility-field and legacy-command cleanup;
+- product/repository naming cleanup after release validation.

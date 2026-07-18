@@ -5,6 +5,7 @@ import "@/styles/globals.css";
 import "@/lib/i18n";
 import { App } from "@/app/App";
 import { DebugWindow } from "@/app/DebugWindow";
+import { HappSetupWindow } from "@/app/HappSetupWindow";
 import { SettingsWindow } from "@/app/SettingsWindow";
 
 function Root(): JSX.Element {
@@ -21,6 +22,10 @@ function Root(): JSX.Element {
 
   if (label === "debug") {
     return <DebugWindow />;
+  }
+
+  if (label === "happ-setup") {
+    return <HappSetupWindow />;
   }
 
   return <App />;

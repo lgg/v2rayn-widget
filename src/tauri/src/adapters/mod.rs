@@ -5,9 +5,7 @@ use tauri::State;
 
 use crate::{
     models::{
-        client::{
-            ClientDescriptor, ClientDiagnostics, ProxyClientId, TransportMode,
-        },
+        client::{ClientDescriptor, ClientDiagnostics, ProxyClientId, TransportMode},
         profile::ProfileSummary,
         settings::AppSettings,
         status::DashboardStatus,
@@ -36,10 +34,7 @@ pub trait ProxyClientAdapter: Send + Sync {
 
     async fn toggle(&self, state: State<'_, AppState>) -> Result<DashboardStatus, String>;
 
-    async fn list_items(
-        &self,
-        state: State<'_, AppState>,
-    ) -> Result<Vec<ProfileSummary>, String>;
+    async fn list_items(&self, state: State<'_, AppState>) -> Result<Vec<ProfileSummary>, String>;
 
     async fn select_item(
         &self,
@@ -49,10 +44,7 @@ pub trait ProxyClientAdapter: Send + Sync {
 
     async fn open(&self, state: State<'_, AppState>) -> Result<(), String>;
 
-    async fn diagnostics(
-        &self,
-        state: State<'_, AppState>,
-    ) -> Result<ClientDiagnostics, String>;
+    async fn diagnostics(&self, state: State<'_, AppState>) -> Result<ClientDiagnostics, String>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -96,14 +88,9 @@ impl ProxyClientAdapter for RegisteredAdapter {
                     RefreshKind::Startup => (true, true, true),
                     RefreshKind::PostRoute => (false, true, false),
                 };
-                let status = happ::refresh(
-                    &snapshot.settings,
-                    latency,
-                    external_ip,
-                    force_full,
-                )
-                .await
-                .map_err(|error| error.to_string())?;
+                let status = happ::refresh(&snapshot.settings, latency, external_ip, force_full)
+                    .await
+                    .map_err(|error| error.to_string())?;
                 let merged = merge_with_previous(status, &snapshot.status);
                 state.update_status(merged.clone());
                 Ok(merged)
@@ -123,10 +110,7 @@ impl ProxyClientAdapter for RegisteredAdapter {
         }
     }
 
-    async fn list_items(
-        &self,
-        state: State<'_, AppState>,
-    ) -> Result<Vec<ProfileSummary>, String> {
+    async fn list_items(&self, state: State<'_, AppState>) -> Result<Vec<ProfileSummary>, String> {
         match self {
             Self::V2rayn => v2rayn::list_items(state).await,
             Self::Happ => Ok(happ::list_items()),
@@ -151,10 +135,7 @@ impl ProxyClientAdapter for RegisteredAdapter {
         }
     }
 
-    async fn diagnostics(
-        &self,
-        state: State<'_, AppState>,
-    ) -> Result<ClientDiagnostics, String> {
+    async fn diagnostics(&self, state: State<'_, AppState>) -> Result<ClientDiagnostics, String> {
         match self {
             Self::Happ => Ok(happ::diagnostics(&state.snapshot().settings)),
             Self::V2rayn => {
@@ -168,7 +149,7 @@ impl ProxyClientAdapter for RegisteredAdapter {
                     window_found: false,
                     window_title: None,
                     connection_state: snapshot.status.connection_state,
-                    transport_mode: TransportMode::Tun,
+                    transport_mode: TransportMode::Unknown,
                     control_source: Some("v2rayn_compatibility_adapter".to_owned()),
                     action_label: None,
                     action_score: None,
@@ -203,10 +184,7 @@ pub fn descriptor(client_id: ProxyClientId, settings: &AppSettings) -> ClientDes
     adapter(client_id).descriptor(settings)
 }
 
-fn merge_with_previous(
-    mut next: DashboardStatus,
-    previous: &DashboardStatus,
-) -> DashboardStatus {
+fn merge_with_previous(mut next: DashboardStatus, previous: &DashboardStatus) -> DashboardStatus {
     if next.external_ip.is_none() {
         next.external_ip = previous.external_ip.clone();
     }

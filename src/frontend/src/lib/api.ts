@@ -24,6 +24,14 @@ export async function selectClient(clientId: ProxyClientId): Promise<AppSettings
   return invoke<AppSettings>("select_client", { clientId });
 }
 
+export async function detectHappPath(): Promise<string | null> {
+  return invoke<string | null>("detect_happ_path");
+}
+
+export async function validateHappPath(path: string): Promise<PathValidation> {
+  return invoke<PathValidation>("validate_happ_path", { path });
+}
+
 export async function refreshSelectedClient(): Promise<DashboardStatus> {
   return invoke<DashboardStatus>("refresh_selected_client");
 }

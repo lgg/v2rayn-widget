@@ -17,6 +17,7 @@
   "connectionButton.connecting": "CONNECTING",
   "actions.refresh": "refresh",
   "actions.open": "open v2rayN",
+  "actions.openClient": "open app",
   "actions.restart": "Restart",
   "actions.copyIp": "copy IP",
   "actions.toggle": "Toggle",
@@ -26,8 +27,9 @@
   "actions.openDebugTools": "Open Debug Tools",
   "actions.relaunchAdmin": "Restart widget as Administrator",
   "actions.diagnostics": "diagnostics",
+  "fields.client": "Client application",
   "fields.connection": "Connection",
-  "fields.profile": "Profile",
+  "fields.profile": "Profile / server",
   "fields.externalIp": "External IP",
   "fields.latency": "Latency",
   "fields.lastEvent": "Last event",
@@ -61,7 +63,7 @@
   "settings.showExternalIp": "Show external IP",
   "settings.showLatency": "Show latency",
   "settings.showActionButtons": "Show action buttons",
-  "settings.showProfileSelector": "Show profile selector",
+  "settings.showProfileSelector": "Show profile/server selector when supported",
   "settings.mockMode": "Mockup mode (hide real data)",
   "settings.latencyMode": "Latency source",
   "settings.latencyModeActive": "Active network check",
@@ -105,10 +107,11 @@
   "debug.probeResult": "Probe result",
   "debug.log": "Debug log",
   "errors.refreshFailed": "Refresh failed",
-  "errors.toggleFailed": "Toggle failed",
-  "errors.profileSwitchFailed": "Profile switch failed",
+  "errors.toggleFailed": "Connection control failed",
+  "errors.clientSwitchFailed": "Could not switch client application",
+  "errors.profileSwitchFailed": "Profile/server switch failed",
   "errors.settingsSaveFailed": "Could not save settings",
-  "errors.openFailed": "Could not open v2rayN",
+  "errors.openFailed": "Could not open selected application",
   "errors.restartFailed": "Could not restart v2rayN",
   "errors.diagnosticsOpenFailed": "Could not open diagnostics page",
   "errors.copyIpMissing": "External IP is not available yet",
@@ -117,10 +120,3 @@
   "notices.ipCopied": "External IP copied",
   "dashboard.pathConfigMissing": "v2rayN path is not configured. Open Settings and select your v2rayN folder."
 }
-
-
-
-
-
-
-

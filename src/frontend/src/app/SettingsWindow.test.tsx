@@ -30,6 +30,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 import { SettingsWindow } from "@/app/SettingsWindow";
 
 const baseSettings: AppSettings = {
+  selected_client: "v2rayn",
   language: "en",
   theme: "dark",
   always_on_top: false,
@@ -53,6 +54,7 @@ const baseSettings: AppSettings = {
   ip_endpoints: ["https://example.com/ip"],
   v2rayn_path_mode: "auto",
   v2rayn_path: null,
+  happ_path: null,
   window_position: null
 };
 
@@ -93,7 +95,9 @@ describe("SettingsWindow", () => {
     await screen.findByRole("heading", { name: "Settings" });
 
     fireEvent.click(screen.getByLabelText("Enable diagnostics page"));
-    fireEvent.change(screen.getByLabelText("Diagnostics site"), { target: { value: "browserleaks.com/ip" } });
+    fireEvent.change(screen.getByLabelText("Diagnostics site"), {
+      target: { value: "browserleaks.com/ip" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {

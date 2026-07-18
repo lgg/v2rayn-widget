@@ -1,0 +1,59 @@
+name: Windows Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: src/frontend
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: src/frontend
+        run: npm test
+
+      - name: Build frontend
+        working-directory: src/frontend
+        run: npm run build
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        working-directory: src/tauri
+        run: cargo fmt --all -- --check
+
+      - name: Run Rust tests
+        working-directory: src/tauri
+        run: cargo test --locked
+
+      - name: Check Rust build
+        working-directory: src/tauri
+        run: cargo check --locked

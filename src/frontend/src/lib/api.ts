@@ -5,6 +5,7 @@ import type {
   ClientDiagnostics,
   DashboardStatus,
   DebugRuntimeSnapshot,
+  HappSettingsPatch,
   LocaleInfo,
   PathValidation,
   ProfileSummary,
@@ -43,6 +44,10 @@ export async function validateHappPath(path: string): Promise<PathValidation> {
 
 export async function openHappSetupWindow(): Promise<void> {
   return invoke("open_happ_setup_window");
+}
+
+export async function updateHappSettings(payload: HappSettingsPatch): Promise<AppSettings> {
+  return invoke<AppSettings>("update_happ_settings", { payload });
 }
 
 export async function refreshSelectedClient(): Promise<DashboardStatus> {

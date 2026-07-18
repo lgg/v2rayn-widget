@@ -156,6 +156,13 @@ impl Default for AppSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct HappSettingsPatch {
+    pub happ_path: Option<String>,
+    pub happ_allow_ui_automation: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct UiSettingsPatch {
     pub language: Option<String>,
     pub theme: Option<ThemeMode>,
@@ -164,7 +171,7 @@ pub struct UiSettingsPatch {
     pub show_clock: Option<bool>,
     pub show_info_status: Option<bool>,
     pub show_external_ip: Option<bool>,
-    pub show_latency: Option<bool>,
+    pub show_latency: Option<LatencyMode>,
     pub mock_mode_enabled: Option<bool>,
     pub show_action_buttons: Option<bool>,
     pub show_profile_selector: Option<bool>,

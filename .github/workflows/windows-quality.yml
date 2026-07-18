@@ -98,13 +98,33 @@ jobs:
         with:
           components: rustfmt
 
+      - name: Format changed Rust sources
+        working-directory: src/tauri
+        run: rustfmt --edition 2021 --config skip_children=true src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/models/client.rs src/models/settings.rs src/services/happ_ui.rs
+
+      - name: Upload formatted Rust sources
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-formatted-sources
+          path: |
+            src/tauri/src/main.rs
+            src/tauri/src/adapters/mod.rs
+            src/tauri/src/adapters/happ.rs
+            src/tauri/src/adapters/v2rayn.rs
+            src/tauri/src/client_commands.rs
+            src/tauri/src/models/client.rs
+            src/tauri/src/models/settings.rs
+            src/tauri/src/services/happ_ui.rs
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Check changed Rust formatting
         id: rust_format
         continue-on-error: true
-        working-directory: src/tauri
         shell: pwsh
         run: |
-          rustfmt --edition 2021 --check --config skip_children=true src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/models/client.rs src/models/settings.rs src/services/happ_ui.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
+          git diff --exit-code -- src/tauri/src/main.rs src/tauri/src/adapters/mod.rs src/tauri/src/adapters/happ.rs src/tauri/src/adapters/v2rayn.rs src/tauri/src/client_commands.rs src/tauri/src/models/client.rs src/tauri/src/models/settings.rs src/tauri/src/services/happ_ui.rs 2>&1 | Tee-Object -FilePath src/tauri/rust-format-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 

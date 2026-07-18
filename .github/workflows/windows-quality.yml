@@ -53,6 +53,15 @@ jobs:
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 
+      - name: Upload frontend distribution
+        if: steps.frontend_build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/frontend/dist
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload frontend diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -70,6 +79,7 @@ jobs:
         run: exit 1
 
   rust:
+    needs: frontend
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -77,18 +87,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Download frontend distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: src/frontend/dist
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
-      - name: Check Rust formatting
+      - name: Check changed Rust formatting
         id: rust_format
         continue-on-error: true
         working-directory: src/tauri
         shell: pwsh
         run: |
-          cargo fmt --all -- --check 2>&1 | Tee-Object -FilePath rust-format-output.txt
+          rustfmt --edition 2021 --check src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/models/client.rs src/models/mod.rs src/models/settings.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 

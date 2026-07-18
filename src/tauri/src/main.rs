@@ -195,9 +195,7 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
-                            if let Err(error) =
-                                client_commands::open_selected_client(state).await
-                            {
+                            if let Err(error) = client_commands::open_selected_client(state).await {
                                 error!(?error, "open selected client from tray failed");
                             }
                         });
@@ -237,9 +235,8 @@ fn main() {
 
                     if label == "main" {
                         if let Some(bounds) = settings.window_position.clone() {
-                            let _ = window.set_position(tauri::PhysicalPosition::new(
-                                bounds.x, bounds.y,
-                            ));
+                            let _ = window
+                                .set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y));
                         }
                     }
 

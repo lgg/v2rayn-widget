@@ -79,13 +79,17 @@ pub fn detect_executable(settings: &AppSettings) -> Option<PathBuf> {
     settings
         .happ_path
         .as_deref()
-        .and_then(normalize_candidate)
+        .and_then(validate_executable_candidate)
         .or_else(|| {
             read_process_snapshot()
                 .executable
                 .filter(|path| is_valid_happ_executable(path))
         })
         .or_else(detect_common_install_path)
+}
+
+pub fn validate_executable_candidate(value: &str) -> Option<PathBuf> {
+    normalize_candidate(value)
 }
 
 pub async fn refresh(
@@ -243,6 +247,11 @@ mod tests {
         assert!(is_happ_process_name("happ.exe"));
         assert!(is_happ_process_name("happ-desktop.exe"));
         assert!(!is_happ_process_name("unrelated.exe"));
+    }
+
+    #[test]
+    fn invalid_happ_path_is_rejected() {
+        assert!(validate_executable_candidate("definitely-not-a-real-happ-path").is_none());
     }
 
     #[test]

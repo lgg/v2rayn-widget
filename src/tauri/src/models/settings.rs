@@ -171,7 +171,7 @@ pub struct UiSettingsPatch {
     pub show_clock: Option<bool>,
     pub show_info_status: Option<bool>,
     pub show_external_ip: Option<bool>,
-    pub show_latency: Option<LatencyMode>,
+    pub show_latency: Option<bool>,
     pub mock_mode_enabled: Option<bool>,
     pub show_action_buttons: Option<bool>,
     pub show_profile_selector: Option<bool>,

@@ -8,12 +8,18 @@ use sysinfo::{ProcessesToUpdate, System};
 
 use crate::{
     models::{
-        client::{CapabilityState, ClientCapabilities, ClientDescriptor, ProxyClientId},
+        client::{
+            CapabilityState, ClientCapabilities, ClientDescriptor, ClientDiagnostics,
+            ProxyClientId, TransportMode,
+        },
         profile::ProfileSummary,
         settings::{AppSettings, LatencyMode},
         status::{ConnectionState, DashboardStatus},
     },
-    services::health_check::{self, HealthCheckOptions},
+    services::{
+        happ_ui,
+        health_check::{self, HealthCheckOptions},
+    },
 };
 
 const HAPP_PROCESS_NAMES: &[&str] = &["happ.exe", "happ", "happ-desktop.exe", "happ-desktop"];
@@ -24,22 +30,43 @@ const HAPP_EXECUTABLE_NAMES: &[&str] = &[
     "happ-desktop.exe",
 ];
 
-pub fn descriptor() -> ClientDescriptor {
+pub fn descriptor(settings: &AppSettings) -> ClientDescriptor {
+    let control_enabled = settings.happ_allow_ui_automation;
     ClientDescriptor {
         id: ProxyClientId::Happ,
         display_name: "Happ".to_owned(),
-        maturity: "read_only_mvp".to_owned(),
-        status_note: "Process detection and application launch are available. Reliable connection control, server selection, transport mode and subscriptions require API/IPC research.".to_owned(),
+        maturity: if control_enabled {
+            "experimental_ui_automation".to_owned()
+        } else {
+            "read_only_with_optional_experimental_control".to_owned()
+        },
+        status_note: if control_enabled {
+            "Happ connection status and toggle use conservative Windows UI Automation. Server selection and subscriptions remain unavailable.".to_owned()
+        } else {
+            "Process detection and application launch are available. Open Happ setup to explicitly enable experimental Windows UI Automation control.".to_owned()
+        },
         capabilities: ClientCapabilities {
             detect_application: CapabilityState::Supported,
             read_process_state: CapabilityState::Supported,
-            read_connection_state: CapabilityState::ResearchRequired,
+            read_connection_state: if control_enabled {
+                CapabilityState::Experimental
+            } else {
+                CapabilityState::ResearchRequired
+            },
             open_application: CapabilityState::Supported,
-            toggle_connection: CapabilityState::ResearchRequired,
+            toggle_connection: if control_enabled {
+                CapabilityState::Experimental
+            } else {
+                CapabilityState::ResearchRequired
+            },
             list_items: CapabilityState::ResearchRequired,
             select_item: CapabilityState::ResearchRequired,
             restart_application: CapabilityState::ResearchRequired,
-            read_transport_mode: CapabilityState::ResearchRequired,
+            read_transport_mode: if control_enabled {
+                CapabilityState::Experimental
+            } else {
+                CapabilityState::ResearchRequired
+            },
             list_subscriptions: CapabilityState::ResearchRequired,
             switch_subscription: CapabilityState::ResearchRequired,
             refresh_subscription: CapabilityState::ResearchRequired,
@@ -51,6 +78,7 @@ pub fn descriptor() -> ClientDescriptor {
 #[derive(Debug, Clone, Default)]
 pub struct HappProcessSnapshot {
     pub running: bool,
+    pub pid: Option<u32>,
     pub executable: Option<PathBuf>,
 }
 
@@ -58,7 +86,7 @@ pub fn read_process_snapshot() -> HappProcessSnapshot {
     let mut system = System::new_all();
     system.refresh_processes(ProcessesToUpdate::All, true);
 
-    for process in system.processes().values() {
+    for (pid, process) in system.processes() {
         let process_name = process.name().to_string_lossy().to_lowercase();
         if !is_happ_process_name(&process_name) {
             continue;
@@ -66,6 +94,7 @@ pub fn read_process_snapshot() -> HappProcessSnapshot {
 
         return HappProcessSnapshot {
             running: true,
+            pid: Some(pid.as_u32()),
             executable: process.exe().map(Path::to_path_buf),
         };
     }
@@ -125,24 +154,42 @@ pub async fn refresh(
         health_check::HealthSnapshot::default()
     };
 
-    let connection_state = if process.running {
-        ConnectionState::Unknown
+    let ui = if process.running && settings.happ_allow_ui_automation {
+        Some(happ_ui::probe(process.pid))
     } else {
-        ConnectionState::Disconnected
+        None
     };
 
-    let last_event = if process.running {
+    let connection_state = if !process.running {
+        ConnectionState::Disconnected
+    } else {
+        ui.as_ref()
+            .map(|snapshot| snapshot.connection_state)
+            .unwrap_or(ConnectionState::Unknown)
+    };
+    let transport_mode = ui
+        .as_ref()
+        .map(|snapshot| snapshot.transport_mode)
+        .unwrap_or(TransportMode::Unknown);
+
+    let last_event = if !process.running {
+        Some("Happ process is not running".to_owned())
+    } else if let Some(snapshot) = &ui {
+        Some(format!(
+            "{}; transport={:?}",
+            snapshot.note, transport_mode
+        ))
+    } else {
         Some(
-            "Happ process detected; reliable connection-state source is not implemented yet"
+            "Happ process detected; experimental UI Automation is disabled in Happ setup"
                 .to_owned(),
         )
-    } else {
-        Some("Happ process is not running".to_owned())
     };
 
     Ok(DashboardStatus {
         status: connection_state,
-        tun_enabled: false,
+        tun_enabled: connection_state == ConnectionState::Connected
+            && matches!(transport_mode, TransportMode::Tun | TransportMode::Mixed),
         connection_state,
         active_profile_name: None,
         external_ip: health.external_ip,
@@ -153,9 +200,63 @@ pub async fn refresh(
     })
 }
 
+pub async fn toggle(settings: &AppSettings) -> Result<DashboardStatus, String> {
+    if !settings.happ_allow_ui_automation {
+        return Err(
+            "HAPP_UI_AUTOMATION_DISABLED: Open Happ setup and explicitly enable experimental Windows UI Automation control."
+                .to_owned(),
+        );
+    }
+
+    let mut process = read_process_snapshot();
+    if !process.running {
+        open(settings)?;
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        process = read_process_snapshot();
+    }
+
+    let action = happ_ui::toggle_connection(process.pid).map_err(|error| error.to_string())?;
+    tokio::time::sleep(std::time::Duration::from_millis(650)).await;
+    let mut status = refresh(settings, true, true, false)
+        .await
+        .map_err(|error| error.to_string())?;
+    status.last_event = Some(action);
+    Ok(status)
+}
+
+pub fn diagnostics(settings: &AppSettings) -> ClientDiagnostics {
+    let process = read_process_snapshot();
+    let ui = happ_ui::probe(process.pid);
+
+    ClientDiagnostics {
+        client_id: ProxyClientId::Happ,
+        application_running: process.running,
+        process_id: process.pid,
+        executable_path: detect_executable(settings)
+            .map(|path| path.to_string_lossy().to_string()),
+        window_found: ui.window_found,
+        window_title: ui.window_title,
+        connection_state: if process.running {
+            ui.connection_state
+        } else {
+            ConnectionState::Disconnected
+        },
+        transport_mode: ui.transport_mode,
+        control_source: ui
+            .action_label
+            .as_ref()
+            .map(|_| "windows_ui_automation".to_owned()),
+        action_label: ui.action_label,
+        action_score: ui.action_score,
+        ui_nodes: ui.ui_nodes,
+        note: ui.note,
+    }
+}
+
 pub fn open(settings: &AppSettings) -> Result<(), String> {
     let executable = detect_executable(settings).ok_or_else(|| {
-        "Happ executable not found. Start Happ once or configure happ_path.".to_owned()
+        "Happ executable not found. Start Happ once or configure its executable path in Happ setup."
+            .to_owned()
     })?;
 
     Command::new(&executable)
@@ -171,7 +272,7 @@ pub fn list_items() -> Vec<ProfileSummary> {
 
 pub fn unsupported_control_error(action: &str) -> String {
     format!(
-        "Happ action '{action}' is not available in the read-only adapter. API/IPC research is required."
+        "Happ action '{action}' is unavailable. Server/profile and subscription operations require a documented stable control path."
     )
 }
 
@@ -253,15 +354,20 @@ mod tests {
     }
 
     #[test]
-    fn happ_does_not_claim_connection_control() {
-        let capabilities = descriptor().capabilities;
+    fn happ_control_is_opt_in() {
+        let disabled = descriptor(&AppSettings::default()).capabilities;
         assert_eq!(
-            capabilities.toggle_connection,
+            disabled.toggle_connection,
             CapabilityState::ResearchRequired
         );
+
+        let mut enabled_settings = AppSettings::default();
+        enabled_settings.happ_allow_ui_automation = true;
+        let enabled = descriptor(&enabled_settings).capabilities;
+        assert_eq!(enabled.toggle_connection, CapabilityState::Experimental);
         assert_eq!(
-            capabilities.read_connection_state,
-            CapabilityState::ResearchRequired
+            enabled.read_connection_state,
+            CapabilityState::Experimental
         );
     }
 }

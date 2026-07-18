@@ -55,6 +55,7 @@ const baseSettings: AppSettings = {
   v2rayn_path_mode: "auto",
   v2rayn_path: null,
   happ_path: null,
+  happ_allow_ui_automation: false,
   window_position: null
 };
 
@@ -84,7 +85,8 @@ describe("SettingsWindow", () => {
     expect(apiMocks.updateSettings.mock.calls[0][0]).toMatchObject({
       autostart_with_windows: true,
       v2rayn_path_mode: "auto",
-      v2rayn_path: null
+      v2rayn_path: null,
+      happ_allow_ui_automation: false
     });
     expect(apiMocks.closeWindow).toHaveBeenCalledWith("settings");
   });
@@ -95,9 +97,7 @@ describe("SettingsWindow", () => {
     await screen.findByRole("heading", { name: "Settings" });
 
     fireEvent.click(screen.getByLabelText("Enable diagnostics page"));
-    fireEvent.change(screen.getByLabelText("Diagnostics site"), {
-      target: { value: "browserleaks.com/ip" }
-    });
+    fireEvent.change(screen.getByLabelText("Diagnostics site"), { target: { value: "browserleaks.com/ip" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {

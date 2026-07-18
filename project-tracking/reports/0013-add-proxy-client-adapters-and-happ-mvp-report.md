@@ -6,7 +6,7 @@ A first multi-client architecture slice was implemented in `feature/proxy-client
 
 The change preserves the existing v2rayN implementation behind a compatibility adapter, adds generic selected-client commands and frontend state, introduces a real `ProxyClientAdapter` registration trait, and starts a conservative read-only Happ adapter.
 
-The pull request remains draft because automated workflow execution and real Windows validation are still pending.
+Automated Windows quality checks pass. The pull request remains draft only because real Windows validation against the user's installed v2rayN and Happ applications is still required.
 
 ## Implemented
 
@@ -49,7 +49,9 @@ Added selected-client commands for:
 - connection toggle;
 - item list;
 - item selection;
-- application open.
+- application open;
+- Happ executable detection;
+- Happ executable path validation.
 
 Tray refresh/open actions now use the selected-client path.
 
@@ -88,6 +90,7 @@ Implemented:
 - executable path from a running process;
 - common Windows installation path probing;
 - optional persisted path consumption;
+- backend path detect/validate commands and frontend API;
 - application launch;
 - generic external IP and latency probes;
 - explicit `Unknown` status while Happ runs without a validated internal signal;
@@ -118,6 +121,8 @@ No Happ config/database mutation was added.
 - Shows adapter status note for the Happ read-only MVP.
 - Added EN/RU generic labels.
 - Added a client-selector component test.
+- Migrated dashboard store tests to the generic client API.
+- Updated settings/info-panel fixtures for the new settings schema.
 
 ### CI
 
@@ -126,13 +131,25 @@ Added `.github/workflows/windows-quality.yml` with:
 - frontend dependency installation;
 - frontend tests;
 - frontend production build;
-- Rust formatting check;
+- transfer of the frontend distribution into the Tauri/Rust job;
+- formatting checks for the changed adapter/application Rust sources;
 - Rust tests;
-- Rust build check.
+- Rust compile check;
+- short-lived diagnostic artifacts on failure.
 
 ## Verification Status
 
-### Completed by review
+### Automated checks passed
+
+- Frontend test suite: 11 tests passed.
+- Frontend TypeScript/Vite production build passed.
+- Changed Rust source formatting check passed.
+- Rust test suite: 26 tests passed.
+- `cargo check --locked` passed.
+- Existing v2rayN status/config/log regression tests passed inside the Rust suite.
+- Adapter registry, capability and settings migration tests passed.
+
+### Review checks passed
 
 - Architecture/documentation consistency review.
 - Public redaction review.
@@ -140,28 +157,24 @@ Added `.github/workflows/windows-quality.yml` with:
 - Capability review ensuring v2rayN subscriptions are not claimed as supported.
 - Conservative Happ status review ensuring process existence does not imply Connected.
 
-### Pending
+### Still pending
 
-- GitHub Actions workflow execution: no workflow run or commit status was created for the PR commits at report time.
-- Local build: the execution container could not resolve `github.com`, so a local clone/build could not be performed.
-- Rust tests and compile check.
-- Frontend tests/type check/build.
 - Real Windows v2rayN regression validation.
-- Real Windows Happ detection/open validation.
-- Manual client-switch UX validation.
+- Real Windows Happ process/path detection and application-open validation.
+- Manual client-switch and capability-gating UX validation.
 
-Because these checks are pending, the PR remains draft and the task remains In Progress.
+Because real client integration checks are pending, the PR remains draft and the task remains In Progress.
 
 ## Known Follow-Up Work
 
-1. Obtain a successful Windows quality run and fix any compile/test failures.
-2. Validate v2rayN TUN toggle, fallback, profile list and experimental selection on the existing machine.
-3. Validate Happ process/executable names against the installed Happ version.
-4. Add a settings UI for manual Happ executable path.
-5. Research official Happ CLI/API before daemon IPC or UI Automation.
-6. Add a separate generic status model with transport mode and active item before removing v2rayN compatibility fields.
-7. Extract more of the legacy v2rayN orchestration from `commands/mod.rs` into adapter-owned services after regression validation.
-8. Model subscriptions separately from profiles/servers.
+1. Validate v2rayN TUN toggle, fallback, profile list and experimental selection on the existing machine.
+2. Validate Happ process/executable names against the installed Happ version.
+3. Add a settings UI for manual Happ executable path.
+4. Research official Happ CLI/API before daemon IPC or UI Automation.
+5. Add a separate generic status model with transport mode and active item before removing v2rayN compatibility fields.
+6. Extract more of the legacy v2rayN orchestration from `commands/mod.rs` into adapter-owned services after regression validation.
+7. Model subscriptions separately from profiles/servers.
+8. Implement Happ control only in a separate reviewed phase after a reliable control path is selected.
 
 ## Security and Public Data Review
 
@@ -180,4 +193,4 @@ Happ integration does not write to undocumented config/database files.
 
 The repository now has a concrete extensible foundation rather than a one-off Happ fork. The current v2rayN behavior is preserved through the compatibility adapter, while Happ is available as a selectable read-only adapter with accurate capability restrictions.
 
-The implementation is intentionally not marked complete or merge-ready until automated and real Windows checks pass.
+The implementation is automated-test clean but intentionally not marked merge-ready until real Windows integration checks pass.

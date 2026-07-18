@@ -1,9 +1,9 @@
 use tauri::{AppHandle, Emitter, State};
 
 use crate::{
-    adapters::{self, happ, v2rayn},
+    adapters::{self, happ, ProxyClientAdapter, RefreshKind},
     models::{
-        client::{ClientDescriptor, ProxyClientId},
+        client::{ClientDescriptor, ClientDiagnostics, ProxyClientId},
         path_validation::PathValidation,
         profile::ProfileSummary,
         settings::AppSettings,
@@ -14,15 +14,31 @@ use crate::{
 };
 
 #[tauri::command]
-pub async fn get_client_catalog() -> Result<Vec<ClientDescriptor>, String> {
-    Ok(adapters::catalog())
+pub async fn get_client_catalog(
+    state: State<'_, AppState>,
+) -> Result<Vec<ClientDescriptor>, String> {
+    Ok(adapters::catalog(&state.snapshot().settings))
 }
 
 #[tauri::command]
 pub async fn get_selected_client(state: State<'_, AppState>) -> Result<ClientDescriptor, String> {
-    Ok(adapters::descriptor(
-        state.snapshot().settings.selected_client,
-    ))
+    let settings = state.snapshot().settings;
+    Ok(adapters::descriptor(settings.selected_client, &settings))
+}
+
+#[tauri::command]
+pub async fn get_selected_client_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<ClientDiagnostics, String> {
+    let client_id = state.snapshot().settings.selected_client;
+    adapters::adapter(client_id).diagnostics(state).await
+}
+
+#[tauri::command]
+pub async fn get_happ_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<ClientDiagnostics, String> {
+    adapters::adapter(ProxyClientId::Happ).diagnostics(state).await
 }
 
 #[tauri::command]
@@ -44,8 +60,11 @@ pub async fn select_client(
 
     app.emit("settings-updated", &snapshot.settings)
         .map_err(|error| error.to_string())?;
-    app.emit("client-selected", adapters::descriptor(client_id))
-        .map_err(|error| error.to_string())?;
+    app.emit(
+        "client-selected",
+        adapters::descriptor(client_id, &snapshot.settings),
+    )
+    .map_err(|error| error.to_string())?;
 
     Ok(snapshot.settings)
 }
@@ -81,94 +100,54 @@ pub async fn validate_happ_path(path: String) -> Result<PathValidation, String> 
     }
 }
 
+async fn refresh_with_kind(
+    state: State<'_, AppState>,
+    kind: RefreshKind,
+) -> Result<DashboardStatus, String> {
+    let client_id = state.snapshot().settings.selected_client;
+    adapters::adapter(client_id).refresh(state, kind).await
+}
+
 #[tauri::command]
 pub async fn refresh_selected_client(
     state: State<'_, AppState>,
 ) -> Result<DashboardStatus, String> {
-    let snapshot = state.snapshot();
-    match snapshot.settings.selected_client {
-        ProxyClientId::V2rayn => v2rayn::refresh(state).await,
-        ProxyClientId::Happ => {
-            let status = happ::refresh(&snapshot.settings, true, true, false)
-                .await
-                .map_err(|error| error.to_string())?;
-            let merged = merge_with_previous(status, &snapshot.status);
-            state.update_status(merged.clone());
-            Ok(merged)
-        }
-    }
+    refresh_with_kind(state, RefreshKind::Foreground).await
 }
 
 #[tauri::command]
 pub async fn refresh_selected_client_background(
     state: State<'_, AppState>,
 ) -> Result<DashboardStatus, String> {
-    let snapshot = state.snapshot();
-    match snapshot.settings.selected_client {
-        ProxyClientId::V2rayn => v2rayn::refresh_background(state).await,
-        ProxyClientId::Happ => {
-            let status = happ::refresh(&snapshot.settings, true, false, false)
-                .await
-                .map_err(|error| error.to_string())?;
-            let merged = merge_with_previous(status, &snapshot.status);
-            state.update_status(merged.clone());
-            Ok(merged)
-        }
-    }
+    refresh_with_kind(state, RefreshKind::Background).await
 }
 
 #[tauri::command]
 pub async fn refresh_selected_client_startup(
     state: State<'_, AppState>,
 ) -> Result<DashboardStatus, String> {
-    let snapshot = state.snapshot();
-    match snapshot.settings.selected_client {
-        ProxyClientId::V2rayn => v2rayn::refresh_startup(state).await,
-        ProxyClientId::Happ => {
-            let status = happ::refresh(&snapshot.settings, true, true, true)
-                .await
-                .map_err(|error| error.to_string())?;
-            let merged = merge_with_previous(status, &snapshot.status);
-            state.update_status(merged.clone());
-            Ok(merged)
-        }
-    }
+    refresh_with_kind(state, RefreshKind::Startup).await
 }
 
 #[tauri::command]
 pub async fn refresh_selected_client_post_route(
     state: State<'_, AppState>,
 ) -> Result<DashboardStatus, String> {
-    let snapshot = state.snapshot();
-    match snapshot.settings.selected_client {
-        ProxyClientId::V2rayn => v2rayn::refresh_post_route(state).await,
-        ProxyClientId::Happ => {
-            let status = happ::refresh(&snapshot.settings, false, true, false)
-                .await
-                .map_err(|error| error.to_string())?;
-            let merged = merge_with_previous(status, &snapshot.status);
-            state.update_status(merged.clone());
-            Ok(merged)
-        }
-    }
+    refresh_with_kind(state, RefreshKind::PostRoute).await
 }
 
 #[tauri::command]
 pub async fn toggle_selected_client(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
-    match state.snapshot().settings.selected_client {
-        ProxyClientId::V2rayn => v2rayn::toggle(state).await,
-        ProxyClientId::Happ => Err(happ::unsupported_control_error("toggle_connection")),
-    }
+    let client_id = state.snapshot().settings.selected_client;
+    adapters::adapter(client_id).toggle(state).await
 }
 
 #[tauri::command]
 pub async fn list_selected_client_items(
     state: State<'_, AppState>,
 ) -> Result<Vec<ProfileSummary>, String> {
-    match state.snapshot().settings.selected_client {
-        ProxyClientId::V2rayn => v2rayn::list_items(state).await,
-        ProxyClientId::Happ => Ok(happ::list_items()),
-    }
+    let client_id = state.snapshot().settings.selected_client;
+    adapters::adapter(client_id).list_items(state).await
 }
 
 #[tauri::command]
@@ -176,29 +155,14 @@ pub async fn select_client_item(
     item_id: String,
     state: State<'_, AppState>,
 ) -> Result<DashboardStatus, String> {
-    match state.snapshot().settings.selected_client {
-        ProxyClientId::V2rayn => v2rayn::select_item(item_id, state).await,
-        ProxyClientId::Happ => Err(happ::unsupported_control_error("select_item")),
-    }
+    let client_id = state.snapshot().settings.selected_client;
+    adapters::adapter(client_id)
+        .select_item(item_id, state)
+        .await
 }
 
 #[tauri::command]
 pub async fn open_selected_client(state: State<'_, AppState>) -> Result<(), String> {
-    let snapshot = state.snapshot();
-    match snapshot.settings.selected_client {
-        ProxyClientId::V2rayn => v2rayn::open(state).await,
-        ProxyClientId::Happ => happ::open(&snapshot.settings),
-    }
-}
-
-fn merge_with_previous(mut next: DashboardStatus, previous: &DashboardStatus) -> DashboardStatus {
-    if next.external_ip.is_none() {
-        next.external_ip = previous.external_ip.clone();
-    }
-
-    if next.latency_ms.is_none() {
-        next.latency_ms = previous.latency_ms;
-    }
-
-    next
+    let client_id = state.snapshot().settings.selected_client;
+    adapters::adapter(client_id).open(state).await
 }

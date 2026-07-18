@@ -1,22 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardStatus } from "@/lib/types";
 
 const apiMocks = vi.hoisted(() => ({
+  getClientCatalog: vi.fn(),
   getSettings: vi.fn(),
   getStatus: vi.fn(),
-  listProfiles: vi.fn(),
+  listSelectedClientItems: vi.fn(),
   openDebugWindow: vi.fn(),
   openDiagnosticsWindow: vi.fn(),
+  openSelectedClient: vi.fn(),
   openSettingsWindow: vi.fn(),
-  openV2RayN: vi.fn(),
-  refreshStatus: vi.fn(),
-  refreshStatusBackground: vi.fn(),
-  refreshStatusPostRoute: vi.fn(),
-  refreshStatusStartup: vi.fn(),
+  refreshSelectedClient: vi.fn(),
+  refreshSelectedClientBackground: vi.fn(),
+  refreshSelectedClientPostRoute: vi.fn(),
+  refreshSelectedClientStartup: vi.fn(),
   relaunchWidgetAsAdmin: vi.fn(),
-  setActiveProfile: vi.fn(),
-  toggleTunViaUi: vi.fn()
+  selectClient: vi.fn(),
+  selectClientItem: vi.fn(),
+  toggleSelectedClient: vi.fn()
 }));
 
 vi.mock("@/lib/api", () => apiMocks);
@@ -49,7 +51,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 describe("dashboard store refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiMocks.listProfiles.mockResolvedValue([]);
+    apiMocks.listSelectedClientItems.mockResolvedValue([]);
     useDashboardStore.setState({
       status: null,
       profiles: [],
@@ -62,21 +64,21 @@ describe("dashboard store refresh", () => {
 
   it("queues a manual refresh when background refresh is already running", async () => {
     const background = deferred<DashboardStatus>();
-    apiMocks.refreshStatusBackground.mockReturnValueOnce(background.promise);
-    apiMocks.refreshStatus.mockResolvedValueOnce(status("manual"));
+    apiMocks.refreshSelectedClientBackground.mockReturnValueOnce(background.promise);
+    apiMocks.refreshSelectedClient.mockResolvedValueOnce(status("manual"));
 
     const backgroundRun = useDashboardStore.getState().refresh({ background: true });
     const manualRun = useDashboardStore.getState().refresh();
 
     expect(useDashboardStore.getState().actionLoading).toBe(true);
-    expect(apiMocks.refreshStatus).not.toHaveBeenCalled();
+    expect(apiMocks.refreshSelectedClient).not.toHaveBeenCalled();
 
     background.resolve(status("background"));
     await backgroundRun;
     await manualRun;
 
     await waitFor(() => {
-      expect(apiMocks.refreshStatus).toHaveBeenCalledTimes(1);
+      expect(apiMocks.refreshSelectedClient).toHaveBeenCalledTimes(1);
     });
 
     expect(useDashboardStore.getState().status?.updated_at).toBe("manual");

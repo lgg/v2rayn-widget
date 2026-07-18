@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::models::{
     client::ProxyClientId,
@@ -23,6 +23,7 @@ struct AppStateInner {
 #[derive(Debug)]
 pub struct AppState {
     inner: Mutex<AppStateInner>,
+    settings_update_lock: Mutex<()>,
 }
 
 impl AppState {
@@ -33,7 +34,14 @@ impl AppState {
                 status,
                 client_epoch: 0,
             }),
+            settings_update_lock: Mutex::new(()),
         }
+    }
+
+    pub fn lock_settings_update(&self) -> MutexGuard<'_, ()> {
+        self.settings_update_lock
+            .lock()
+            .expect("Settings update lock poisoned")
     }
 
     pub fn snapshot(&self) -> Snapshot {

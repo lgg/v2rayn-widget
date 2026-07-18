@@ -2,35 +2,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::client::ProxyClientId;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
     Light,
+    #[default]
     Dark,
 }
 
-impl Default for ThemeMode {
-    fn default() -> Self {
-        Self::Dark
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum V2RayNPathMode {
+    #[default]
     Auto,
     Manual,
 }
 
-impl Default for V2RayNPathMode {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum TimeFormat {
     #[serde(rename = "system")]
+    #[default]
     System,
     #[serde(rename = "24h")]
     H24,
@@ -38,23 +29,12 @@ pub enum TimeFormat {
     H12,
 }
 
-impl Default for TimeFormat {
-    fn default() -> Self {
-        Self::System
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum LatencyMode {
+    #[default]
     Active,
     LogSnapshot,
-}
-
-impl Default for LatencyMode {
-    fn default() -> Self {
-        Self::Active
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -61,6 +61,7 @@ pub async fn select_client(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<AppSettings, String> {
+    let _settings_update = state.lock_settings_update();
     let mut snapshot = state.snapshot();
 
     if snapshot.settings.selected_client == client_id {
@@ -99,6 +100,7 @@ pub async fn update_happ_settings(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AppSettings, String> {
+    let _settings_update = state.lock_settings_update();
     let snapshot = state.snapshot();
     let mut settings = snapshot.settings.clone();
 

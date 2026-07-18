@@ -96,7 +96,10 @@ mod tests {
 
         assert_eq!(decoded.poll_interval_sec, initial.poll_interval_sec);
         assert_eq!(decoded.language, initial.language);
-        assert_eq!(decoded.window_opacity_percent, initial.window_opacity_percent);
+        assert_eq!(
+            decoded.window_opacity_percent,
+            initial.window_opacity_percent
+        );
         assert_eq!(decoded.diagnostics_enabled, initial.diagnostics_enabled);
         assert_eq!(decoded.diagnostics_url, initial.diagnostics_url);
     }

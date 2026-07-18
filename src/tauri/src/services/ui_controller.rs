@@ -410,7 +410,7 @@ mod windows_impl {
                     Some(best) if best.score >= reload_score => {}
                     _ => {
                         result.best_reload = Some(UiActionCandidate {
-                            element: element,
+                            element,
                             label,
                             score: reload_score,
                         });

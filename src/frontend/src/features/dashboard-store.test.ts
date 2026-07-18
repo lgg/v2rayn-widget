@@ -192,4 +192,35 @@ describe("dashboard store refresh", () => {
     });
   });
 
+  it("does not let an older catalog request overwrite newer Happ capabilities", async () => {
+    const olderCatalog = deferred<ClientDescriptor[]>();
+    const newerCatalog = deferred<ClientDescriptor[]>();
+    apiMocks.getClientCatalog
+      .mockReturnValueOnce(olderCatalog.promise)
+      .mockReturnValueOnce(newerCatalog.promise);
+
+    useDashboardStore.setState({ settings: { ...baseSettings, selected_client: "happ" } });
+    useDashboardStore.getState().applyExternalSettings({
+      ...baseSettings,
+      selected_client: "happ",
+      happ_allow_ui_automation: false
+    });
+    useDashboardStore.getState().applyExternalSettings({
+      ...baseSettings,
+      selected_client: "happ",
+      happ_allow_ui_automation: true
+    });
+
+    newerCatalog.resolve([descriptor("v2rayn", "supported"), descriptor("happ", "experimental")]);
+    await waitFor(() => {
+      expect(useDashboardStore.getState().clients.find((client) => client.id === "happ")?.capabilities.toggle_connection)
+        .toBe("experimental");
+    });
+
+    olderCatalog.resolve([descriptor("v2rayn", "supported"), descriptor("happ", "research_required")]);
+    await Promise.resolve();
+    expect(useDashboardStore.getState().clients.find((client) => client.id === "happ")?.capabilities.toggle_connection)
+      .toBe("experimental");
+  });
+
 });

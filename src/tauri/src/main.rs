@@ -215,7 +215,7 @@ fn main() {
                             let _ = window.show();
                             let _ = window.unminimize();
                             let _ = window.set_focus();
-                            restore_visible_aux_windows(&app, "tray_left_click");
+                            restore_visible_aux_windows(app, "tray_left_click");
                         }
                     }
                 })
@@ -259,6 +259,7 @@ fn main() {
                     }
                     WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
                         let state = app.state::<AppState>();
+                        let _settings_update = state.lock_settings_update();
                         if let (Ok(position), Ok(size)) =
                             (window.outer_position(), window.outer_size())
                         {
@@ -274,19 +275,16 @@ fn main() {
                             }
                         }
                     }
-                    WindowEvent::Focused(is_focused) => {
-                        if *is_focused {
-                            restore_visible_aux_windows(&app, "main_focus_changed");
-                        }
+                    WindowEvent::Focused(true) => {
+                        restore_visible_aux_windows(app, "main_focus_changed");
                     }
                     _ => {}
                 },
-                "settings" | "debug" | "happ-setup" => match event {
-                    WindowEvent::CloseRequested { api, .. } => {
+                "settings" | "debug" | "happ-setup" => {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = window.hide();
                     }
-                    _ => {}
                 },
                 _ => {}
             }

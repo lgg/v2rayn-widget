@@ -408,6 +408,7 @@ pub async fn update_settings(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AppSettings, String> {
+    let _settings_update = state.lock_settings_update();
     let snapshot = state.snapshot();
     let settings = merge_general_settings_payload(payload, &snapshot.settings);
     let status = if settings.mock_mode_enabled {
@@ -431,6 +432,7 @@ pub async fn apply_ui_settings(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AppSettings, String> {
+    let _settings_update = state.lock_settings_update();
     let snapshot = state.snapshot();
     let previous_mock_mode = snapshot.settings.mock_mode_enabled;
     let previous_status = snapshot.status;
@@ -1133,22 +1135,26 @@ mod tests {
     use super::*;
     #[test]
     fn general_settings_payload_preserves_adapter_owned_fields() {
-        let mut current = AppSettings::default();
-        current.selected_client = ProxyClientId::Happ;
-        current.happ_path = Some("C:\\Happ\\Happ.exe".to_owned());
-        current.happ_allow_ui_automation = true;
-        current.window_position = Some(crate::models::settings::WindowPosition {
-            x: 10,
-            y: 20,
-            width: 360,
-            height: 500,
-        });
+        let current = AppSettings {
+            selected_client: ProxyClientId::Happ,
+            happ_path: Some("C:\\Happ\\Happ.exe".to_owned()),
+            happ_allow_ui_automation: true,
+            window_position: Some(crate::models::settings::WindowPosition {
+                x: 10,
+                y: 20,
+                width: 360,
+                height: 500,
+            }),
+            ..AppSettings::default()
+        };
 
-        let mut stale_payload = AppSettings::default();
-        stale_payload.selected_client = ProxyClientId::V2rayn;
-        stale_payload.happ_path = None;
-        stale_payload.happ_allow_ui_automation = false;
-        stale_payload.window_position = None;
+        let stale_payload = AppSettings {
+            selected_client: ProxyClientId::V2rayn,
+            happ_path: None,
+            happ_allow_ui_automation: false,
+            window_position: None,
+            ..AppSettings::default()
+        };
 
         let merged = merge_general_settings_payload(stale_payload, &current);
         assert_eq!(merged.selected_client, ProxyClientId::Happ);

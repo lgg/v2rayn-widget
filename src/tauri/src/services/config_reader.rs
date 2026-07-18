@@ -247,14 +247,12 @@ fn set_first_existing_bool_key(value: &mut Value, keys: &[&str], new_value: bool
 }
 
 fn extract_enable_tun(json: &Value) -> Option<bool> {
-    if let Some(item) = find_value_by_key(json, "TunModeItem") {
-        if let Value::Object(map) = item {
-            if let Some(Value::Bool(flag)) = map.get("EnableTun") {
-                return Some(*flag);
-            }
-            if let Some(Value::Bool(flag)) = map.get("enableTun") {
-                return Some(*flag);
-            }
+    if let Some(Value::Object(map)) = find_value_by_key(json, "TunModeItem") {
+        if let Some(Value::Bool(flag)) = map.get("EnableTun") {
+            return Some(*flag);
+        }
+        if let Some(Value::Bool(flag)) = map.get("enableTun") {
+            return Some(*flag);
         }
     }
 

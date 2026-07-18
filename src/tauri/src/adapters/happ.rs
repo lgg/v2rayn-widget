@@ -318,9 +318,7 @@ fn process_candidate_rank(name: &str, executable_is_valid: bool, pid: u32) -> u6
 }
 
 fn is_happ_process_name(name: &str) -> bool {
-    HAPP_PROCESS_NAMES
-        .iter()
-        .any(|candidate| name == *candidate)
+    HAPP_PROCESS_NAMES.contains(&name)
 }
 
 fn normalize_candidate(value: &str) -> Option<PathBuf> {
@@ -414,8 +412,10 @@ mod tests {
             CapabilityState::ResearchRequired
         );
 
-        let mut enabled_settings = AppSettings::default();
-        enabled_settings.happ_allow_ui_automation = true;
+        let enabled_settings = AppSettings {
+            happ_allow_ui_automation: true,
+            ..AppSettings::default()
+        };
         let enabled = descriptor(&enabled_settings).capabilities;
         assert_eq!(enabled.toggle_connection, CapabilityState::Experimental);
         assert_eq!(enabled.read_connection_state, CapabilityState::Experimental);

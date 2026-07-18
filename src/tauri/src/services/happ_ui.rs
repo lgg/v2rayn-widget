@@ -132,7 +132,12 @@ fn redact_component(value: &str) -> String {
     }
 }
 
-fn redact_ui_node(name: &str, automation_id: &str, class_name: &str, control_type: Option<i32>) -> String {
+fn redact_ui_node(
+    name: &str,
+    automation_id: &str,
+    class_name: &str,
+    control_type: Option<i32>,
+) -> String {
     let safe_name = if let Some((state, _)) = classify_connection_action(name) {
         format!("action={}", canonical_action_label(state))
     } else {
@@ -181,10 +186,11 @@ mod windows_impl {
                 Accessibility::{
                     CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationInvokePattern,
                     IUIAutomationLegacyIAccessiblePattern, IUIAutomationSelectionItemPattern,
-                    IUIAutomationTogglePattern, TreeScope_Subtree, UIA_ButtonControlTypeId,
-                    UIA_CheckBoxControlTypeId, UIA_CustomControlTypeId, UIA_HyperlinkControlTypeId,
-                    UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId, UIA_MenuItemControlTypeId,
-                    ToggleState_On, UIA_SelectionItemPatternId, UIA_TogglePatternId,
+                    IUIAutomationTogglePattern, ToggleState_On, TreeScope_Subtree,
+                    UIA_ButtonControlTypeId, UIA_CheckBoxControlTypeId, UIA_CustomControlTypeId,
+                    UIA_HyperlinkControlTypeId, UIA_InvokePatternId,
+                    UIA_LegacyIAccessiblePatternId, UIA_MenuItemControlTypeId,
+                    UIA_SelectionItemPatternId, UIA_TogglePatternId,
                 },
                 WindowsAndMessaging::{
                     EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
@@ -287,8 +293,9 @@ mod windows_impl {
                         .map(|candidate| candidate.inferred_state)
                         .unwrap_or(ConnectionState::Unknown),
                     transport_mode: scan.transport_mode,
-                    action_label: action
-                        .map(|candidate| canonical_action_label(candidate.inferred_state).to_owned()),
+                    action_label: action.map(|candidate| {
+                        canonical_action_label(candidate.inferred_state).to_owned()
+                    }),
                     action_score: action.map(|candidate| candidate.score),
                     ui_nodes: scan.nodes,
                     note: note.to_owned(),
@@ -421,8 +428,8 @@ mod windows_impl {
         }
 
         let ambiguous_action = candidates.len() > 1;
-        let action = select_unique_candidate_index(candidates.len())
-            .map(|index| candidates[index].clone());
+        let action =
+            select_unique_candidate_index(candidates.len()).map(|index| candidates[index].clone());
         let (transport_mode, transport_conflict) = resolve_transport_modes(&selected_transports);
 
         Ok(ScanResult {
@@ -710,7 +717,10 @@ mod tests {
 
     #[test]
     fn window_titles_are_sanitized() {
-        assert_eq!(sanitize_window_title("Happ - user@example.com"), Some("Happ".to_owned()));
+        assert_eq!(
+            sanitize_window_title("Happ - user@example.com"),
+            Some("Happ".to_owned())
+        );
         assert_eq!(
             sanitize_window_title("Private profile"),
             Some("<redacted window title>".to_owned())

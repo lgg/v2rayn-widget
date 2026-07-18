@@ -2,17 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::status::ConnectionState;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ProxyClientId {
+    #[default]
     V2rayn,
     Happ,
-}
-
-impl Default for ProxyClientId {
-    fn default() -> Self {
-        Self::V2rayn
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

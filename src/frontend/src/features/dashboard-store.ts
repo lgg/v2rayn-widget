@@ -449,8 +449,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   applyExternalSettings: (settings) => {
-    const previousClient = get().settings?.selected_client;
-    if (previousClient !== undefined && previousClient !== settings.selected_client) {
+    const previousSettings = get().settings;
+    const operationalContextChanged = previousSettings !== null
+      && (previousSettings.selected_client !== settings.selected_client
+        || previousSettings.happ_path !== settings.happ_path
+        || previousSettings.happ_allow_ui_automation !== settings.happ_allow_ui_automation);
+    const previousClient = previousSettings?.selected_client;
+    if (operationalContextChanged) {
       invalidateClientOperations();
     }
     applyTheme(settings.theme);

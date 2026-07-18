@@ -100,8 +100,19 @@ describe("HappSetupWindow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Run Happ probe" }));
 
-    expect(await screen.findByText("Connect")).toBeTruthy();
-    expect(screen.getByText("360")).toBeTruthy();
+    const actionRow = await screen.findByText((_, element) =>
+      element?.tagName === "P"
+      && element.textContent?.includes("Detected connection action") === true
+      && element.textContent?.includes("Connect") === true
+    );
+    const scoreRow = screen.getByText((_, element) =>
+      element?.tagName === "P"
+      && element.textContent?.includes("Confidence score") === true
+      && element.textContent?.includes("360") === true
+    );
+
+    expect(actionRow).toBeTruthy();
+    expect(scoreRow).toBeTruthy();
     expect(screen.getByText("Probe complete")).toBeTruthy();
   });
 });

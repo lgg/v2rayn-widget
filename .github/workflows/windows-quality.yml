@@ -81,7 +81,7 @@ jobs:
   rust:
     needs: frontend
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -104,7 +104,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
-          rustfmt --edition 2021 --check --config skip_children=true src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/models/client.rs src/models/settings.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
+          rustfmt --edition 2021 --check --config skip_children=true src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/models/client.rs src/models/settings.rs src/services/happ_ui.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 

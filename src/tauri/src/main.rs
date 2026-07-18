@@ -141,7 +141,8 @@ fn main() {
             let show_item = MenuItemBuilder::with_id("show", "Show Widget").build(app)?;
             let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
             let refresh_item = MenuItemBuilder::with_id("refresh", "Refresh Status").build(app)?;
-            let open_item = MenuItemBuilder::with_id("open_client", "Open Selected Client").build(app)?;
+            let open_item =
+                MenuItemBuilder::with_id("open_client", "Open Selected Client").build(app)?;
             let exit_item = MenuItemBuilder::with_id("exit", "Exit").build(app)?;
 
             let menu = MenuBuilder::new(app)
@@ -155,7 +156,9 @@ fn main() {
 
             let app_handle = app.handle().clone();
 
-            let mut tray_builder = TrayIconBuilder::new().tooltip("Proxy Client Widget").menu(&menu);
+            let mut tray_builder = TrayIconBuilder::new()
+                .tooltip("Proxy Client Widget")
+                .menu(&menu);
             if let Some(icon) = app.default_window_icon().cloned() {
                 tray_builder = tray_builder.icon(icon);
             }
@@ -181,7 +184,9 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
-                            if let Ok(status) = client_commands::refresh_selected_client(state).await {
+                            if let Ok(status) =
+                                client_commands::refresh_selected_client(state).await
+                            {
                                 info!(?status.connection_state, "refresh from tray succeeded");
                             }
                         });
@@ -190,7 +195,9 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
-                            if let Err(error) = client_commands::open_selected_client(state).await {
+                            if let Err(error) =
+                                client_commands::open_selected_client(state).await
+                            {
                                 error!(?error, "open selected client from tray failed");
                             }
                         });
@@ -230,7 +237,9 @@ fn main() {
 
                     if label == "main" {
                         if let Some(bounds) = settings.window_position.clone() {
-                            let _ = window.set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y));
+                            let _ = window.set_position(tauri::PhysicalPosition::new(
+                                bounds.x, bounds.y,
+                            ));
                         }
                     }
 
@@ -253,7 +262,9 @@ fn main() {
                     }
                     WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
                         let state = app.state::<AppState>();
-                        if let (Ok(position), Ok(size)) = (window.outer_position(), window.outer_size()) {
+                        if let (Ok(position), Ok(size)) =
+                            (window.outer_position(), window.outer_size())
+                        {
                             let mut snapshot = state.snapshot();
                             snapshot.settings.window_position = Some(WindowPosition {
                                 x: position.x,
@@ -290,6 +301,8 @@ fn main() {
             client_commands::get_client_catalog,
             client_commands::get_selected_client,
             client_commands::select_client,
+            client_commands::detect_happ_path,
+            client_commands::validate_happ_path,
             client_commands::refresh_selected_client,
             client_commands::refresh_selected_client_background,
             client_commands::refresh_selected_client_startup,

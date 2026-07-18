@@ -22,6 +22,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Upload temporary source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-audit-source
+          path: |
+            src/frontend
+            src/tauri
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

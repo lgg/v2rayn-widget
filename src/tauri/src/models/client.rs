@@ -13,15 +13,6 @@ impl Default for ProxyClientId {
     }
 }
 
-impl ProxyClientId {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::V2rayn => "v2rayn",
-            Self::Happ => "happ",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityState {
@@ -48,22 +39,6 @@ pub struct ClientCapabilities {
     pub manage_subscriptions: CapabilityState,
 }
 
-impl ClientCapabilities {
-    pub fn supports_toggle(&self) -> bool {
-        matches!(
-            self.toggle_connection,
-            CapabilityState::Supported | CapabilityState::Experimental
-        )
-    }
-
-    pub fn supports_items(&self) -> bool {
-        matches!(
-            self.list_items,
-            CapabilityState::Supported | CapabilityState::Experimental
-        )
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ClientDescriptor {
     pub id: ProxyClientId,
@@ -84,7 +59,13 @@ mod tests {
 
     #[test]
     fn client_ids_serialize_stably() {
-        assert_eq!(serde_json::to_string(&ProxyClientId::V2rayn).unwrap(), "\"v2rayn\"");
-        assert_eq!(serde_json::to_string(&ProxyClientId::Happ).unwrap(), "\"happ\"");
+        assert_eq!(
+            serde_json::to_string(&ProxyClientId::V2rayn).unwrap(),
+            "\"v2rayn\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ProxyClientId::Happ).unwrap(),
+            "\"happ\""
+        );
     }
 }

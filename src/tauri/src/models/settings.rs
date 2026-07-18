@@ -185,4 +185,3 @@ mod tests {
         assert!(!settings.happ_allow_ui_automation);
     }
 }
-

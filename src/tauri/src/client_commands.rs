@@ -35,10 +35,10 @@ pub async fn get_selected_client_diagnostics(
 }
 
 #[tauri::command]
-pub async fn get_happ_diagnostics(
-    state: State<'_, AppState>,
-) -> Result<ClientDiagnostics, String> {
-    adapters::adapter(ProxyClientId::Happ).diagnostics(state).await
+pub async fn get_happ_diagnostics(state: State<'_, AppState>) -> Result<ClientDiagnostics, String> {
+    adapters::adapter(ProxyClientId::Happ)
+        .diagnostics(state)
+        .await
 }
 
 #[tauri::command]

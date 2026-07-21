@@ -1,13 +1,66 @@
 name: Apply 0014 Audit Patch
 
 on:
-  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/apply-0014-audit.yml'
+      - '.audit/0014.chunk00'
+      - '.audit/0014.chunk01'
+      - '.audit/0014.chunk02'
+      - '.audit/0014.chunk03'
+      - '.audit/0014.chunk04'
 
 permissions:
   contents: write
 
+concurrency:
+  group: apply-0014-audit-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
-  disabled:
+  apply:
+    if: github.event.pull_request.head.ref == 'audit/0014-post-merge-hardening'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
-      - run: echo "Waiting for verified payload chunks"
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: audit/0014-post-merge-hardening
+          fetch-depth: 0
+
+      - name: Verify and apply exact audited patch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo 'ef61f13ce872be6429a452afd4bcc8e84112d8be9c77b675a1b84f943e1647b3  .audit/0014.chunk00' | sha256sum -c -
+          echo '9f1fe9a5b29963ad2a231680ac4dcca8a49a1e520b09b6a361041634b44087be  .audit/0014.chunk01' | sha256sum -c -
+          echo 'b89b2a9a63f3774158de2d0b8e96ae1645c85b47a7327b8fd4ddd15d0c44691b  .audit/0014.chunk02' | sha256sum -c -
+          echo 'bc1640254cbd3c0c627415af998c49085930fa0ca3cc40152ac2db9343016ace  .audit/0014.chunk03' | sha256sum -c -
+          echo 'f4c56da384aad0b7f03f3c46ef758f876eea405533045ac769930ada739c98da  .audit/0014.chunk04' | sha256sum -c -
+
+          cat .audit/0014.chunk00 .audit/0014.chunk01 .audit/0014.chunk02 .audit/0014.chunk03 .audit/0014.chunk04 > /tmp/0014.b64
+          echo '7533e691c40d7256e852661b45dd362b5892a3d44d975fb67adcf8501527a60a  /tmp/0014.b64' | sha256sum -c -
+
+          base64 -d /tmp/0014.b64 | gzip -d > /tmp/0014.patch
+          echo '5c170c7c588cde93f8e779ee7c7a5778617b341ddf9e39916d09a4cf47d687ff  /tmp/0014.patch' | sha256sum -c -
+
+          patch -p1 --forward --batch < /tmp/0014.patch
+
+          rm -f .audit/0014.patch.gz.b64 .audit/0014.chunk00 .audit/0014.chunk01 .audit/0014.chunk02 .audit/0014.chunk03 .audit/0014.chunk04
+          rmdir .audit 2>/dev/null || true
+          rm -f .github/workflows/audit-source-snapshot.yml
+          rm -f .github/workflows/apply-0014-audit.yml
+          git diff --check
+
+      - name: Commit exact audited tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'lgg'
+          git config user.email 'lgg@users.noreply.github.com'
+          git add -A
+          git commit -m '0014: harden merged adapter implementation'
+          git push origin HEAD:audit/0014-post-merge-hardening

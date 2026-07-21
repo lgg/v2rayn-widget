@@ -9,6 +9,7 @@ use reqwest::{redirect::Policy, Client, ClientBuilder, Response, Url};
 use crate::models::settings::LatencyMode;
 
 const REQUEST_TIMEOUT_SECONDS: u64 = 4;
+const MAX_EXTERNAL_IP_BODY_BYTES: usize = 1024;
 
 #[derive(Debug, Clone, Default)]
 pub struct HealthSnapshot {
@@ -96,14 +97,41 @@ async fn fetch_external_ip_from_endpoint(client: Client, endpoint: String) -> Op
         return None;
     }
 
-    if endpoint.contains("ipify") {
-        let json = response.json::<serde_json::Value>().await.ok()?;
-        let ip = json.get("ip").and_then(|value| value.as_str())?;
-        normalize_ip_text(ip)
-    } else {
-        let text = response.text().await.ok()?;
-        normalize_ip_text(&text)
+    let body = read_bounded_body(response).await?;
+    parse_external_ip_body(&body)
+}
+
+async fn read_bounded_body(mut response: Response) -> Option<Vec<u8>> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_EXTERNAL_IP_BODY_BYTES as u64)
+    {
+        return None;
     }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.ok()? {
+        if body.len().saturating_add(chunk.len()) > MAX_EXTERNAL_IP_BODY_BYTES {
+            return None;
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Some(body)
+}
+
+fn parse_external_ip_body(body: &[u8]) -> Option<String> {
+    if body.len() > MAX_EXTERNAL_IP_BODY_BYTES {
+        return None;
+    }
+
+    let text = std::str::from_utf8(body).ok()?.trim();
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(text) {
+        if let Some(ip) = json.get("ip").and_then(serde_json::Value::as_str) {
+            return normalize_ip_text(ip);
+        }
+    }
+
+    normalize_ip_text(text)
 }
 
 async fn send_public_get(client: &Client, endpoint: &str) -> Option<Response> {
@@ -123,7 +151,8 @@ fn normalize_ip_text(value: &str) -> Option<String> {
         return None;
     }
 
-    trimmed.parse::<IpAddr>().ok().map(|ip| ip.to_string())
+    let ip = trimmed.parse::<IpAddr>().ok()?;
+    is_public_endpoint_ip(ip).then(|| ip.to_string())
 }
 
 async fn resolve_public_endpoint(endpoint: &str) -> Option<ResolvedPublicEndpoint> {
@@ -236,14 +265,15 @@ fn is_public_ipv6(address: Ipv6Addr) -> bool {
     }
 
     let segments = address.segments();
-    !(segments[..6].iter().all(|segment| *segment == 0)
-        || (segments[0] == 0x0064 && segments[1] == 0xff9b && matches!(segments[2], 0 | 1))
-        || (segments[0] == 0x0100 && segments[1..4] == [0, 0, 0])
-        || (segments[0] == 0x2001 && segments[1] == 0)
-        || (segments[0] == 0x2001 && segments[1] == 0x0002 && segments[2] == 0)
-        || (segments[0] == 0x2001 && segments[1] == 0x0db8)
-        || (segments[0] == 0x2001 && (0x0010..=0x001f).contains(&segments[1]))
-        || segments[0] == 0x2002)
+    let is_current_global_unicast = segments[0] & 0xe000 == 0x2000;
+    is_current_global_unicast
+        && !(segments[..6].iter().all(|segment| *segment == 0)
+            || (segments[0] == 0x2001 && segments[1] == 0)
+            || (segments[0] == 0x2001 && segments[1] == 0x0002 && segments[2] == 0)
+            || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+            || (segments[0] == 0x2001 && (0x0010..=0x003f).contains(&segments[1]))
+            || segments[0] == 0x2002
+            || (segments[0] == 0x3fff && segments[1] <= 0x0fff))
 }
 
 pub fn build_http_client() -> Result<Client> {
@@ -328,19 +358,33 @@ mod tests {
     }
 
     #[test]
-    fn normalize_ip_text_accepts_ipv4_and_ipv6() {
-        let ipv4 = [203, 0, 113, 10].map(|part| part.to_string()).join(".");
-        let ipv6 = format!("{}:{}::{}", "2001", "db8", "1");
-
-        assert_eq!(normalize_ip_text(&format!(" {ipv4} ")), Some(ipv4));
-        assert_eq!(normalize_ip_text(&ipv6), Some(ipv6));
+    fn normalize_ip_text_accepts_only_public_ipv4_and_ipv6() {
+        assert_eq!(normalize_ip_text(" 1.1.1.1 "), Some("1.1.1.1".to_owned()));
+        assert_eq!(
+            normalize_ip_text("2606:4700:4700::1111"),
+            Some("2606:4700:4700::1111".to_owned())
+        );
+        assert_eq!(normalize_ip_text("192.168.1.1"), None);
+        assert_eq!(normalize_ip_text("203.0.113.10"), None);
+        assert_eq!(normalize_ip_text("2001:db8::1"), None);
     }
 
     #[test]
-    fn normalize_ip_text_rejects_html_and_long_responses() {
-        let ipv4 = [203, 0, 113, 10].map(|part| part.to_string()).join(".");
+    fn external_ip_body_accepts_plain_and_json_but_rejects_oversize_or_private() {
+        assert_eq!(parse_external_ip_body(b"1.1.1.1\n"), Some("1.1.1.1".to_owned()));
+        assert_eq!(
+            parse_external_ip_body(br#"{"ip":"2606:4700:4700::1111"}"#),
+            Some("2606:4700:4700::1111".to_owned())
+        );
+        assert_eq!(parse_external_ip_body(br#"{"ip":"10.0.0.1"}"#), None);
+        assert_eq!(parse_external_ip_body(&vec![b'x'; MAX_EXTERNAL_IP_BODY_BYTES + 1]), None);
+    }
 
-        assert_eq!(normalize_ip_text(&format!("<html>{ipv4}</html>")), None);
-        assert_eq!(normalize_ip_text(&"1".repeat(65)), None);
+    #[test]
+    fn current_special_ipv6_ranges_are_not_treated_as_public_targets() {
+        for value in ["2001:20::1", "2001:30::1", "3fff::1", "5f00::1"] {
+            let ip = value.parse::<IpAddr>().expect("valid special IPv6");
+            assert!(!is_public_endpoint_ip(ip), "{value} must be rejected");
+        }
     }
 }

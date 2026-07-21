@@ -6,12 +6,13 @@ use once_cell::sync::Lazy;
 use crate::models::settings::{
     default_connectivity_endpoints, default_diagnostics_url, default_ip_endpoints, AppSettings,
 };
-use crate::utils::{app_paths, locale};
+use crate::utils::{app_paths, file_store, locale};
 
 static SETTINGS_WRITE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub fn load_settings() -> Result<AppSettings> {
     let path = app_paths::settings_file_path()?;
+    file_store::recover_backup_if_missing(&path)?;
 
     if !path.exists() {
         let defaults = AppSettings {
@@ -78,7 +79,7 @@ pub fn save_settings(settings: &AppSettings) -> Result<()> {
         .with_context(|| format!("Failed to create settings directory: {}", parent.display()))?;
 
     let content = serde_json::to_string_pretty(settings)?;
-    fs::write(&path, content)
+    file_store::replace_with_backup(&path, content.as_bytes())
         .with_context(|| format!("Failed to write settings file: {}", path.display()))?;
 
     Ok(())

@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde_json::Value;
 
-use crate::models::profile::ProfileSummary;
+use crate::{models::profile::ProfileSummary, utils::file_store};
 
 const PROFILE_COLLECTION_KEYS: &[&str] = &[
     "profiles",
@@ -24,6 +24,8 @@ pub struct ConfigSnapshot {
 
 pub fn read_config(base_path: &Path) -> Result<ConfigSnapshot> {
     let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
+
+    file_store::recover_backup_if_missing(&config_path)?;
 
     let content = fs::read_to_string(&config_path)
         .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
@@ -50,11 +52,10 @@ pub fn read_config(base_path: &Path) -> Result<ConfigSnapshot> {
 pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
     let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
 
+    file_store::recover_backup_if_missing(&config_path)?;
+
     let content = fs::read_to_string(&config_path)
         .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
-
-    let backup_path = base_path.join("guiConfigs").join("guiNConfig.json.bak");
-    let _ = fs::write(&backup_path, &content);
 
     let mut json: Value = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
@@ -103,7 +104,7 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
     let serialized = serde_json::to_string_pretty(&json)
         .with_context(|| format!("Failed to serialize config JSON: {}", config_path.display()))?;
 
-    fs::write(&config_path, serialized)
+    file_store::replace_with_backup(&config_path, serialized.as_bytes())
         .with_context(|| format!("Failed to write config: {}", config_path.display()))?;
 
     Ok(())
@@ -112,11 +113,10 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
 pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
     let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
 
+    file_store::recover_backup_if_missing(&config_path)?;
+
     let content = fs::read_to_string(&config_path)
         .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
-
-    let backup_path = base_path.join("guiConfigs").join("guiNConfig.json.bak");
-    let _ = fs::write(&backup_path, &content);
 
     let mut json: Value = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
@@ -165,7 +165,7 @@ pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
     let serialized = serde_json::to_string_pretty(&json)
         .with_context(|| format!("Failed to serialize config JSON: {}", config_path.display()))?;
 
-    fs::write(&config_path, serialized)
+    file_store::replace_with_backup(&config_path, serialized.as_bytes())
         .with_context(|| format!("Failed to write config: {}", config_path.display()))?;
 
     Ok(next)

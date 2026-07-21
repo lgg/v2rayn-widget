@@ -67,6 +67,7 @@ describe("SettingsWindow", () => {
       { code: "en", label: "English", native_label: "English" }
     ]);
     apiMocks.updateSettings.mockImplementation(async (settings: AppSettings) => settings);
+    apiMocks.applyUiSettings.mockImplementation(async (patch: Partial<AppSettings>) => ({ ...baseSettings, ...patch }));
     apiMocks.closeWindow.mockResolvedValue(undefined);
   });
 
@@ -153,6 +154,37 @@ describe("SettingsWindow", () => {
     expect(merged.happ_path).toBe("C:\\Happ\\Happ.exe");
     expect(merged.happ_allow_ui_automation).toBe(true);
     expect(merged.window_position).toEqual(external.window_position);
+  });
+
+  it("sends only the changed live UI field to avoid stale overwrite", async () => {
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Always on top"));
+
+    await waitFor(() => {
+      expect(apiMocks.applyUiSettings).toHaveBeenCalledWith({ always_on_top: true });
+    });
+  });
+
+  it("leaves the loading state and shows an error when settings cannot load", async () => {
+    apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
+    render(<SettingsWindow />);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not load settings");
+    expect(screen.queryByText("Loading...")).toBeNull();
+  });
+
+  it("shows a save error and keeps the window open when persistence fails", async () => {
+    apiMocks.updateSettings.mockRejectedValueOnce(new Error("disk full"));
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Autostart with Windows"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not save settings");
+    expect(apiMocks.closeWindow).not.toHaveBeenCalled();
   });
 
 });

@@ -199,7 +199,7 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
         let expected_enable_tun = config_reader::toggle_tun_mode(&base_path)
             .map_err(|error| format!("toggle failed (fallback): {error}"))?;
 
-        if process_monitor::read_process_snapshot().v2rayn_running {
+        if process_monitor::read_process_snapshot_for_base_path(Some(&base_path)).v2rayn_running {
             let mut reloaded_without_restart = false;
 
             match ui_controller::click_reload_via_ui() {
@@ -313,7 +313,7 @@ pub async fn set_active_profile(
         return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, merged);
     }
 
-    let process_snapshot = process_monitor::read_process_snapshot();
+    let process_snapshot = process_monitor::read_process_snapshot_for_base_path(Some(&base_path));
     let mut applied_via_ui = false;
 
     if process_snapshot.v2rayn_running {
@@ -622,7 +622,7 @@ pub async fn debug_toggle_via_config_only(state: State<'_, AppState>) -> Result<
 
     let value = config_reader::toggle_tun_mode(&base_path).map_err(|error| error.to_string())?;
 
-    if process_monitor::read_process_snapshot().v2rayn_running {
+    if process_monitor::read_process_snapshot_for_base_path(Some(&base_path)).v2rayn_running {
         match ui_controller::click_reload_via_ui() {
             Ok(note) => return Ok(format!("Config EnableTun set to {value}. {note}")),
             Err(error) => {
@@ -762,7 +762,7 @@ pub async fn refresh_status_from_settings(
         }
     };
 
-    let process = process_monitor::read_process_snapshot();
+    let process = process_monitor::read_process_snapshot_for_base_path(Some(&base_path));
 
     let effective_latency_mode = if force_full_probe {
         LatencyMode::Active
@@ -829,14 +829,15 @@ async fn refresh_status_after_route_change(
     Ok(merge_with_previous(status, previous))
 }
 fn collect_runtime_snapshot(settings: &AppSettings) -> anyhow::Result<DebugRuntimeSnapshot> {
-    let process = process_monitor::read_process_snapshot();
+    let base_path = resolve_v2rayn_base_path(settings);
+    let process = process_monitor::read_process_snapshot_for_base_path(base_path.as_deref());
     let mut snapshot = DebugRuntimeSnapshot {
         v2rayn_running: process.v2rayn_running,
         v2rayn_pid: process.v2rayn_pid,
         ..DebugRuntimeSnapshot::default()
     };
 
-    if let Some(base_path) = resolve_v2rayn_base_path(settings) {
+    if let Some(base_path) = base_path {
         if let Ok(config) = config_reader::read_config(&base_path) {
             snapshot.enable_tun = config.enable_tun;
             snapshot.active_profile_name = config.active_profile_name;
@@ -854,7 +855,7 @@ fn detect_v2rayn_path_best_effort() -> Option<PathBuf> {
     app_paths::detect_v2rayn_path().or_else(process_monitor::v2rayn_base_path_from_running_process)
 }
 
-fn resolve_v2rayn_base_path(settings: &AppSettings) -> Option<PathBuf> {
+pub(crate) fn resolve_v2rayn_base_path(settings: &AppSettings) -> Option<PathBuf> {
     match settings.v2rayn_path_mode {
         V2RayNPathMode::Manual => normalize_manual_path(settings.v2rayn_path.clone())
             .map(PathBuf::from)

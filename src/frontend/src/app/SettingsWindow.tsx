@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Bug, Check, FolderCheck, Globe, Languages, MoonStar, Shield, SlidersHorizontal, Sun, X } from "lucide-react";
@@ -113,6 +113,8 @@ export function mergeUiFields(prev: AppSettings, next: AppSettings): AppSettings
 export function SettingsWindow(): JSX.Element {
   const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [locales, setLocales] = useState<LocaleInfo[]>([]);
@@ -132,19 +134,36 @@ export function SettingsWindow(): JSX.Element {
   };
 
   useEffect(() => {
+    let active = true;
+
     const load = async (): Promise<void> => {
-      const [nextSettings, nextLocales] = await Promise.all([getSettings(), getAvailableLocales()]);
-      setSettings(nextSettings);
-      setLocales(nextLocales);
-      setConnectivityEndpointsText(linesToText(nextSettings.connectivity_endpoints));
-      setIpEndpointsText(linesToText(nextSettings.ip_endpoints));
-      applyTheme(nextSettings.theme);
-      applyVisual(nextSettings);
-      await i18n.changeLanguage(nextSettings.language);
-      setLoading(false);
+      try {
+        const [nextSettings, nextLocales] = await Promise.all([getSettings(), getAvailableLocales()]);
+        if (!active) {
+          return;
+        }
+        setSettings(nextSettings);
+        setLocales(nextLocales);
+        setConnectivityEndpointsText(linesToText(nextSettings.connectivity_endpoints));
+        setIpEndpointsText(linesToText(nextSettings.ip_endpoints));
+        applyTheme(nextSettings.theme);
+        applyVisual(nextSettings);
+        await i18n.changeLanguage(nextSettings.language);
+      } catch {
+        if (active) {
+          setLoadError(i18n.t("errors.settingsLoadFailed"));
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
     };
 
     void load();
+    return () => {
+      active = false;
+    };
   }, [i18n]);
 
   useEffect(() => {
@@ -178,40 +197,28 @@ export function SettingsWindow(): JSX.Element {
 
   const pathIsManual = settings?.v2rayn_path_mode === "manual";
 
-  const uiPatchBase = useMemo<UiSettingsPatch>(() => {
-    if (!settings) {
-      return {};
-    }
-
-    return {
-      language: settings.language,
-      theme: settings.theme,
-      always_on_top: settings.always_on_top,
-      time_format: settings.time_format,
-      show_clock: settings.show_clock,
-      show_info_status: settings.show_info_status,
-      show_external_ip: settings.show_external_ip,
-      show_latency: settings.show_latency,
-      mock_mode_enabled: settings.mock_mode_enabled,
-      show_action_buttons: settings.show_action_buttons,
-      show_profile_selector: settings.show_profile_selector,
-      window_effect_enabled: settings.window_effect_enabled,
-      window_opacity_percent: settings.window_opacity_percent
-    };
-  }, [settings]);
-
   const applyUi = async (patch: UiSettingsPatch): Promise<void> => {
     if (!settings) {
       return;
     }
 
-    const merged = { ...uiPatchBase, ...patch };
-    const saved = await applyUiSettings(merged);
-
-    setSettings((prev) => (prev ? mergeUiFields(prev, saved) : saved));
-    applyTheme(saved.theme);
-    applyVisual(saved);
-    await i18n.changeLanguage(saved.language);
+    setSaveError(null);
+    try {
+      const saved = await applyUiSettings(patch);
+      setSettings((prev) => (prev ? mergeUiFields(prev, saved) : saved));
+      applyTheme(saved.theme);
+      applyVisual(saved);
+      await i18n.changeLanguage(saved.language);
+    } catch {
+      setSaveError(t("errors.settingsSaveFailed"));
+      const authoritative = await getSettings().catch(() => null);
+      if (authoritative) {
+        setSettings((prev) => (prev ? mergeUiFields(prev, authoritative) : authoritative));
+        applyTheme(authoritative.theme);
+        applyVisual(authoritative);
+        await i18n.changeLanguage(authoritative.language);
+      }
+    }
   };
 
   const onSave = async (): Promise<void> => {
@@ -220,6 +227,7 @@ export function SettingsWindow(): JSX.Element {
     }
 
     setBusy(true);
+    setSaveError(null);
     setPollError(null);
     setPathError(null);
     setDiagnosticsUrlError(null);
@@ -268,6 +276,8 @@ export function SettingsWindow(): JSX.Element {
       setSettings(saved);
       updateDraftDirty(false);
       await closeSettingsWindow();
+    } catch {
+      setSaveError(t("errors.settingsSaveFailed"));
     } finally {
       setBusy(false);
     }
@@ -288,10 +298,23 @@ export function SettingsWindow(): JSX.Element {
     await closeSettingsWindow();
   };
 
-  if (loading || !settings) {
+  if (loading) {
     return (
       <main data-tauri-drag-region className="drag-region h-full">
         <div className="flex h-full items-center justify-center text-sm text-muted">{t("common.loading")}</div>
+      </main>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <main data-tauri-drag-region className="drag-region h-full p-4">
+        <section className="glass flex h-full flex-col items-center justify-center gap-4 rounded-3xl border border-white/40 p-6 text-center dark:border-slate-700/80">
+          <p role="alert" className="text-sm text-rose-300">{loadError ?? t("errors.settingsLoadFailed")}</p>
+          <button type="button" className="no-drag rounded-lg border px-3 py-2" onClick={() => void closeSettingsWindow()}>
+            {t("common.close")}
+          </button>
+        </section>
       </main>
     );
   }
@@ -756,6 +779,7 @@ export function SettingsWindow(): JSX.Element {
         </div>
 
         <footer className="no-drag mt-3">
+          {saveError && <p role="alert" className="mb-2 text-center text-xs text-rose-300">{saveError}</p>}
           <button type="button" disabled={busy} className="w-full rounded-xl bg-accent px-3 py-2 font-medium text-white" onClick={() => void onSave()}>
             {t("common.save")}
           </button>

@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { useDashboardStore } from "@/features/dashboard-store";
 import { setMainWindowHeight } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { selectedProfileIdForStatus } from "@/lib/profile-selection";
 import type { AppSettings, CapabilityState } from "@/lib/types";
 
 function capabilityAvailable(value: CapabilityState | undefined): boolean {
@@ -66,7 +67,18 @@ export function App(): JSX.Element {
     }
 
     void refresh();
-  }, [refresh, settings?.mock_mode_enabled, settings?.happ_allow_ui_automation]);
+  }, [
+    refresh,
+    settings?.selected_client,
+    settings?.v2rayn_path_mode,
+    settings?.v2rayn_path,
+    settings?.happ_path,
+    settings?.mock_mode_enabled,
+    settings?.happ_allow_ui_automation,
+    settings?.show_external_ip,
+    settings?.show_latency,
+    settings?.latency_mode
+  ]);
 
   useEffect(() => {
     if (!notice) {
@@ -162,8 +174,7 @@ export function App(): JSX.Element {
   const canListItems = capabilityAvailable(selectedClient?.capabilities.list_items);
   const canSelectItems = capabilityAvailable(selectedClient?.capabilities.select_item);
   const showProfileSelector = settings.show_profile_selector && canListItems;
-  const selectedProfileId =
-    profiles.find((profile) => profile.name === status.active_profile_name)?.id ?? profiles[0]?.id ?? "";
+  const selectedProfileId = selectedProfileIdForStatus(profiles, status.active_profile_name);
 
   const showLowerBlock = showInfoPanel || settings.show_action_buttons;
   const copyIp = async (): Promise<void> => {

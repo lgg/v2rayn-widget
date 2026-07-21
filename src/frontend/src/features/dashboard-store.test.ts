@@ -105,6 +105,9 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 describe("dashboard store refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.getSettings.mockResolvedValue(baseSettings);
+    apiMocks.getStatus.mockResolvedValue(status("fallback"));
+    apiMocks.refreshSelectedClientStartup.mockResolvedValue(status("startup"));
     apiMocks.listSelectedClientItems.mockResolvedValue([]);
     apiMocks.getClientCatalog.mockResolvedValue([
       descriptor("v2rayn", "supported"),
@@ -247,6 +250,42 @@ describe("dashboard store refresh", () => {
     await Promise.resolve();
     expect(useDashboardStore.getState().clients.find((client) => client.id === "happ")?.capabilities.toggle_connection)
       .toBe("experimental");
+  });
+
+  it("does not leave bootstrap loading or overwrite authoritative external settings", async () => {
+    const staleSettings = deferred<AppSettings>();
+    const staleCatalog = deferred<ClientDescriptor[]>();
+    apiMocks.getSettings.mockReturnValueOnce(staleSettings.promise);
+    apiMocks.getClientCatalog.mockReturnValueOnce(staleCatalog.promise);
+    useDashboardStore.setState({
+      status: null,
+      settings: null,
+      clients: [],
+      profiles: [],
+      loading: true,
+      actionLoading: false,
+      error: null
+    });
+
+    const bootstrap = useDashboardStore.getState().bootstrap();
+    const authoritative = {
+      ...baseSettings,
+      selected_client: "happ" as const,
+      happ_path: "C:\\Happ\\Happ.exe"
+    };
+    useDashboardStore.getState().applyExternalSettings(authoritative);
+
+    expect(useDashboardStore.getState().loading).toBe(false);
+    expect(useDashboardStore.getState().settings).toEqual(authoritative);
+    expect(useDashboardStore.getState().status?.connection_state).toBe("Unknown");
+
+    staleSettings.resolve(baseSettings);
+    staleCatalog.resolve([descriptor("v2rayn", "supported")]);
+    await bootstrap;
+
+    expect(useDashboardStore.getState().loading).toBe(false);
+    expect(useDashboardStore.getState().settings).toEqual(authoritative);
+    expect(useDashboardStore.getState().clients).not.toEqual([descriptor("v2rayn", "supported")]);
   });
 
 });

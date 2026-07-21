@@ -450,11 +450,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   applyExternalSettings: (settings) => {
     const previousSettings = get().settings;
-    const operationalContextChanged = previousSettings !== null
-      && (previousSettings.selected_client !== settings.selected_client
-        || previousSettings.happ_path !== settings.happ_path
-        || previousSettings.happ_allow_ui_automation !== settings.happ_allow_ui_automation);
-    const previousClient = previousSettings?.selected_client;
+    const operationalContextChanged = previousSettings === null
+      || previousSettings.selected_client !== settings.selected_client
+      || previousSettings.v2rayn_path_mode !== settings.v2rayn_path_mode
+      || previousSettings.v2rayn_path !== settings.v2rayn_path
+      || previousSettings.happ_path !== settings.happ_path
+      || previousSettings.happ_allow_ui_automation !== settings.happ_allow_ui_automation
+      || previousSettings.mock_mode_enabled !== settings.mock_mode_enabled;
     if (operationalContextChanged) {
       invalidateClientOperations();
     }
@@ -463,10 +465,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     applyVisualSettings(settings);
     set({
       settings,
+      loading: false,
+      error: null,
       pathNoticeKey: pathNoticeFor(settings),
-      ...(operationalContextChanged ? { actionLoading: false } : {}),
-      ...(previousClient !== undefined && previousClient !== settings.selected_client
-        ? { status: defaultStatus(), profiles: [] }
+      ...(operationalContextChanged
+        ? { status: defaultStatus(), profiles: [], actionLoading: false }
         : {})
     });
 

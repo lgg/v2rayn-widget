@@ -1,0 +1,45 @@
+name: Audit 0015 Source Snapshot
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/audit-0015-source-snapshot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    if: github.event.pull_request.head.ref == 'audit/0015-final-main-verification'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: audit/0015-final-main-verification
+          fetch-depth: 1
+
+      - name: Create clean source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='target' \
+            --exclude='.audit' \
+            -czf "$RUNNER_TEMP/v2rayn-widget-audit-0015.tar.gz" .
+          sha256sum "$RUNNER_TEMP/v2rayn-widget-audit-0015.tar.gz" > "$RUNNER_TEMP/v2rayn-widget-audit-0015.sha256"
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-0015-source-snapshot
+          path: |
+            ${{ runner.temp }}/v2rayn-widget-audit-0015.tar.gz
+            ${{ runner.temp }}/v2rayn-widget-audit-0015.sha256
+          if-no-files-found: error
+          retention-days: 1

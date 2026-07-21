@@ -1,0 +1,48 @@
+name: Normalize npm Lockfile Registry
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/normalize-npm-lock.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: github.event.pull_request.head.ref == 'audit/0014-post-merge-hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: audit/0014-post-merge-hardening
+          fetch-depth: 0
+
+      - name: Normalize resolved package URLs
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path('src/frontend/package-lock.json')
+          content = path.read_text(encoding='utf-8')
+          pattern = r'https://[^"/]+/artifactory/api/npm/npm-public/'
+          updated, count = re.subn(pattern, 'https://registry.npmjs.org/', content)
+          if count != 30:
+              raise SystemExit(f'Expected 30 non-public resolved URLs, found {count}')
+          if '/artifactory/api/npm/npm-public/' in updated:
+              raise SystemExit('Non-public registry URL remains in lockfile')
+          path.write_text(updated, encoding='utf-8')
+
+      - name: Commit normalized lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'lgg'
+          git config user.email 'lgg@users.noreply.github.com'
+          git add src/frontend/package-lock.json
+          git commit -m '0014: normalize npm lockfile registry URLs'
+          git push origin HEAD:audit/0014-post-merge-hardening

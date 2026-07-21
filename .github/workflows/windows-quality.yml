@@ -23,11 +23,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: src/frontend/package-lock.json
+          node-version: 22.17.1
+          package-manager-cache: false
 
       - name: Install frontend dependencies
         id: frontend_install
@@ -35,7 +34,11 @@ jobs:
         working-directory: src/frontend
         shell: pwsh
         run: |
-          npm ci 2>&1 | Tee-Object -FilePath frontend-install-output.txt
+          node --version 2>&1 | Tee-Object -FilePath frontend-install-output.txt
+          npm --version 2>&1 | Tee-Object -Append -FilePath frontend-install-output.txt
+          npm config set cache "$env:RUNNER_TEMP/npm-cache" --global
+          npm cache clean --force 2>&1 | Tee-Object -Append -FilePath frontend-install-output.txt
+          npm ci --no-audit --no-fund 2>&1 | Tee-Object -Append -FilePath frontend-install-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 
@@ -91,6 +94,7 @@ jobs:
             src/frontend/frontend-audit-output.txt
             src/frontend/frontend-test-output.txt
             src/frontend/frontend-build-output.txt
+            ${{ runner.temp }}/npm-cache/_logs/*.log
           if-no-files-found: warn
           retention-days: 1
 

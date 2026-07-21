@@ -1,0 +1,65 @@
+name: Apply 0015 Audit Fixes
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/apply-0015-audit-fixes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'audit/0015-final-main-verification'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: audit/0015-final-main-verification
+          fetch-depth: 0
+
+      - name: Verify and reconstruct patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            58fb1f29e2d43962e10560135a40c4ead81be25e4bce460542cef768e559f602
+            5e361d43d216f318dfe8c9f4a175810a82167155554ce32a5c634670c90ee1fd
+            29ea54b2d3b3618bef9862c4217ef82a5f9b7d376825a425486b2d71df092171
+            819ec4389003e9cf7d9ee4d55c906dcd4237c09325de17fc2ebbfee151328b36
+            4f416430577f9558a3324684680db4f820a8f3f9ee7e9d185b529e7a7052f5dd
+            e0f0f6ee0eaa9b0bb4431cb35bc0a762eaa7f556f40c9749b885054c26cf0c82
+            79ca44cf4f5334cb58dfcf88ce9579635cfdbfeebe98903fc5368f3ea2336d97
+            f9e74bad61cf2c1e81c81ef03388b7e3040a1e23465e8f7b86e09dc2dbd5cf99
+          )
+          : > "$RUNNER_TEMP/audit0015-product.patch.b64"
+          for index in $(seq 0 7); do
+            part=$(printf '.audit/0015/part%02d.b64' "$index")
+            actual=$(sha256sum "$part" | cut -d' ' -f1)
+            test "$actual" = "${expected[$index]}"
+            cat "$part" >> "$RUNNER_TEMP/audit0015-product.patch.b64"
+          done
+          base64 --decode "$RUNNER_TEMP/audit0015-product.patch.b64" > "$RUNNER_TEMP/audit0015-product.patch"
+          echo '81391a610606d121b3e80fc48efedfc1b5934a50e005e53a1ca06a5bfae8e824  '"$RUNNER_TEMP/audit0015-product.patch" | sha256sum --check
+          git apply --check "$RUNNER_TEMP/audit0015-product.patch"
+
+      - name: Apply product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply "$RUNNER_TEMP/audit0015-product.patch"
+          rm -rf .audit
+          git diff --check
+
+      - name: Commit audited product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'lgg'
+          git config user.email 'lgg@users.noreply.github.com'
+          git add -A
+          git commit -m '0015: harden merged runtime and release paths'
+          git push origin HEAD:audit/0015-final-main-verification

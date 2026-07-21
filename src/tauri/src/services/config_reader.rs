@@ -6,6 +6,15 @@ use serde_json::Value;
 
 use crate::models::profile::ProfileSummary;
 
+const PROFILE_COLLECTION_KEYS: &[&str] = &[
+    "profiles",
+    "servers",
+    "vmess",
+    "configs",
+    "profileItem",
+    "ProfileItem",
+];
+
 #[derive(Debug, Clone, Default)]
 pub struct ConfigSnapshot {
     pub enable_tun: Option<bool>,
@@ -60,8 +69,7 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
         .find(|item| item.id == profile_id)
         .ok_or_else(|| anyhow::anyhow!("Profile not found: {profile_id}"))?;
 
-    let mut changed = false;
-    changed |= set_first_existing_string_key(
+    let mut selector_changed = set_first_existing_string_key(
         &mut json,
         &[
             "IndexId",
@@ -73,20 +81,20 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
         ],
         &target.id,
     );
-    changed |= set_first_existing_string_key(
+    let _ = set_first_existing_string_key(
         &mut json,
         &["activeProfileName", "activeServerName", "currentProfile"],
         &target.name,
     );
 
-    if !changed {
+    if !selector_changed {
         if let Some(root) = json.as_object_mut() {
             root.insert("IndexId".to_owned(), Value::String(target.id.clone()));
-            changed = true;
+            selector_changed = true;
         }
     }
 
-    if !changed {
+    if !selector_changed {
         return Err(anyhow::anyhow!(
             "Could not locate mutable profile selector fields in config"
         ));
@@ -188,66 +196,58 @@ fn read_profiles_from_db(base_path: &Path) -> Result<Vec<ProfileSummary>> {
     Ok(result)
 }
 
+fn is_profile_collection_key(key: &str) -> bool {
+    PROFILE_COLLECTION_KEYS.contains(&key)
+}
+
 fn set_first_existing_string_key(value: &mut Value, keys: &[&str], new_value: &str) -> bool {
-    match value {
-        Value::Object(map) => {
-            for key in keys {
-                if map.contains_key(*key) {
-                    map.insert((*key).to_owned(), Value::String(new_value.to_owned()));
-                    return true;
-                }
-            }
+    let Value::Object(map) = value else {
+        return false;
+    };
 
-            for child in map.values_mut() {
-                if set_first_existing_string_key(child, keys, new_value) {
-                    return true;
-                }
-            }
-
-            false
+    for key in keys {
+        if map.contains_key(*key) {
+            map.insert((*key).to_owned(), Value::String(new_value.to_owned()));
+            return true;
         }
-        Value::Array(items) => {
-            for child in items {
-                if set_first_existing_string_key(child, keys, new_value) {
-                    return true;
-                }
-            }
-
-            false
-        }
-        _ => false,
     }
+
+    for (key, child) in map.iter_mut() {
+        if is_profile_collection_key(key) || !child.is_object() {
+            continue;
+        }
+
+        if set_first_existing_string_key(child, keys, new_value) {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn set_first_existing_bool_key(value: &mut Value, keys: &[&str], new_value: bool) -> bool {
-    match value {
-        Value::Object(map) => {
-            for key in keys {
-                if map.contains_key(*key) {
-                    map.insert((*key).to_owned(), Value::Bool(new_value));
-                    return true;
-                }
-            }
+    let Value::Object(map) = value else {
+        return false;
+    };
 
-            for child in map.values_mut() {
-                if set_first_existing_bool_key(child, keys, new_value) {
-                    return true;
-                }
-            }
-
-            false
+    for key in keys {
+        if map.contains_key(*key) {
+            map.insert((*key).to_owned(), Value::Bool(new_value));
+            return true;
         }
-        Value::Array(items) => {
-            for child in items {
-                if set_first_existing_bool_key(child, keys, new_value) {
-                    return true;
-                }
-            }
-
-            false
-        }
-        _ => false,
     }
+
+    for (key, child) in map.iter_mut() {
+        if is_profile_collection_key(key) || !child.is_object() {
+            continue;
+        }
+
+        if set_first_existing_bool_key(child, keys, new_value) {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn extract_enable_tun(json: &Value) -> Option<bool> {
@@ -264,25 +264,27 @@ fn extract_enable_tun(json: &Value) -> Option<bool> {
 }
 
 fn find_bool_by_keys(value: &Value, keys: &[&str]) -> Option<bool> {
-    match value {
-        Value::Object(map) => {
-            for key in keys {
-                if let Some(Value::Bool(flag)) = map.get(*key) {
-                    return Some(*flag);
-                }
-            }
+    let Value::Object(map) = value else {
+        return None;
+    };
 
-            for child in map.values() {
-                if let Some(flag) = find_bool_by_keys(child, keys) {
-                    return Some(flag);
-                }
-            }
-
-            None
+    for key in keys {
+        if let Some(Value::Bool(flag)) = map.get(*key) {
+            return Some(*flag);
         }
-        Value::Array(items) => items.iter().find_map(|item| find_bool_by_keys(item, keys)),
-        _ => None,
     }
+
+    for (key, child) in map {
+        if is_profile_collection_key(key) || !child.is_object() {
+            continue;
+        }
+
+        if let Some(flag) = find_bool_by_keys(child, keys) {
+            return Some(flag);
+        }
+    }
+
+    None
 }
 
 fn extract_active_profile_name(json: &Value, profiles: &[ProfileSummary]) -> Option<String> {
@@ -312,7 +314,7 @@ fn extract_active_profile_name(json: &Value, profiles: &[ProfileSummary]) -> Opt
         return Some(name);
     }
 
-    profiles.first().map(|profile| profile.name.clone())
+    None
 }
 
 fn extract_profiles_from_json(json: &Value) -> Vec<ProfileSummary> {
@@ -363,11 +365,23 @@ fn extract_profiles_from_json(json: &Value) -> Vec<ProfileSummary> {
 }
 
 fn find_string_by_keys(value: &Value, keys: &[&str]) -> Option<String> {
+    let Value::Object(map) = value else {
+        return None;
+    };
+
     for key in keys {
-        if let Some(found) = find_value_by_key(value, key) {
-            if let Some(text) = found.as_str() {
-                return Some(text.to_owned());
-            }
+        if let Some(Value::String(text)) = map.get(*key) {
+            return Some(text.to_owned());
+        }
+    }
+
+    for (key, child) in map {
+        if is_profile_collection_key(key) || !child.is_object() {
+            continue;
+        }
+
+        if let Some(text) = find_string_by_keys(child, keys) {
+            return Some(text);
         }
     }
 
@@ -375,11 +389,23 @@ fn find_string_by_keys(value: &Value, keys: &[&str]) -> Option<String> {
 }
 
 fn find_number_by_keys(value: &Value, keys: &[&str]) -> Option<i64> {
+    let Value::Object(map) = value else {
+        return None;
+    };
+
     for key in keys {
-        if let Some(found) = find_value_by_key(value, key) {
-            if let Some(number) = found.as_i64() {
-                return Some(number);
-            }
+        if let Some(number) = map.get(*key).and_then(Value::as_i64) {
+            return Some(number);
+        }
+    }
+
+    for (key, child) in map {
+        if is_profile_collection_key(key) || !child.is_object() {
+            continue;
+        }
+
+        if let Some(number) = find_number_by_keys(child, keys) {
+            return Some(number);
         }
     }
 
@@ -439,6 +465,22 @@ mod tests {
     }
 
     #[test]
+    fn active_profile_is_unknown_when_only_profile_record_ids_exist() {
+        let json = serde_json::json!({
+            "ProfileItem": [
+                { "IndexId": "first", "Remarks": "First profile" },
+                { "IndexId": "second", "Remarks": "Second profile" }
+            ]
+        });
+        let profiles = vec![
+            profile("first", "First profile"),
+            profile("second", "Second profile"),
+        ];
+
+        assert_eq!(extract_active_profile_name(&json, &profiles), None);
+    }
+
+    #[test]
     fn set_active_profile_does_not_rewrite_profile_remarks() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -480,6 +522,111 @@ mod tests {
                 .and_then(Value::as_str),
             Some("First profile")
         );
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn active_profile_ignores_numeric_selectors_inside_profile_records() {
+        let json = serde_json::json!({
+            "ProfileItem": [
+                { "IndexId": "first", "Remarks": "First profile", "selectedIndex": 1 },
+                { "IndexId": "second", "Remarks": "Second profile", "selectedIndex": 0 }
+            ]
+        });
+        let profiles = vec![
+            profile("0", "Zero profile"),
+            profile("1", "One profile"),
+        ];
+
+        assert_eq!(extract_active_profile_name(&json, &profiles), None);
+    }
+
+    #[test]
+    fn set_active_profile_adds_id_selector_when_only_name_selector_exists() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!(
+            "v2rayn-widget-config-name-only-selector-test-{unique}"
+        ));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        fs::write(
+            &config_path,
+            serde_json::json!({
+                "activeProfileName": "First profile",
+                "ProfileItem": [
+                    { "IndexId": "first", "Remarks": "First profile" },
+                    { "IndexId": "second", "Remarks": "Second profile" }
+                ]
+            })
+            .to_string(),
+        )
+        .expect("write config");
+
+        set_active_profile(&base_path, "second").expect("set profile");
+        let updated: Value =
+            serde_json::from_str(&fs::read_to_string(&config_path).expect("read config"))
+                .expect("parse config");
+
+        assert_eq!(
+            updated.get("IndexId").and_then(Value::as_str),
+            Some("second")
+        );
+        assert_eq!(
+            updated.get("activeProfileName").and_then(Value::as_str),
+            Some("Second profile")
+        );
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn set_active_profile_inserts_root_selector_without_mutating_profile_ids() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!(
+            "v2rayn-widget-config-missing-selector-test-{unique}"
+        ));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        fs::write(
+            &config_path,
+            serde_json::json!({
+                "ProfileItem": [
+                    { "IndexId": "first", "Remarks": "First profile" },
+                    { "IndexId": "second", "Remarks": "Second profile" }
+                ]
+            })
+            .to_string(),
+        )
+        .expect("write config");
+
+        set_active_profile(&base_path, "second").expect("set profile");
+        let updated: Value =
+            serde_json::from_str(&fs::read_to_string(&config_path).expect("read config"))
+                .expect("parse config");
+
+        assert_eq!(
+            updated.get("IndexId").and_then(Value::as_str),
+            Some("second")
+        );
+        let ids = updated
+            .get("ProfileItem")
+            .and_then(Value::as_array)
+            .expect("profile array")
+            .iter()
+            .filter_map(|item| item.get("IndexId").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["first", "second"]);
 
         let _ = fs::remove_dir_all(base_path);
     }

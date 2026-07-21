@@ -192,6 +192,32 @@ describe("dashboard store refresh", () => {
     });
   });
 
+
+  it("clears a stale action spinner when Happ operational settings change", async () => {
+    const toggle = deferred<DashboardStatus>();
+    apiMocks.toggleSelectedClient.mockReturnValueOnce(toggle.promise);
+    useDashboardStore.setState({
+      settings: { ...baseSettings, selected_client: "happ" },
+      actionLoading: false
+    });
+
+    const staleToggle = useDashboardStore.getState().toggleConnection();
+    expect(useDashboardStore.getState().actionLoading).toBe(true);
+
+    useDashboardStore.getState().applyExternalSettings({
+      ...baseSettings,
+      selected_client: "happ",
+      happ_path: "C:\\Happ\\Happ.exe",
+      happ_allow_ui_automation: true
+    });
+
+    expect(useDashboardStore.getState().actionLoading).toBe(false);
+
+    toggle.resolve(status("stale-toggle"));
+    await staleToggle;
+    expect(useDashboardStore.getState().status?.updated_at).not.toBe("stale-toggle");
+  });
+
   it("does not let an older catalog request overwrite newer Happ capabilities", async () => {
     const olderCatalog = deferred<ClientDescriptor[]>();
     const newerCatalog = deferred<ClientDescriptor[]>();

@@ -117,6 +117,7 @@ Completed:
 Related work:
 
 - `0013-add-proxy-client-adapters-and-happ-mvp` - Done
+- `0014-post-merge-deep-audit` - In Progress
 - `project-tracking/roadmap/0013-proxy-client-adapter-roadmap.md`
 - `project-tracking/decisions/0013-multi-client-adapter-architecture.md`
 
@@ -185,6 +186,7 @@ Related tasks:
 | 0011 | Build subscription-mode profile switch validation matrix | P2 | Open | QA matrix; subscriptions remain unsupported |
 | 0012 | Assess Linux and macOS feasibility after platform control path validation | P3 | Open | После стабилизации Windows adapters |
 | 0013 | Add proxy client adapters and Happ MVP | P1 | Done | Operational adapters, generic UI/API, v2rayN compatibility, Happ baseline and experimental opt-in control |
+| 0014 | Post-merge deep audit and hardening | P1 | In Progress | Exact merged-tree audit, profile/config safety, dependency audit, network target hardening and release smoke |
 
 ## Public Data Rule
 

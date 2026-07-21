@@ -38,6 +38,20 @@ Verify that the merged implementation is internally consistent, safe, buildable 
 - removing legacy v2rayN commands;
 - unrelated UI redesign or product renaming.
 
+
+## Findings and Fixes in Progress
+
+- frontend operations could remain visually busy after a same-client Happ operational settings change invalidated an in-flight request;
+- successful backend settings persistence could be reported as failed when a follow-up Tauri event emit failed;
+- recursive v2rayN selector lookup/write could confuse profile-record IDs with the active selector;
+- profile confirmation accepted substring matches instead of exact normalized names;
+- a config containing only an active profile name could be changed without inserting the required ID selector;
+- network diagnostic hostnames and redirects were not revalidated against local/reserved address ranges at request time;
+- the frontend lockfile contained high-severity dependency advisories;
+- CI proved compilation but did not prove that a release `.exe` was produced;
+- portable/installer scripts used non-deterministic dependency installation and unlocked Cargo commands;
+- package and HTML metadata still described the old v2rayN-only product.
+
 ## Acceptance Criteria
 
 - [ ] Exact squash-merged `main` tree is audited, not only the feature branch.
@@ -46,7 +60,7 @@ Verify that the merged implementation is internally consistent, safe, buildable 
 - [ ] Happ control remains opt-in and fails closed on ambiguity or failed confirmation.
 - [ ] Diagnostics cannot expose arbitrary user/profile/subscription text.
 - [ ] v2rayN behavior and explicit subscription limitations remain accurate.
-- [ ] Frontend tests and production build pass.
+- [x] Frontend tests and production build pass locally (19 tests).
 - [ ] Rust formatting, tests, strict Clippy and `cargo check --locked` pass.
 - [ ] Portable build or the closest available release build path is validated in Windows CI.
 - [ ] Documentation and report reflect verified behavior and residual runtime risks.

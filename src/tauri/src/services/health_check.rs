@@ -1,12 +1,14 @@
 use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
 
 use anyhow::Result;
-use reqwest::{redirect::Policy, Client, Url};
+use reqwest::{redirect::Policy, Client, ClientBuilder, Response, Url};
 
 use crate::models::settings::LatencyMode;
+
+const REQUEST_TIMEOUT_SECONDS: u64 = 4;
 
 #[derive(Debug, Clone, Default)]
 pub struct HealthSnapshot {
@@ -24,6 +26,13 @@ pub struct HealthCheckOptions {
     pub latency_mode: LatencyMode,
     pub connectivity_endpoints: Vec<String>,
     pub ip_endpoints: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedPublicEndpoint {
+    url: Url,
+    domain: Option<String>,
+    addresses: Vec<SocketAddr>,
 }
 
 pub async fn check(client: &Client, options: &HealthCheckOptions) -> HealthSnapshot {
@@ -49,12 +58,8 @@ pub async fn check(client: &Client, options: &HealthCheckOptions) -> HealthSnaps
 
 async fn check_connectivity(client: &Client, endpoints: &[String]) -> Option<(bool, Option<u64>)> {
     for endpoint in endpoints {
-        if !endpoint_resolves_to_public_addresses(endpoint).await {
-            continue;
-        }
-
         let start = Instant::now();
-        if let Ok(response) = client.get(endpoint).send().await {
+        if let Some(response) = send_public_get(client, endpoint).await {
             if response.status().is_success() {
                 let elapsed = start.elapsed().as_millis() as u64;
                 return Some((true, Some(elapsed)));
@@ -86,11 +91,7 @@ async fn fetch_external_ip(client: &Client, endpoints: &[String]) -> Option<Stri
 }
 
 async fn fetch_external_ip_from_endpoint(client: Client, endpoint: String) -> Option<String> {
-    if !endpoint_resolves_to_public_addresses(&endpoint).await {
-        return None;
-    }
-
-    let response = client.get(&endpoint).send().await.ok()?;
+    let response = send_public_get(&client, &endpoint).await?;
     if !response.status().is_success() {
         return None;
     }
@@ -105,6 +106,17 @@ async fn fetch_external_ip_from_endpoint(client: Client, endpoint: String) -> Op
     }
 }
 
+async fn send_public_get(client: &Client, endpoint: &str) -> Option<Response> {
+    let resolved = resolve_public_endpoint(endpoint).await?;
+    let request_client = if resolved.domain.is_some() {
+        build_pinned_http_client(&resolved).ok()?
+    } else {
+        client.clone()
+    };
+
+    request_client.get(resolved.url).send().await.ok()
+}
+
 fn normalize_ip_text(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.len() > 64 {
@@ -114,40 +126,65 @@ fn normalize_ip_text(value: &str) -> Option<String> {
     trimmed.parse::<IpAddr>().ok().map(|ip| ip.to_string())
 }
 
-async fn endpoint_resolves_to_public_addresses(endpoint: &str) -> bool {
-    let Ok(url) = Url::parse(endpoint) else {
-        return false;
-    };
-
+async fn resolve_public_endpoint(endpoint: &str) -> Option<ResolvedPublicEndpoint> {
+    let url = Url::parse(endpoint).ok()?;
     if !matches!(url.scheme(), "http" | "https") {
-        return false;
+        return None;
     }
 
-    let Some(host) = url.host_str() else {
-        return false;
-    };
+    let host = url.host_str()?.to_owned();
+    let port = url.port_or_known_default()?;
 
     if let Ok(ip) = host.parse::<IpAddr>() {
-        return is_public_endpoint_ip(ip);
+        if !is_public_endpoint_ip(ip) {
+            return None;
+        }
+
+        return Some(ResolvedPublicEndpoint {
+            url,
+            domain: None,
+            addresses: vec![SocketAddr::new(ip, port)],
+        });
     }
 
-    let Some(port) = url.port_or_known_default() else {
-        return false;
-    };
+    let resolved = tokio::net::lookup_host((host.as_str(), port)).await.ok()?;
+    let mut addresses = Vec::new();
 
-    let Ok(addresses) = tokio::net::lookup_host((host, port)).await else {
-        return false;
-    };
-
-    let mut found = false;
-    for address in addresses {
-        found = true;
+    for address in resolved {
         if !is_public_endpoint_ip(address.ip()) {
-            return false;
+            return None;
+        }
+
+        if !addresses.contains(&address) {
+            addresses.push(address);
         }
     }
 
-    found
+    if addresses.is_empty() {
+        return None;
+    }
+
+    Some(ResolvedPublicEndpoint {
+        url,
+        domain: Some(host),
+        addresses,
+    })
+}
+
+fn http_client_builder() -> ClientBuilder {
+    Client::builder()
+        .no_proxy()
+        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECONDS))
+        .redirect(Policy::none())
+}
+
+fn build_pinned_http_client(endpoint: &ResolvedPublicEndpoint) -> Result<Client> {
+    let mut builder = http_client_builder();
+    if let Some(domain) = endpoint.domain.as_deref() {
+        builder = builder.resolve_to_addrs(domain, &endpoint.addresses);
+    }
+
+    Ok(builder.build()?)
 }
 
 pub(crate) fn is_public_endpoint_ip(ip: IpAddr) -> bool {
@@ -196,18 +233,17 @@ fn is_public_ipv6(address: Ipv6Addr) -> bool {
     !(segments[..6].iter().all(|segment| *segment == 0)
         || (segments[0] == 0x0064
             && segments[1] == 0xff9b
-            && segments[2..6].iter().all(|segment| *segment == 0))
+            && matches!(segments[2], 0 | 1))
         || (segments[0] == 0x0100 && segments[1..4] == [0, 0, 0])
-        || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        || (segments[0] == 0x2001 && segments[1] == 0)
         || (segments[0] == 0x2001 && segments[1] == 0x0002 && segments[2] == 0)
-        || (segments[0] == 0x2001 && (0x0010..=0x001f).contains(&segments[1])))
+        || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        || (segments[0] == 0x2001 && (0x0010..=0x001f).contains(&segments[1]))
+        || segments[0] == 0x2002)
 }
 
 pub fn build_http_client() -> Result<Client> {
-    Ok(Client::builder()
-        .timeout(std::time::Duration::from_secs(4))
-        .redirect(Policy::none())
-        .build()?)
+    Ok(http_client_builder().build()?)
 }
 
 #[cfg(test)]
@@ -229,10 +265,15 @@ mod tests {
             "fc00::1",
             "fe80::1",
             "ff02::1",
+            "64:ff9b::1.1.1.1",
+            "64:ff9b:1::1.1.1.1",
+            "100::1",
+            "2001::1",
+            "2001:2::1",
             "2001:db8::1",
+            "2002:7f00:1::1",
             "::ffff:127.0.0.1",
             "::1.1.1.1",
-            "64:ff9b::1.1.1.1",
         ];
 
         for value in rejected {
@@ -250,8 +291,36 @@ mod tests {
 
     #[tokio::test]
     async fn endpoint_resolution_rejects_literal_loopback_without_requesting_it() {
-        assert!(!endpoint_resolves_to_public_addresses("http://127.0.0.1/check").await);
-        assert!(!endpoint_resolves_to_public_addresses("http://[::1]/check").await);
+        assert!(resolve_public_endpoint("http://127.0.0.1/check")
+            .await
+            .is_none());
+        assert!(resolve_public_endpoint("http://[::1]/check")
+            .await
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn public_literal_endpoint_keeps_the_verified_socket_address() {
+        let resolved = resolve_public_endpoint("http://1.1.1.1:8080/check")
+            .await
+            .expect("public literal endpoint");
+
+        assert_eq!(resolved.domain, None);
+        assert_eq!(
+            resolved.addresses,
+            vec!["1.1.1.1:8080".parse().expect("valid socket address")]
+        );
+    }
+
+    #[test]
+    fn domain_client_can_be_pinned_to_prevalidated_addresses() {
+        let endpoint = ResolvedPublicEndpoint {
+            url: Url::parse("https://example.invalid/check").expect("valid URL"),
+            domain: Some("example.invalid".to_owned()),
+            addresses: vec!["1.1.1.1:443".parse().expect("valid socket address")],
+        };
+
+        build_pinned_http_client(&endpoint).expect("pinned client");
     }
 
     #[test]

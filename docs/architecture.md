@@ -253,6 +253,6 @@ A separate future model must define list, active subscription, refresh, switch, 
 - verifies and uploads the produced portable executable as a one-day smoke artifact;
 - preserves short-lived audit, test, build and release diagnostics.
 
-Network diagnostics disable redirects and resolve each configured HTTP(S) endpoint before requesting it. Literal or resolved loopback, private, link-local, CGNAT, benchmark, documentation, multicast and reserved addresses are rejected. This keeps v2rayN and Happ diagnostics from following a configured endpoint into a local network target.
+Network diagnostics disable redirects and ambient proxy settings, resolve each configured HTTP(S) endpoint, reject the endpoint if any answer is non-public, and pin hostname requests to the exact validated `SocketAddr` set with `reqwest::ClientBuilder::resolve_to_addrs`. This removes the second unvalidated DNS lookup that could otherwise permit DNS rebinding. Literal or resolved loopback, private, link-local, CGNAT, benchmark, documentation, multicast, reserved, NAT64, Teredo and 6to4 addresses are rejected.
 
 The Rust suite includes existing v2rayN resolver/config/log tests, exact profile-selection tests, network-target safety tests and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.

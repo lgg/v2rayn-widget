@@ -24,7 +24,7 @@ Recursive selector lookup and mutation could inspect profile arrays and confuse 
 
 ### Network diagnostic target safety
 
-Configured hostnames were filtered syntactically, but a hostname could resolve to a local/reserved address and redirects were followed by default. Requests now disable redirects and verify every literal or DNS-resolved address before connecting. Loopback, private, link-local, CGNAT, benchmark, documentation, multicast and reserved ranges are rejected.
+Configured hostnames were filtered syntactically, but a hostname could resolve to a local/reserved address, redirects were followed by default, and the HTTP client performed a second DNS lookup after validation. Requests now disable redirects and ambient proxy settings, reject an endpoint if any resolved address is non-public, and pin the request to the exact validated socket-address set. Loopback, private, link-local, CGNAT, benchmark, documentation, multicast, reserved, NAT64, Teredo and 6to4 ranges are rejected.
 
 ### Dependency and lockfile safety
 
@@ -46,7 +46,7 @@ The HTML title and Rust package metadata still described the application as v2ra
 - frontend tests: 19 passed;
 - TypeScript/Vite production build: passed with Vite 8.1.5;
 - Windows Rust formatting: passed after official rustfmt application;
-- Rust unit/regression tests: 46 passed, 0 failed;
+- Rust unit/regression tests: 48 passed, 0 failed;
 - `cargo clippy --locked --all-targets -- -D warnings`: passed;
 - `cargo check --locked`: passed;
 - `cargo build --release --locked`: passed;

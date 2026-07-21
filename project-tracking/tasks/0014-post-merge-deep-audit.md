@@ -46,7 +46,7 @@ Verify that the merged implementation is internally consistent, safe, buildable 
 - recursive v2rayN selector lookup/write could confuse profile-record IDs with the active selector;
 - profile confirmation accepted substring matches instead of exact normalized names;
 - a config containing only an active profile name could be changed without inserting the required ID selector;
-- diagnostic hostnames could resolve to local/reserved addresses, and redirects were followed without revalidation;
+- diagnostic hostnames could resolve to local/reserved addresses, redirects were followed, and a second unpinned DNS lookup remained possible after validation;
 - the frontend dependency graph contained two high-severity advisories;
 - regenerated lockfile entries contained non-public resolved registry URLs and were normalized to the public npm registry;
 - CI proved compilation but did not prove that a release `.exe` was produced;
@@ -65,7 +65,7 @@ Verify that the merged implementation is internally consistent, safe, buildable 
 - [x] Frontend tests pass: 6 files, 19 tests.
 - [x] TypeScript/Vite production build passes.
 - [x] Rust formatting passes.
-- [x] Rust unit/regression suite passes: 46 tests.
+- [x] Rust unit/regression suite passes: 48 tests.
 - [x] Strict Clippy with warnings denied passes.
 - [x] `cargo check --locked` passes.
 - [x] `cargo build --release --locked` produces `v2rayn-widget.exe` on Windows.

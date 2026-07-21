@@ -99,6 +99,8 @@ Four responsibility layers:
 
 Legacy v2rayN commands remain registered during staged migration so existing debug/control workflows are not removed in this refactor.
 
+Network diagnostics reject non-public literal and DNS-resolved targets, disable redirects and ambient proxy settings, and pin hostname requests to the exact public socket addresses that were validated before the request.
+
 ## Contributor workflow
 
 Read `AGENTS.md` before changing the project.
@@ -153,7 +155,7 @@ npm run build
 ./scripts/test-rust.ps1
 ```
 
-The Windows Quality workflow additionally:
+The Release Quality workflow additionally:
 
 - rejects high-severity frontend dependency advisories;
 - transfers the exact built frontend into the Tauri job;

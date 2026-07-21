@@ -231,9 +231,7 @@ fn is_public_ipv6(address: Ipv6Addr) -> bool {
 
     let segments = address.segments();
     !(segments[..6].iter().all(|segment| *segment == 0)
-        || (segments[0] == 0x0064
-            && segments[1] == 0xff9b
-            && matches!(segments[2], 0 | 1))
+        || (segments[0] == 0x0064 && segments[1] == 0xff9b && matches!(segments[2], 0 | 1))
         || (segments[0] == 0x0100 && segments[1..4] == [0, 0, 0])
         || (segments[0] == 0x2001 && segments[1] == 0)
         || (segments[0] == 0x2001 && segments[1] == 0x0002 && segments[2] == 0)

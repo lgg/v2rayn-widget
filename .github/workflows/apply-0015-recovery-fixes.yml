@@ -27,38 +27,47 @@ jobs:
           components: rustfmt
 
       - name: Verify and apply exact recovery payload
-        shell: bash
+        shell: python
         run: |
-          set -euo pipefail
-          cat .audit/0015/recovery/part*.b64 > "$RUNNER_TEMP/recovery.tar.gz.b64"
-          base64 --decode "$RUNNER_TEMP/recovery.tar.gz.b64" > "$RUNNER_TEMP/recovery.tar.gz"
-          actual_sha=$(sha256sum "$RUNNER_TEMP/recovery.tar.gz" | cut -d' ' -f1)
-          actual=$(tar -tzf "$RUNNER_TEMP/recovery.tar.gz" | sort || true)
-          expected=$(printf '%s\n' \
-            src/frontend/src/features/dashboard-store.test.ts \
-            src/frontend/src/features/dashboard-store.ts \
-            src/tauri/src/services/config_reader.rs \
-            src/tauri/src/utils/file_store.rs \
-            src/tauri/src/utils/settings_store.rs \
-            src/tauri/tauri.installer.conf.json | sort)
-          {
-            echo "actual_sha=$actual_sha"
-            echo "expected_sha=97a9cab94867ab05f1d4195099af35380e338948d57dc7517ec58cdfad3c2840"
-            echo 'actual_files:'
-            printf '%s\n' "$actual"
-            echo 'expected_files:'
-            printf '%s\n' "$expected"
-          } > .audit/0015/recovery-diagnostics.txt
-          if [ "$actual_sha" != '97a9cab94867ab05f1d4195099af35380e338948d57dc7517ec58cdfad3c2840' ] || [ "$actual" != "$expected" ]; then
-            git config user.name 'lgg'
-            git config user.email 'lgg@users.noreply.github.com'
-            git add .audit/0015/recovery-diagnostics.txt
-            git commit -m '0015: record recovery payload diagnostics'
-            git push origin HEAD:audit/0015-final-main-verification
-            exit 1
-          fi
-          tar -xzf "$RUNNER_TEMP/recovery.tar.gz"
-          rm -rf .audit
+          import base64
+          import hashlib
+          import shutil
+          import tarfile
+          from pathlib import Path, PurePosixPath
+
+          expected_sha = "97a9cab94867ab05f1d4195099af35380e338948d57dc7517ec58cdfad3c2840"
+          expected_files = sorted([
+              "src/frontend/src/features/dashboard-store.test.ts",
+              "src/frontend/src/features/dashboard-store.ts",
+              "src/tauri/src/services/config_reader.rs",
+              "src/tauri/src/utils/file_store.rs",
+              "src/tauri/src/utils/settings_store.rs",
+              "src/tauri/tauri.installer.conf.json",
+          ])
+
+          encoded = "".join(
+              path.read_text(encoding="utf-8")
+              for path in sorted(Path(".audit/0015/recovery").glob("part*.b64"))
+          )
+          archive_bytes = base64.b64decode(encoded, validate=True)
+          actual_sha = hashlib.sha256(archive_bytes).hexdigest()
+          if actual_sha != expected_sha:
+              raise SystemExit(f"recovery archive SHA mismatch: {actual_sha}")
+
+          archive_path = Path(".audit/0015/recovery.tar.gz")
+          archive_path.write_bytes(archive_bytes)
+          with tarfile.open(archive_path, "r:gz") as archive:
+              members = archive.getmembers()
+              actual_files = sorted(member.name for member in members)
+              if actual_files != expected_files:
+                  raise SystemExit(f"unexpected recovery manifest: {actual_files}")
+              for member in members:
+                  path = PurePosixPath(member.name)
+                  if member.isdir() or member.issym() or member.islnk() or path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"unsafe recovery member: {member.name}")
+              archive.extractall(Path.cwd())
+
+          shutil.rmtree(".audit")
 
       - name: Format and validate
         shell: pwsh

@@ -36,6 +36,7 @@ jobs:
         run: |
           node --version 2>&1 | Tee-Object -FilePath frontend-install-output.txt
           npm --version 2>&1 | Tee-Object -Append -FilePath frontend-install-output.txt
+          npm config set registry "https://registry.npmjs.org/" --global
           npm config set cache "$env:RUNNER_TEMP/npm-cache" --global
           npm cache clean --force 2>&1 | Tee-Object -Append -FilePath frontend-install-output.txt
           npm ci --no-audit --no-fund 2>&1 | Tee-Object -Append -FilePath frontend-install-output.txt

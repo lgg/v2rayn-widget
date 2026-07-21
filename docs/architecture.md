@@ -241,13 +241,18 @@ A separate future model must define list, active subscription, refresh, switch, 
 
 `.github/workflows/windows-quality.yml`:
 
-- installs frontend dependencies;
-- runs frontend tests;
-- builds the frontend;
-- transfers `dist` to the Rust job;
+- installs frontend dependencies reproducibly with `npm ci`;
+- rejects high-severity dependency advisories with `npm audit --audit-level=high`;
+- runs frontend tests and the TypeScript/Vite production build;
+- transfers the exact frontend `dist` artifact to the Rust job;
 - verifies changed Rust formatting;
 - runs Rust unit/regression tests;
+- runs strict Clippy with warnings denied;
 - runs `cargo check --locked`;
-- preserves short-lived diagnostics artifacts.
+- performs `cargo build --release --locked`;
+- verifies and uploads the produced portable executable as a one-day smoke artifact;
+- preserves short-lived audit, test, build and release diagnostics.
 
-The Rust suite includes existing v2rayN resolver/config/log tests and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.
+Network diagnostics disable redirects and ambient proxy settings, resolve each configured HTTP(S) endpoint, reject the endpoint if any answer is non-public, and pin hostname requests to the exact validated `SocketAddr` set with `reqwest::ClientBuilder::resolve_to_addrs`. This removes the second unvalidated DNS lookup that could otherwise permit DNS rebinding. Literal or resolved loopback, private, link-local, CGNAT, benchmark, documentation, multicast, reserved, NAT64, Teredo and 6to4 addresses are rejected.
+
+The Rust suite includes existing v2rayN resolver/config/log tests, exact profile-selection tests, network-target safety tests and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.

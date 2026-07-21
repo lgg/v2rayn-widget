@@ -1,5 +1,5 @@
 use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::IpAddr,
     path::{Path, PathBuf},
     process::Command,
     time::Duration,
@@ -957,37 +957,22 @@ fn is_allowed_http_endpoint(value: &str) -> bool {
 
 fn is_allowed_endpoint_host(host: &str) -> bool {
     let host = host.trim().trim_matches(['[', ']']).to_lowercase();
-    if host.is_empty() || host == "localhost" || host.ends_with(".localhost") {
+    if host.is_empty()
+        || host == "localhost"
+        || host.ends_with(".localhost")
+        || host.ends_with(".local")
+        || host.ends_with(".lan")
+        || host.ends_with(".internal")
+        || host.ends_with(".home.arpa")
+        || host.ends_with(".test")
+        || host.ends_with(".invalid")
+    {
         return false;
     }
 
-    match host.parse::<IpAddr>() {
-        Ok(IpAddr::V4(addr)) => is_allowed_ipv4_endpoint(addr),
-        Ok(IpAddr::V6(addr)) => is_allowed_ipv6_endpoint(addr),
-        Err(_) => true,
-    }
-}
-
-fn is_allowed_ipv4_endpoint(addr: Ipv4Addr) -> bool {
-    !(addr.is_private()
-        || addr.is_loopback()
-        || addr.is_link_local()
-        || addr.is_broadcast()
-        || addr.is_documentation()
-        || addr.is_unspecified())
-}
-
-fn is_allowed_ipv6_endpoint(addr: Ipv6Addr) -> bool {
-    !(addr.is_loopback()
-        || addr.is_unspecified()
-        || addr.is_unique_local()
-        || addr.is_unicast_link_local()
-        || is_documentation_ipv6(addr))
-}
-
-fn is_documentation_ipv6(addr: Ipv6Addr) -> bool {
-    let segments = addr.segments();
-    segments[0] == 0x2001 && segments[1] == 0x0db8
+    host.parse::<IpAddr>()
+        .map(health_check::is_public_endpoint_ip)
+        .unwrap_or(true)
 }
 
 fn profile_name_matches(current: Option<&str>, expected: &str) -> bool {
@@ -1000,7 +985,7 @@ fn profile_name_matches(current: Option<&str>, expected: &str) -> bool {
         return false;
     }
 
-    current == expected || current.contains(&expected) || expected.contains(&current)
+    current == expected
 }
 
 fn profile_changed(previous: Option<&str>, current: Option<&str>) -> bool {
@@ -1195,6 +1180,18 @@ mod tests {
     }
 
     #[test]
+    fn profile_name_match_requires_exact_normalized_name() {
+        assert!(profile_name_matches(
+            Some("  Demo Profile  "),
+            "demo profile"
+        ));
+        assert!(!profile_name_matches(Some("RUSSIAN"), "US"));
+        assert!(!profile_name_matches(Some("US"), "RUSSIAN"));
+        assert!(!profile_name_matches(None, "demo"));
+        assert!(!profile_name_matches(Some("demo"), ""));
+    }
+
+    #[test]
     fn normalize_endpoint_list_filters_invalid_and_non_http_urls() {
         let result = normalize_endpoint_list(
             vec![
@@ -1225,6 +1222,10 @@ mod tests {
                 format!("http://{private_ipv4}/check"),
                 format!("http://{loopback_ipv4}/check"),
                 "http://localhost/check".to_owned(),
+                "http://router.local/check".to_owned(),
+                "http://service.internal/check".to_owned(),
+                "http://100.64.0.1/check".to_owned(),
+                "http://224.0.0.1/check".to_owned(),
                 "https://example.com/check".to_owned(),
             ],
             vec!["https://fallback.example".to_owned()],

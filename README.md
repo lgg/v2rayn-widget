@@ -99,6 +99,8 @@ Four responsibility layers:
 
 Legacy v2rayN commands remain registered during staged migration so existing debug/control workflows are not removed in this refactor.
 
+Network diagnostics reject non-public literal and DNS-resolved targets, disable redirects and ambient proxy settings, and pin hostname requests to the exact public socket addresses that were validated before the request.
+
 ## Contributor workflow
 
 Read `AGENTS.md` before changing the project.
@@ -109,6 +111,7 @@ Planning and decisions:
 - `project-tracking/tasks/0013-add-proxy-client-adapters-and-happ-mvp.md`
 - `project-tracking/decisions/0013-multi-client-adapter-architecture.md`
 - `project-tracking/reports/0013-add-proxy-client-adapters-and-happ-mvp-report.md`
+- `project-tracking/tasks/0014-post-merge-deep-audit.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 
@@ -141,6 +144,8 @@ cargo tauri dev
 
 ```bash
 cd src/frontend
+npm ci
+npm audit --audit-level=high
 npm test
 npm run build
 ```
@@ -150,7 +155,15 @@ npm run build
 ./scripts/test-rust.ps1
 ```
 
-The Windows Quality workflow additionally transfers the built frontend into the Tauri job, checks changed Rust formatting, runs the Rust regression suite and executes `cargo check --locked`.
+The Release Quality workflow additionally:
+
+- rejects high-severity frontend dependency advisories;
+- transfers the exact built frontend into the Tauri job;
+- checks changed Rust formatting;
+- runs the Rust regression suite;
+- runs strict `cargo clippy --locked --all-targets -- -D warnings`;
+- executes `cargo check --locked`;
+- performs a locked release build and verifies that the portable Windows executable is produced.
 
 ## Build portable executable
 

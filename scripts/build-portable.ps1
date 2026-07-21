@@ -15,8 +15,9 @@ function Invoke-CheckedCommand {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
 Set-Location (Join-Path $repoRoot "src\frontend")
-Invoke-CheckedCommand { npm install }
-Invoke-CheckedCommand { npm run test }
+Invoke-CheckedCommand { npm ci --no-audit --no-fund }
+Invoke-CheckedCommand { npm audit --audit-level=high }
+Invoke-CheckedCommand { npm test }
 Invoke-CheckedCommand { npm run build }
 
 . (Join-Path $PSScriptRoot "rust-env.ps1")
@@ -24,8 +25,9 @@ Invoke-CheckedCommand { npm run build }
 Set-Location (Join-Path $repoRoot "src\tauri")
 $toolchainCargo = Join-Path $env:RUSTUP_HOME "toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe"
 
-Invoke-CheckedCommand { & $toolchainCargo test }
-Invoke-CheckedCommand { & $toolchainCargo build --release }
+Invoke-CheckedCommand { & $toolchainCargo test --locked }
+Invoke-CheckedCommand { & $toolchainCargo clippy --locked --all-targets -- -D warnings }
+Invoke-CheckedCommand { & $toolchainCargo build --release --locked }
 
 $releaseExe = Join-Path (Join-Path (Get-Location).Path "target\release") "v2rayn-widget.exe"
 if (-not (Test-Path $releaseExe)) {

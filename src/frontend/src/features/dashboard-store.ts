@@ -464,8 +464,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set({
       settings,
       pathNoticeKey: pathNoticeFor(settings),
+      ...(operationalContextChanged ? { actionLoading: false } : {}),
       ...(previousClient !== undefined && previousClient !== settings.selected_client
-        ? { status: defaultStatus(), profiles: [], actionLoading: false }
+        ? { status: defaultStatus(), profiles: [] }
         : {})
     });
 

@@ -1,4 +1,5 @@
 use tauri::{AppHandle, Emitter, Manager, State};
+use tracing::warn;
 
 use crate::{
     adapters::{self, happ, ProxyClientAdapter, RefreshKind},
@@ -72,13 +73,7 @@ pub async fn select_client(
     settings_store::save_settings(&snapshot.settings).map_err(|error| error.to_string())?;
     state.replace_settings_and_status(snapshot.settings.clone(), DashboardStatus::default());
 
-    app.emit("settings-updated", &snapshot.settings)
-        .map_err(|error| error.to_string())?;
-    app.emit(
-        "client-selected",
-        adapters::descriptor(client_id, &snapshot.settings),
-    )
-    .map_err(|error| error.to_string())?;
+    emit_client_settings_events(&app, &snapshot.settings);
 
     Ok(snapshot.settings)
 }
@@ -148,15 +143,28 @@ pub async fn update_happ_settings(
         },
     );
 
-    app.emit("settings-updated", &final_settings)
-        .map_err(|error| error.to_string())?;
-    app.emit(
-        "client-selected",
-        adapters::descriptor(final_settings.selected_client, &final_settings),
-    )
-    .map_err(|error| error.to_string())?;
+    emit_client_settings_events(&app, &final_settings);
 
     Ok(final_settings)
+}
+
+fn emit_client_settings_events(app: &AppHandle, settings: &AppSettings) {
+    if let Err(error) = app.emit("settings-updated", settings) {
+        warn!(
+            ?error,
+            "failed to emit settings-updated event after client settings persisted"
+        );
+    }
+
+    if let Err(error) = app.emit(
+        "client-selected",
+        adapters::descriptor(settings.selected_client, settings),
+    ) {
+        warn!(
+            ?error,
+            "failed to emit client-selected event after client settings persisted"
+        );
+    }
 }
 
 fn validate_happ_path_value(path: &str) -> Result<PathValidation, String> {

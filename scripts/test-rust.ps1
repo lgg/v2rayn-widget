@@ -18,4 +18,4 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location (Join-Path $repoRoot "src\tauri")
 
 $toolchainCargo = Join-Path $env:RUSTUP_HOME "toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe"
-Invoke-CheckedCommand { & $toolchainCargo test }
+Invoke-CheckedCommand { & $toolchainCargo test --locked }

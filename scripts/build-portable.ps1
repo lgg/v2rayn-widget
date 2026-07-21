@@ -15,7 +15,7 @@ function Invoke-CheckedCommand {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
 Set-Location (Join-Path $repoRoot "src\frontend")
-Invoke-CheckedCommand { npm ci }
+Invoke-CheckedCommand { npm ci --no-audit --no-fund }
 Invoke-CheckedCommand { npm audit --audit-level=high }
 Invoke-CheckedCommand { npm test }
 Invoke-CheckedCommand { npm run build }

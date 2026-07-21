@@ -39,11 +39,15 @@ jobs:
           for index in $(seq 0 7); do
             part=$(printf '.audit/0015/part%02d.b64' "$index")
             actual=$(sha256sum "$part" | cut -d' ' -f1)
+            size=$(wc -c < "$part")
+            echo "part${index}: size=${size} actual=${actual} expected=${expected[$index]}"
             test "$actual" = "${expected[$index]}"
             cat "$part" >> "$RUNNER_TEMP/audit0015-product.patch.b64"
           done
           base64 --decode "$RUNNER_TEMP/audit0015-product.patch.b64" > "$RUNNER_TEMP/audit0015-product.patch"
-          echo '81391a610606d121b3e80fc48efedfc1b5934a50e005e53a1ca06a5bfae8e824  '"$RUNNER_TEMP/audit0015-product.patch" | sha256sum --check
+          actual_patch=$(sha256sum "$RUNNER_TEMP/audit0015-product.patch" | cut -d' ' -f1)
+          echo "patch: size=$(wc -c < "$RUNNER_TEMP/audit0015-product.patch") actual=${actual_patch} expected=81391a610606d121b3e80fc48efedfc1b5934a50e005e53a1ca06a5bfae8e824"
+          test "$actual_patch" = '81391a610606d121b3e80fc48efedfc1b5934a50e005e53a1ca06a5bfae8e824'
           git apply --check "$RUNNER_TEMP/audit0015-product.patch"
 
       - name: Apply product changes

@@ -16,7 +16,7 @@ concurrency:
 jobs:
   frontend:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -32,6 +32,16 @@ jobs:
       - name: Install frontend dependencies
         working-directory: src/frontend
         run: npm ci
+
+      - name: Audit frontend dependencies
+        id: frontend_audit
+        continue-on-error: true
+        working-directory: src/frontend
+        shell: pwsh
+        run: |
+          npm audit --audit-level=high 2>&1 | Tee-Object -FilePath frontend-audit-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
 
       - name: Run frontend tests
         id: frontend_tests
@@ -68,20 +78,21 @@ jobs:
         with:
           name: frontend-diagnostics
           path: |
+            src/frontend/frontend-audit-output.txt
             src/frontend/frontend-test-output.txt
             src/frontend/frontend-build-output.txt
           if-no-files-found: warn
           retention-days: 1
 
       - name: Fail when frontend checks failed
-        if: steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
+        if: steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
         shell: pwsh
         run: exit 1
 
   rust:
     needs: frontend
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -138,6 +149,29 @@ jobs:
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 
+      - name: Build portable release smoke artifact
+        id: rust_release
+        continue-on-error: true
+        working-directory: src/tauri
+        shell: pwsh
+        run: |
+          cargo build --release --locked 2>&1 | Tee-Object -FilePath rust-release-output.txt
+          $commandExitCode = $LASTEXITCODE
+          if ($commandExitCode -ne 0) { exit $commandExitCode }
+          if (-not (Test-Path "target/release/v2rayn-widget.exe")) {
+            Write-Error "Release executable was not produced"
+            exit 1
+          }
+
+      - name: Upload portable release smoke artifact
+        if: steps.rust_release.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-release-smoke
+          path: src/tauri/target/release/v2rayn-widget.exe
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload Rust diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -148,10 +182,11 @@ jobs:
             src/tauri/rust-test-output.txt
             src/tauri/rust-clippy-output.txt
             src/tauri/rust-build-output.txt
+            src/tauri/rust-release-output.txt
           if-no-files-found: warn
           retention-days: 1
 
       - name: Fail when Rust checks failed
-        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure'
+        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure' || steps.rust_release.outcome == 'failure'
         shell: pwsh
         run: exit 1

@@ -30,10 +30,17 @@ jobs:
           cache-dependency-path: src/frontend/package-lock.json
 
       - name: Install frontend dependencies
+        id: frontend_install
+        continue-on-error: true
         working-directory: src/frontend
-        run: npm ci
+        shell: pwsh
+        run: |
+          npm ci 2>&1 | Tee-Object -FilePath frontend-install-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
 
       - name: Audit frontend dependencies
+        if: steps.frontend_install.outcome == 'success'
         id: frontend_audit
         continue-on-error: true
         working-directory: src/frontend
@@ -44,6 +51,7 @@ jobs:
           exit $commandExitCode
 
       - name: Run frontend tests
+        if: steps.frontend_install.outcome == 'success'
         id: frontend_tests
         continue-on-error: true
         working-directory: src/frontend
@@ -54,6 +62,7 @@ jobs:
           exit $commandExitCode
 
       - name: Build frontend
+        if: steps.frontend_install.outcome == 'success'
         id: frontend_build
         continue-on-error: true
         working-directory: src/frontend
@@ -78,6 +87,7 @@ jobs:
         with:
           name: frontend-diagnostics
           path: |
+            src/frontend/frontend-install-output.txt
             src/frontend/frontend-audit-output.txt
             src/frontend/frontend-test-output.txt
             src/frontend/frontend-build-output.txt
@@ -85,7 +95,7 @@ jobs:
           retention-days: 1
 
       - name: Fail when frontend checks failed
-        if: steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
+        if: steps.frontend_install.outcome == 'failure' || steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
         shell: pwsh
         run: exit 1
 

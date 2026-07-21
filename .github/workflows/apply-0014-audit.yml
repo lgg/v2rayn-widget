@@ -8,6 +8,7 @@ on:
       - '.audit/0014.chunk01'
       - '.audit/0014.chunk02'
       - '.audit/0014.chunk03'
+      - '.audit/0014.chunk03-tail'
       - '.audit/0014.chunk04'
 
 permissions:
@@ -38,10 +39,11 @@ jobs:
           echo 'ef61f13ce872be6429a452afd4bcc8e84112d8be9c77b675a1b84f943e1647b3  .audit/0014.chunk00' | sha256sum -c -
           echo '9f1fe9a5b29963ad2a231680ac4dcca8a49a1e520b09b6a361041634b44087be  .audit/0014.chunk01' | sha256sum -c -
           echo 'b89b2a9a63f3774158de2d0b8e96ae1645c85b47a7327b8fd4ddd15d0c44691b  .audit/0014.chunk02' | sha256sum -c -
-          echo 'bc1640254cbd3c0c627415af998c49085930fa0ca3cc40152ac2db9343016ace  .audit/0014.chunk03' | sha256sum -c -
+          echo '3d78c7e28029caf0fcbe42507289429cf759eb2c908faf760d864e336e8ee9d7  .audit/0014.chunk03' | sha256sum -c -
+          echo 'aaf5ad9b1c00adba2f488f25ad6c9927a4ab3de9aea9211c4cd66ad816bb0163  .audit/0014.chunk03-tail' | sha256sum -c -
           echo 'f4c56da384aad0b7f03f3c46ef758f876eea405533045ac769930ada739c98da  .audit/0014.chunk04' | sha256sum -c -
 
-          cat .audit/0014.chunk00 .audit/0014.chunk01 .audit/0014.chunk02 .audit/0014.chunk03 .audit/0014.chunk04 > /tmp/0014.b64
+          cat .audit/0014.chunk00 .audit/0014.chunk01 .audit/0014.chunk02 .audit/0014.chunk03 .audit/0014.chunk03-tail .audit/0014.chunk04 > /tmp/0014.b64
           echo '7533e691c40d7256e852661b45dd362b5892a3d44d975fb67adcf8501527a60a  /tmp/0014.b64' | sha256sum -c -
 
           base64 -d /tmp/0014.b64 | gzip -d > /tmp/0014.patch
@@ -49,7 +51,7 @@ jobs:
 
           patch -p1 --forward --batch < /tmp/0014.patch
 
-          rm -f .audit/0014.patch.gz.b64 .audit/0014.chunk00 .audit/0014.chunk01 .audit/0014.chunk02 .audit/0014.chunk03 .audit/0014.chunk04
+          rm -f .audit/0014.patch.gz.b64 .audit/0014.chunk00 .audit/0014.chunk01 .audit/0014.chunk02 .audit/0014.chunk03 .audit/0014.chunk03-tail .audit/0014.chunk04
           rmdir .audit 2>/dev/null || true
           rm -f .github/workflows/audit-source-snapshot.yml
           rm -f .github/workflows/apply-0014-audit.yml

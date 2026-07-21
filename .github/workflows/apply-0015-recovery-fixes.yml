@@ -1,0 +1,63 @@
+name: Apply 0015 Recovery Fixes
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/apply-0015-recovery-fixes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'audit/0015-final-main-verification'
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: audit/0015-final-main-verification
+          fetch-depth: 0
+
+      - name: Set up rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Verify and apply exact recovery payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .audit/0015/recovery/part*.b64 > "$RUNNER_TEMP/recovery.tar.gz.b64"
+          base64 --decode "$RUNNER_TEMP/recovery.tar.gz.b64" > "$RUNNER_TEMP/recovery.tar.gz"
+          echo '97a9cab94867ab05f1d4195099af35380e338948d57dc7517ec58cdfad3c2840  '"$RUNNER_TEMP/recovery.tar.gz" | sha256sum --check
+          actual=$(tar -tzf "$RUNNER_TEMP/recovery.tar.gz" | sort)
+          expected=$(printf '%s\n' \
+            src/frontend/src/features/dashboard-store.test.ts \
+            src/frontend/src/features/dashboard-store.ts \
+            src/tauri/src/services/config_reader.rs \
+            src/tauri/src/utils/file_store.rs \
+            src/tauri/src/utils/settings_store.rs \
+            src/tauri/tauri.installer.conf.json | sort)
+          test "$actual" = "$expected"
+          tar -xzf "$RUNNER_TEMP/recovery.tar.gz"
+          rm -rf .audit
+
+      - name: Format and validate
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path src/tauri/Cargo.toml --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit recovery fixes
+        shell: pwsh
+        run: |
+          git config user.name 'lgg'
+          git config user.email 'lgg@users.noreply.github.com'
+          git add -A
+          git commit -m '0015: recover validated settings and config backups'
+          git push origin HEAD:audit/0015-final-main-verification

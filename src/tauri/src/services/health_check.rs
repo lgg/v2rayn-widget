@@ -1,6 +1,6 @@
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use anyhow::Result;
@@ -147,7 +147,13 @@ async fn resolve_public_endpoint(endpoint: &str) -> Option<ResolvedPublicEndpoin
         });
     }
 
-    let resolved = tokio::net::lookup_host((host.as_str(), port)).await.ok()?;
+    let resolved = tokio::time::timeout(
+        Duration::from_secs(REQUEST_TIMEOUT_SECONDS),
+        tokio::net::lookup_host((host.as_str(), port)),
+    )
+    .await
+    .ok()?
+    .ok()?;
     let mut addresses = Vec::new();
 
     for address in resolved {
@@ -174,7 +180,7 @@ async fn resolve_public_endpoint(endpoint: &str) -> Option<ResolvedPublicEndpoin
 fn http_client_builder() -> ClientBuilder {
     Client::builder()
         .no_proxy()
-        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECONDS))
+        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECONDS))
         .redirect(Policy::none())
 }
 

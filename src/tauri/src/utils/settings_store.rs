@@ -23,8 +23,10 @@ pub fn load_settings() -> Result<AppSettings> {
         return Ok(defaults);
     }
 
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read settings file: {}", path.display()))?;
+    let content = file_store::read_validated_string(&path, |value| {
+        serde_json::from_str::<AppSettings>(value).is_ok()
+    })
+    .with_context(|| format!("Failed to read valid settings file: {}", path.display()))?;
 
     let mut parsed: AppSettings = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse settings JSON: {}", path.display()))?;

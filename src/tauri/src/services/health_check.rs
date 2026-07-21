@@ -371,13 +371,19 @@ mod tests {
 
     #[test]
     fn external_ip_body_accepts_plain_and_json_but_rejects_oversize_or_private() {
-        assert_eq!(parse_external_ip_body(b"1.1.1.1\n"), Some("1.1.1.1".to_owned()));
+        assert_eq!(
+            parse_external_ip_body(b"1.1.1.1\n"),
+            Some("1.1.1.1".to_owned())
+        );
         assert_eq!(
             parse_external_ip_body(br#"{"ip":"2606:4700:4700::1111"}"#),
             Some("2606:4700:4700::1111".to_owned())
         );
         assert_eq!(parse_external_ip_body(br#"{"ip":"10.0.0.1"}"#), None);
-        assert_eq!(parse_external_ip_body(&vec![b'x'; MAX_EXTERNAL_IP_BODY_BYTES + 1]), None);
+        assert_eq!(
+            parse_external_ip_body(&vec![b'x'; MAX_EXTERNAL_IP_BODY_BYTES + 1]),
+            None
+        );
     }
 
     #[test]

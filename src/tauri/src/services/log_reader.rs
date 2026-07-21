@@ -20,16 +20,16 @@ pub struct LogSnapshot {
 }
 
 pub fn read_latest_log(base_path: &Path) -> Result<LogSnapshot> {
-    let log_path =
-        find_latest_log_file(base_path).ok_or_else(|| anyhow::anyhow!("No log files found in guiLogs"))?;
+    let log_path = find_latest_log_file(base_path)
+        .ok_or_else(|| anyhow::anyhow!("No log files found in guiLogs"))?;
 
     let content = read_log_tail(&log_path)?;
     Ok(parse_log_content(&content))
 }
 
 fn read_log_tail(path: &Path) -> Result<String> {
-    let mut file = File::open(path)
-        .with_context(|| format!("Failed to open log file: {}", path.display()))?;
+    let mut file =
+        File::open(path).with_context(|| format!("Failed to open log file: {}", path.display()))?;
     let length = file
         .metadata()
         .with_context(|| format!("Failed to read log metadata: {}", path.display()))?
@@ -74,7 +74,8 @@ fn find_latest_log_file(base_path: &Path) -> Option<PathBuf> {
 
         match &latest {
             Some((latest_path, latest_time))
-                if modified < *latest_time || (modified == *latest_time && path <= *latest_path) => {}
+                if modified < *latest_time
+                    || (modified == *latest_time && path <= *latest_path) => {}
             _ => latest = Some((path, modified)),
         }
     }
@@ -86,8 +87,10 @@ fn parse_log_content(content: &str) -> LogSnapshot {
     let mut snapshot = LogSnapshot::default();
 
     let error_regex = Regex::new(r"(?i)\b(error|failed|exception|panic)\b").expect("valid regex");
-    let tun_ok_regex = Regex::new(r"(?i)\btun\b.*\b(started|enabled|running|ready)\b").expect("valid regex");
-    let latency_regex = Regex::new(r"(?i)(delay|latency|ping|rtt)\D{0,20}(\d{1,5})\s?ms").expect("valid regex");
+    let tun_ok_regex =
+        Regex::new(r"(?i)\btun\b.*\b(started|enabled|running|ready)\b").expect("valid regex");
+    let latency_regex =
+        Regex::new(r"(?i)(delay|latency|ping|rtt)\D{0,20}(\d{1,5})\s?ms").expect("valid regex");
     let fallback_ms_regex = Regex::new(r"(?i)\b(\d{1,5})\s?ms\b").expect("valid regex");
 
     for line in content.lines().rev().take(1200) {

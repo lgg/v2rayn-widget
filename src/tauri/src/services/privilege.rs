@@ -145,7 +145,9 @@ pub fn relaunch_self_as_admin() -> anyhow::Result<()> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn relaunch_self_as_admin() -> anyhow::Result<()> {
-    Err(anyhow::anyhow!("Relaunch as administrator is only available on Windows"))
+    Err(anyhow::anyhow!(
+        "Relaunch as administrator is only available on Windows"
+    ))
 }
 
 #[cfg(target_os = "windows")]

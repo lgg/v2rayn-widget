@@ -1,6 +1,6 @@
 {
   "build": {
-    "beforeBuildCommand": "npm --prefix ../frontend run build"
+    "beforeBuildCommand": "npm --prefix src/frontend run build"
   },
   "bundle": {
     "active": true,

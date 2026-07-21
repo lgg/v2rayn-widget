@@ -2,9 +2,7 @@ use chrono::Utc;
 
 use crate::models::status::{ConnectionState, DashboardStatus};
 use crate::services::{
-    config_reader::ConfigSnapshot,
-    health_check::HealthSnapshot,
-    log_reader::LogSnapshot,
+    config_reader::ConfigSnapshot, health_check::HealthSnapshot, log_reader::LogSnapshot,
     process_monitor::ProcessSnapshot,
 };
 
@@ -20,15 +18,25 @@ pub struct StatusInputs {
 
 pub fn resolve_status(inputs: StatusInputs) -> DashboardStatus {
     let tun_enabled = inputs.config.enable_tun.unwrap_or(false);
-    let last_error = inputs.logs.as_ref().and_then(|logs| logs.last_error.clone());
-    let last_event = inputs.logs.as_ref().and_then(|logs| logs.last_event.clone());
+    let last_error = inputs
+        .logs
+        .as_ref()
+        .and_then(|logs| logs.last_error.clone());
+    let last_event = inputs
+        .logs
+        .as_ref()
+        .and_then(|logs| logs.last_event.clone());
 
     let latency_ms = inputs
         .health
         .latency_ms
         .or_else(|| inputs.logs.as_ref().and_then(|logs| logs.latency_ms));
 
-    let startup_error = inputs.logs.as_ref().map(|logs| logs.startup_error).unwrap_or(false);
+    let startup_error = inputs
+        .logs
+        .as_ref()
+        .map(|logs| logs.startup_error)
+        .unwrap_or(false);
 
     let connectivity_ok = if inputs.require_connectivity_check {
         inputs.health.connectivity_checked && inputs.health.health_ok
@@ -164,5 +172,3 @@ mod tests {
         assert_eq!(resolved.connection_state, ConnectionState::Connected);
     }
 }
-
-

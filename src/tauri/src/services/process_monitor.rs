@@ -33,7 +33,10 @@ pub fn read_process_snapshot_for_base_path(base_path: Option<&Path>) -> ProcessS
         }
 
         let core_matches = ["xray", "v2ray", "sing-box", "mihomo", "clash"];
-        if core_matches.iter().any(|entry| process_name.contains(entry)) {
+        if core_matches
+            .iter()
+            .any(|entry| process_name.contains(entry))
+        {
             snapshot.core_processes.push(process_name);
         }
     }
@@ -123,7 +126,10 @@ fn normalize_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn path_normalization_matches_equivalent_existing_directories() {

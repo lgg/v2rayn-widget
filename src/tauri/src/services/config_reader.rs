@@ -1,10 +1,13 @@
-use std::{fs, path::Path};
+use std::{path::Path, sync::Mutex};
 
 use anyhow::{Context, Result};
+use once_cell::sync::Lazy;
 use rusqlite::Connection;
 use serde_json::Value;
 
 use crate::{models::profile::ProfileSummary, utils::file_store};
+
+static CONFIG_WRITE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 const PROFILE_COLLECTION_KEYS: &[&str] = &[
     "profiles",
@@ -25,10 +28,7 @@ pub struct ConfigSnapshot {
 pub fn read_config(base_path: &Path) -> Result<ConfigSnapshot> {
     let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
 
-    file_store::recover_backup_if_missing(&config_path)?;
-
-    let content = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
+    let content = read_valid_config_string(&config_path)?;
 
     let json: Value = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
@@ -52,10 +52,10 @@ pub fn read_config(base_path: &Path) -> Result<ConfigSnapshot> {
 pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
     let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
 
-    file_store::recover_backup_if_missing(&config_path)?;
-
-    let content = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
+    let _write_guard = CONFIG_WRITE_LOCK
+        .lock()
+        .map_err(|_| anyhow::anyhow!("v2rayN config write lock is poisoned"))?;
+    let content = read_valid_config_string(&config_path)?;
 
     let mut json: Value = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
@@ -113,10 +113,10 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
 pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
     let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
 
-    file_store::recover_backup_if_missing(&config_path)?;
-
-    let content = fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
+    let _write_guard = CONFIG_WRITE_LOCK
+        .lock()
+        .map_err(|_| anyhow::anyhow!("v2rayN config write lock is poisoned"))?;
+    let content = read_valid_config_string(&config_path)?;
 
     let mut json: Value = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
@@ -169,6 +169,13 @@ pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
         .with_context(|| format!("Failed to write config: {}", config_path.display()))?;
 
     Ok(next)
+}
+
+fn read_valid_config_string(config_path: &Path) -> Result<String> {
+    file_store::read_validated_string(config_path, |content| {
+        serde_json::from_str::<Value>(content).is_ok_and(|value| value.is_object())
+    })
+    .with_context(|| format!("Failed to read valid config: {}", config_path.display()))
 }
 
 fn read_profiles_from_db(base_path: &Path) -> Result<Vec<ProfileSummary>> {
@@ -435,7 +442,10 @@ fn find_value_by_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     fn profile(id: &str, name: &str) -> ProfileSummary {
         ProfileSummary {
@@ -624,6 +634,46 @@ mod tests {
             .filter_map(|item| item.get("IndexId").and_then(Value::as_str))
             .collect::<Vec<_>>();
         assert_eq!(ids, vec!["first", "second"]);
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+    #[test]
+    fn read_config_recovers_a_valid_backup_when_primary_json_is_corrupt() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!(
+            "v2rayn-widget-config-backup-recovery-test-{unique}"
+        ));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        fs::write(&config_path, "{broken").expect("write corrupt primary");
+        fs::write(
+            config_dir.join("guiNConfig.json.bak"),
+            serde_json::json!({
+                "TunModeItem": { "EnableTun": true },
+                "IndexId": "first",
+                "ProfileItem": [
+                    { "IndexId": "first", "Remarks": "First profile" }
+                ]
+            })
+            .to_string(),
+        )
+        .expect("write valid backup");
+
+        let snapshot = read_config(&base_path).expect("recover config");
+        assert_eq!(snapshot.enable_tun, Some(true));
+        assert_eq!(
+            snapshot.active_profile_name.as_deref(),
+            Some("First profile")
+        );
+        assert!(serde_json::from_str::<Value>(
+            &fs::read_to_string(&config_path).expect("read restored config")
+        )
+        .is_ok());
 
         let _ = fs::remove_dir_all(base_path);
     }

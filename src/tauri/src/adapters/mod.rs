@@ -157,7 +157,8 @@ impl ProxyClientAdapter for RegisteredAdapter {
             Self::V2rayn => {
                 let snapshot = state.snapshot();
                 let base_path = commands::resolve_v2rayn_base_path(&snapshot.settings);
-                let process = process_monitor::read_process_snapshot_for_base_path(base_path.as_deref());
+                let process =
+                    process_monitor::read_process_snapshot_for_base_path(base_path.as_deref());
                 Ok(ClientDiagnostics {
                     client_id: ProxyClientId::V2rayn,
                     application_running: process.v2rayn_running,

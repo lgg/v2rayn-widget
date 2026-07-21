@@ -25,47 +25,63 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          parts=(
+            .audit/0015/small/part00_00.b64
+            .audit/0015/small/part00_01.b64
+            .audit/0015/small/part00_02.b64
+            .audit/0015/small/part00_03.b64
+            .audit/0015/small/part00_04.b64
+            .audit/0015/small/part00_05.b64
+            .audit/0015/small/part00_06.b64
+            .audit/0015/small/part00_07.b64
+            .audit/0015/part01.b64
+            .audit/0015/part02.b64
+            .audit/0015/small/part03_00.b64
+            .audit/0015/small/part03_01.b64
+            .audit/0015/small/part03_02.b64
+            .audit/0015/small/part03_03.b64
+            .audit/0015/small/part03_04.b64
+            .audit/0015/small/part03_05.b64
+            .audit/0015/small/part03_06.b64
+            .audit/0015/small/part03_07.b64
+            .audit/0015/part04.b64
+            .audit/0015/part05.b64
+            .audit/0015/part06.b64
+            .audit/0015/part07.b64
+          )
           expected=(
-            58fb1f29e2d43962e10560135a40c4ead81be25e4bce460542cef768e559f602
+            c45054c9ccfdc4fa7f8418505aebba5caa08caf5bf538f0c3c34ee7162076c0f
+            d0129c62ce1d7c3f0ab3903a3d03a564b025f275fd76179bb72afc2e5ce66b07
+            662d067be597384cde23f988b3ab0088ec9f95999523988c919826919f4feb46
+            ae163cd2b4a2b17c9ff9235161575703cd527c705b0aa4be557db576b11bee92
+            b2050055865da5cd5b4c7d3c7991841a703a702be871a56fb6b715058ed09535
+            f0b2b62e02835481b9f7168059f5f1813048874be31467805d96d54cada35e45
+            ddb0be8ae58738d564b852eba48dda20c3bbf532648d82ee0046543f0a327e4e
+            444e7b92ed8d350492b5e1c423cd68b209b65a8ce22649e1be306370de7c5013
             5e361d43d216f318dfe8c9f4a175810a82167155554ce32a5c634670c90ee1fd
             29ea54b2d3b3618bef9862c4217ef82a5f9b7d376825a425486b2d71df092171
-            819ec4389003e9cf7d9ee4d55c906dcd4237c09325de17fc2ebbfee151328b36
+            0f4a169deda75a693272aff929b6f9b8078a473a370f41dbdabcac042972f492
+            d8afa555fdfbe734866ba6863e90da16d70db2c564234026e87a7b20a333ab1b
+            d4921b2e1c4585b992ea296f63fa6fc51be02c5ff032488354e929f363ce17ba
+            24c16c09924d8dad1a2161a413a951ed3f59e887adcd3b9848f1d8e34ce9e212
+            4c12d6ab05a8207d8dfb236f3004733cc7568d93c97b65cfa2715f6646e3d6b3
+            01bcb8b572efc5a295e84d47c5b41d6b2c2369443cf958c5f1c776f641c9ee5b
+            c5db1c0373a19a54486d4a867ad3274f113bdd16668f88951904976ecaecff55
+            2551e5f07a120485c71386a79199779f924030105621d100921c1898a4a0c0b7
             4f416430577f9558a3324684680db4f820a8f3f9ee7e9d185b529e7a7052f5dd
             e0f0f6ee0eaa9b0bb4431cb35bc0a762eaa7f556f40c9749b885054c26cf0c82
             79ca44cf4f5334cb58dfcf88ce9579635cfdbfeebe98903fc5368f3ea2336d97
             f9e74bad61cf2c1e81c81ef03388b7e3040a1e23465e8f7b86e09dc2dbd5cf99
           )
-          report='.audit/0015/actual-sha.txt'
-          : > "$report"
           : > "$RUNNER_TEMP/audit0015-product.patch.b64"
-          mismatch=0
-          for index in $(seq 0 7); do
-            part=$(printf '.audit/0015/part%02d.b64' "$index")
-            actual=$(sha256sum "$part" | cut -d' ' -f1)
-            size=$(wc -c < "$part")
-            echo "part${index} size=${size} actual=${actual} expected=${expected[$index]}" | tee -a "$report"
-            if [ "$actual" != "${expected[$index]}" ]; then mismatch=1; fi
-            cat "$part" >> "$RUNNER_TEMP/audit0015-product.patch.b64"
+          for index in "${!parts[@]}"; do
+            actual=$(sha256sum "${parts[$index]}" | cut -d' ' -f1)
+            test "$actual" = "${expected[$index]}"
+            cat "${parts[$index]}" >> "$RUNNER_TEMP/audit0015-product.patch.b64"
           done
-          if [ "$mismatch" -ne 0 ]; then
-            git config user.name 'lgg'
-            git config user.email 'lgg@users.noreply.github.com'
-            git add "$report"
-            git commit -m '0015: record patch chunk diagnostics'
-            git push origin HEAD:audit/0015-final-main-verification
-            exit 1
-          fi
           base64 --decode "$RUNNER_TEMP/audit0015-product.patch.b64" > "$RUNNER_TEMP/audit0015-product.patch"
           actual_patch=$(sha256sum "$RUNNER_TEMP/audit0015-product.patch" | cut -d' ' -f1)
-          echo "patch size=$(wc -c < "$RUNNER_TEMP/audit0015-product.patch") actual=${actual_patch} expected=81391a610606d121b3e80fc48efedfc1b5934a50e005e53a1ca06a5bfae8e824" | tee -a "$report"
-          if [ "$actual_patch" != '81391a610606d121b3e80fc48efedfc1b5934a50e005e53a1ca06a5bfae8e824' ]; then
-            git config user.name 'lgg'
-            git config user.email 'lgg@users.noreply.github.com'
-            git add "$report"
-            git commit -m '0015: record reconstructed patch diagnostics'
-            git push origin HEAD:audit/0015-final-main-verification
-            exit 1
-          fi
+          test "$actual_patch" = '81391a610606d121b3e80fc48efedfc1b5934a50e005e53a1ca06a5bfae8e824'
           git apply --check "$RUNNER_TEMP/audit0015-product.patch"
 
       - name: Apply product changes

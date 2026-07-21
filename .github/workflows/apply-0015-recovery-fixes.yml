@@ -33,8 +33,7 @@ jobs:
           cat .audit/0015/recovery/part*.b64 > "$RUNNER_TEMP/recovery.tar.gz.b64"
           base64 --decode "$RUNNER_TEMP/recovery.tar.gz.b64" > "$RUNNER_TEMP/recovery.tar.gz"
           actual_sha=$(sha256sum "$RUNNER_TEMP/recovery.tar.gz" | cut -d' ' -f1)
-          test "$actual_sha" = '97a9cab94867ab05f1d4195099af35380e338948d57dc7517ec58cdfad3c2840'
-          actual=$(tar -tzf "$RUNNER_TEMP/recovery.tar.gz" | sort)
+          actual=$(tar -tzf "$RUNNER_TEMP/recovery.tar.gz" | sort || true)
           expected=$(printf '%s\n' \
             src/frontend/src/features/dashboard-store.test.ts \
             src/frontend/src/features/dashboard-store.ts \
@@ -42,7 +41,22 @@ jobs:
             src/tauri/src/utils/file_store.rs \
             src/tauri/src/utils/settings_store.rs \
             src/tauri/tauri.installer.conf.json | sort)
-          test "$actual" = "$expected"
+          {
+            echo "actual_sha=$actual_sha"
+            echo "expected_sha=97a9cab94867ab05f1d4195099af35380e338948d57dc7517ec58cdfad3c2840"
+            echo 'actual_files:'
+            printf '%s\n' "$actual"
+            echo 'expected_files:'
+            printf '%s\n' "$expected"
+          } > .audit/0015/recovery-diagnostics.txt
+          if [ "$actual_sha" != '97a9cab94867ab05f1d4195099af35380e338948d57dc7517ec58cdfad3c2840' ] || [ "$actual" != "$expected" ]; then
+            git config user.name 'lgg'
+            git config user.email 'lgg@users.noreply.github.com'
+            git add .audit/0015/recovery-diagnostics.txt
+            git commit -m '0015: record recovery payload diagnostics'
+            git push origin HEAD:audit/0015-final-main-verification
+            exit 1
+          fi
           tar -xzf "$RUNNER_TEMP/recovery.tar.gz"
           rm -rf .audit
 

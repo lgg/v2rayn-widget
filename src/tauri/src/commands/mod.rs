@@ -1181,7 +1181,10 @@ mod tests {
 
     #[test]
     fn profile_name_match_requires_exact_normalized_name() {
-        assert!(profile_name_matches(Some("  Demo Profile  "), "demo profile"));
+        assert!(profile_name_matches(
+            Some("  Demo Profile  "),
+            "demo profile"
+        ));
         assert!(!profile_name_matches(Some("RUSSIAN"), "US"));
         assert!(!profile_name_matches(Some("US"), "RUSSIAN"));
         assert!(!profile_name_matches(None, "demo"));

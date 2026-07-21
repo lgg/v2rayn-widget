@@ -1,4 +1,7 @@
-use std::{net::{IpAddr, Ipv4Addr, Ipv6Addr}, time::Instant};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    time::Instant,
+};
 
 use anyhow::Result;
 use reqwest::{redirect::Policy, Client, Url};
@@ -28,7 +31,9 @@ pub async fn check(client: &Client, options: &HealthCheckOptions) -> HealthSnaps
 
     if options.enable_connectivity_latency && matches!(options.latency_mode, LatencyMode::Active) {
         snapshot.connectivity_checked = true;
-        if let Some((ok, latency)) = check_connectivity(client, &options.connectivity_endpoints).await {
+        if let Some((ok, latency)) =
+            check_connectivity(client, &options.connectivity_endpoints).await
+        {
             snapshot.health_ok = ok;
             snapshot.latency_ms = latency;
         }
@@ -106,10 +111,7 @@ fn normalize_ip_text(value: &str) -> Option<String> {
         return None;
     }
 
-    trimmed
-        .parse::<IpAddr>()
-        .ok()
-        .map(|ip| ip.to_string())
+    trimmed.parse::<IpAddr>().ok().map(|ip| ip.to_string())
 }
 
 async fn endpoint_resolves_to_public_addresses(endpoint: &str) -> bool {
@@ -242,9 +244,7 @@ mod tests {
             "1.1.1.1".parse().expect("valid public IPv4")
         ));
         assert!(is_public_endpoint_ip(
-            "2606:4700:4700::1111"
-                .parse()
-                .expect("valid public IPv6")
+            "2606:4700:4700::1111".parse().expect("valid public IPv6")
         ));
     }
 
@@ -256,9 +256,7 @@ mod tests {
 
     #[test]
     fn normalize_ip_text_accepts_ipv4_and_ipv6() {
-        let ipv4 = [203, 0, 113, 10]
-            .map(|part| part.to_string())
-            .join(".");
+        let ipv4 = [203, 0, 113, 10].map(|part| part.to_string()).join(".");
         let ipv6 = format!("{}:{}::{}", "2001", "db8", "1");
 
         assert_eq!(normalize_ip_text(&format!(" {ipv4} ")), Some(ipv4));
@@ -267,12 +265,9 @@ mod tests {
 
     #[test]
     fn normalize_ip_text_rejects_html_and_long_responses() {
-        let ipv4 = [203, 0, 113, 10]
-            .map(|part| part.to_string())
-            .join(".");
+        let ipv4 = [203, 0, 113, 10].map(|part| part.to_string()).join(".");
 
         assert_eq!(normalize_ip_text(&format!("<html>{ipv4}</html>")), None);
         assert_eq!(normalize_ip_text(&"1".repeat(65)), None);
     }
 }
-

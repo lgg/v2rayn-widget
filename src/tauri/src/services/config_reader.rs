@@ -534,10 +534,7 @@ mod tests {
                 { "IndexId": "second", "Remarks": "Second profile", "selectedIndex": 0 }
             ]
         });
-        let profiles = vec![
-            profile("0", "Zero profile"),
-            profile("1", "One profile"),
-        ];
+        let profiles = vec![profile("0", "Zero profile"), profile("1", "One profile")];
 
         assert_eq!(extract_active_profile_name(&json, &profiles), None);
     }

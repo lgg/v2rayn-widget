@@ -150,14 +150,20 @@ pub async fn update_happ_settings(
 
 fn emit_client_settings_events(app: &AppHandle, settings: &AppSettings) {
     if let Err(error) = app.emit("settings-updated", settings) {
-        warn!(?error, "failed to emit settings-updated event after client settings persisted");
+        warn!(
+            ?error,
+            "failed to emit settings-updated event after client settings persisted"
+        );
     }
 
     if let Err(error) = app.emit(
         "client-selected",
         adapters::descriptor(settings.selected_client, settings),
     ) {
-        warn!(?error, "failed to emit client-selected event after client settings persisted");
+        warn!(
+            ?error,
+            "failed to emit client-selected event after client settings persisted"
+        );
     }
 }
 

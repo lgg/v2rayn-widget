@@ -1,4 +1,4 @@
-name: Windows Quality
+name: Release Quality
 
 on:
   pull_request:
@@ -10,13 +10,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-quality-${{ github.workflow }}-${{ github.ref }}
+  group: release-quality-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   frontend:
-    runs-on: windows-latest
-    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -32,49 +32,47 @@ jobs:
         id: frontend_install
         continue-on-error: true
         working-directory: src/frontend
-        shell: pwsh
+        shell: bash
         run: |
-          node --version 2>&1 | Tee-Object -FilePath frontend-install-output.txt
-          npm --version 2>&1 | Tee-Object -Append -FilePath frontend-install-output.txt
-          npm config set registry "https://registry.npmjs.org/" --global
-          npm config set cache "$env:RUNNER_TEMP/npm-cache" --global
-          npm cache clean --force 2>&1 | Tee-Object -Append -FilePath frontend-install-output.txt
-          npm ci --no-audit --no-fund 2>&1 | Tee-Object -Append -FilePath frontend-install-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          set -o pipefail
+          {
+            node --version
+            npm --version
+            npm config set registry "https://registry.npmjs.org/" --global
+            npm config set cache "$RUNNER_TEMP/npm-cache" --global
+            npm cache clean --force
+            npm ci --no-audit --no-fund
+          } 2>&1 | tee frontend-install-output.txt
 
       - name: Audit frontend dependencies
         if: steps.frontend_install.outcome == 'success'
         id: frontend_audit
         continue-on-error: true
         working-directory: src/frontend
-        shell: pwsh
+        shell: bash
         run: |
-          npm audit --audit-level=high 2>&1 | Tee-Object -FilePath frontend-audit-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          set -o pipefail
+          npm audit --audit-level=high 2>&1 | tee frontend-audit-output.txt
 
       - name: Run frontend tests
         if: steps.frontend_install.outcome == 'success'
         id: frontend_tests
         continue-on-error: true
         working-directory: src/frontend
-        shell: pwsh
+        shell: bash
         run: |
-          npm test 2>&1 | Tee-Object -FilePath frontend-test-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          set -o pipefail
+          npm test 2>&1 | tee frontend-test-output.txt
 
       - name: Build frontend
         if: steps.frontend_install.outcome == 'success'
         id: frontend_build
         continue-on-error: true
         working-directory: src/frontend
-        shell: pwsh
+        shell: bash
         run: |
-          npm run build 2>&1 | Tee-Object -FilePath frontend-build-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          set -o pipefail
+          npm run build 2>&1 | tee frontend-build-output.txt
 
       - name: Upload frontend distribution
         if: steps.frontend_build.outcome == 'success'
@@ -101,10 +99,9 @@ jobs:
 
       - name: Fail when frontend checks failed
         if: steps.frontend_install.outcome == 'failure' || steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
-        shell: pwsh
         run: exit 1
 
-  rust:
+  rust-windows:
     needs: frontend
     runs-on: windows-latest
     timeout-minutes: 60
@@ -130,7 +127,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
-          rustfmt --edition 2021 --check --config skip_children=true src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/commands/mod.rs src/models/client.rs src/models/settings.rs src/models/status.rs src/services/config_reader.rs src/services/happ_ui.rs src/services/ui_controller.rs src/state/app_state.rs src/utils/settings_store.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
+          rustfmt --edition 2021 --check --config skip_children=true src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/commands/mod.rs src/models/client.rs src/models/settings.rs src/models/status.rs src/services/config_reader.rs src/services/health_check.rs src/services/happ_ui.rs src/services/ui_controller.rs src/state/app_state.rs src/utils/settings_store.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 

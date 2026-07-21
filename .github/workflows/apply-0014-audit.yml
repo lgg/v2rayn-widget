@@ -1,21 +1,21 @@
 name: Apply 0014 Audit Patch
 
 on:
-  push:
-    branches:
-      - audit/0014-post-merge-hardening
+  pull_request:
     paths:
       - '.github/workflows/apply-0014-audit.yml'
+      - '.audit/0014.patch.gz.b64'
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-0014-audit
+  group: apply-0014-audit-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   apply:
+    if: github.event.pull_request.head.ref == 'audit/0014-post-merge-hardening'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

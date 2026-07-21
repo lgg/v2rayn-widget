@@ -2,58 +2,69 @@
 
 ## Status
 
-In progress. This report is finalized only after the hardening PR passes the complete Windows quality and portable release-smoke workflow.
+Complete. PR #2 independently audited the exact squash-merged result of PR #1, fixed every reproducible issue found, strengthened permanent CI and produced a verified Windows release executable.
 
 ## Audit Baseline
 
-The audit started from exact `main` squash commit `e1a0d72e65f9c392e33fca2db8f1ad9e6bdb7641`, the merge result of PR #1. A separate branch and PR were used so post-merge findings are independently reviewable.
+The audit started from exact `main` squash commit `e1a0d72e65f9c392e33fca2db8f1ad9e6bdb7641`, the merge result of PR #1. A separate branch and PR were used so post-merge findings remained independently reviewable.
 
-## Confirmed Findings
+## Confirmed Findings and Fixes
 
 ### Frontend state invalidation
 
-An in-flight action could be invalidated by changing Happ operational settings while leaving `actionLoading` set. The store now clears the stale spinner whenever the operational client context changes, and a regression test verifies that a late result cannot restore stale status.
+An in-flight action could be invalidated by changing Happ operational settings while leaving `actionLoading` set. The store now clears stale action state whenever the operational client context changes, and a regression test verifies that a late result cannot restore stale status.
 
 ### Persisted settings versus event delivery
 
-Client selection and Happ settings were saved before Tauri events were emitted, but event delivery errors were propagated as if persistence had failed. This could make the frontend display a failed save and roll back local state while the backend retained the new value. Event delivery is now best-effort after successful persistence and is logged on failure.
+Client selection and Happ settings were saved before Tauri events were emitted, but event-delivery errors were propagated as if persistence had failed. The frontend could report a failed save while the backend retained the new value. Event delivery is now best-effort after successful persistence and is logged on failure.
 
 ### v2rayN profile selector safety
 
-Recursive selector lookup and mutation could inspect profile arrays and confuse a profile record's `IndexId` with the active selector. The reader/writer now skips profile collections, never mutates array records while locating selectors, does not guess the first profile as active, and inserts a root ID selector when only a name selector exists. Profile application confirmation now requires exact normalized equality rather than substring overlap.
+Recursive selector lookup and mutation could inspect profile arrays and confuse a profile record's `IndexId` with the active selector. The reader/writer now skips profile collections, never mutates array records while locating selectors, does not guess the first profile as active, and inserts a root ID selector when only a name selector exists. Profile confirmation requires exact normalized equality rather than substring overlap.
 
 ### Network diagnostic target safety
 
 Configured hostnames were filtered syntactically, but a hostname could resolve to a local/reserved address and redirects were followed by default. Requests now disable redirects and verify every literal or DNS-resolved address before connecting. Loopback, private, link-local, CGNAT, benchmark, documentation, multicast and reserved ranges are rejected.
 
-### Dependency and release verification
+### Dependency and lockfile safety
 
-The frontend lockfile contained two high-severity advisories. Vite and the affected transitive multipart dependency were updated with no remaining audit findings. CI now runs `npm audit --audit-level=high` and performs a locked release build that must produce `v2rayn-widget.exe`. Portable and installer scripts use reproducible frontend installation and locked Cargo commands.
+The frontend dependency graph contained two high-severity advisories. Vite and the affected transitive multipart dependency were updated; the final public dependency audit reports zero vulnerabilities. During validation, regenerated lockfile entries were also found to contain non-public resolved registry URLs. All affected entries were normalized to `registry.npmjs.org`, and clean CI installation now succeeds from the public lockfile.
+
+### Release verification and scripts
+
+The previous workflow proved tests and compilation but did not prove that a distributable executable existed. The permanent `Release Quality` workflow now runs a locked optimized Windows build, verifies `target/release/v2rayn-widget.exe` and uploads it as a one-day smoke artifact. Portable and installer scripts use deterministic frontend installation, explicit dependency audit and locked Cargo commands.
 
 ### Product metadata
 
-The HTML title and Rust package metadata still described the application as v2rayN-only and attributed the package to a tooling name. They now describe Proxy Client Widget and the repository owner while preserving the existing Tauri identifier for settings/update compatibility.
+The HTML title and Rust package metadata still described the application as v2rayN-only. They now describe Proxy Client Widget while preserving the existing Tauri identifier for settings and update compatibility.
 
-## Local Verification
+## Verified Results
 
+- public `npm ci --no-audit --no-fund`: passed;
 - `npm audit --audit-level=high`: 0 vulnerabilities;
 - frontend test files: 6 passed;
 - frontend tests: 19 passed;
-- TypeScript/Vite production build: passed with Vite 8.1.5.
+- TypeScript/Vite production build: passed with Vite 8.1.5;
+- Windows Rust formatting: passed after official rustfmt application;
+- Rust unit/regression tests: 46 passed, 0 failed;
+- `cargo clippy --locked --all-targets -- -D warnings`: passed;
+- `cargo check --locked`: passed;
+- `cargo build --release --locked`: passed;
+- Windows executable `v2rayn-widget.exe`: produced and uploaded as release-smoke artifact.
 
-## Pending Windows Verification
+## Permanent Quality Gate
 
-- Rust formatting;
-- Rust unit/regression suite;
-- strict Clippy with warnings denied;
-- `cargo check --locked`;
-- `cargo build --release --locked`;
-- produced portable executable smoke artifact.
+The workflow intentionally separates platform-neutral frontend validation from Windows-specific desktop validation:
+
+- Ubuntu: public dependency install, high-severity audit, frontend tests and production build;
+- Windows: rustfmt, full Rust suite, strict Clippy, locked check, locked optimized build and executable artifact validation.
+
+This avoids coupling frontend reproducibility to a runner-specific package proxy while keeping all WinAPI, Tauri and executable checks on Windows.
 
 ## Residual Runtime Risks
 
-Happ UI Automation remains version-, session- and privilege-sensitive. It is disabled by default, requires a successful probe and explicit consent, scopes controls to the detected PID, rejects ambiguity and confirms the post-click state. Automated CI cannot replace an interactive check against every installed Happ version.
+Happ UI Automation remains version-, session- and privilege-sensitive. It is disabled by default, requires a successful probe and explicit consent, scopes controls to the detected PID, rejects ambiguity and confirms the post-click state. Automated CI cannot replace an interactive check against every installed Happ or v2rayN version.
 
 ## Public Redaction Review
 
-No credentials, subscription payloads, private endpoints, local user paths, runtime configs, personal data or unredacted UI labels are included in the changes or this report.
+Passed. The final PR contains no credentials, subscription payloads, private endpoints, internal registry addresses, local user paths, temporary audit payloads, runtime configs, personal data or unredacted UI labels.

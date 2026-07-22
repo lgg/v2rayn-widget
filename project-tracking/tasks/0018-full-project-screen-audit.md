@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Verification |
+| Status | Final Verification |
 | Priority | P1 |
 | Type | full-project audit / hardening |
 | Created | 2026-07-22 |
@@ -30,9 +30,9 @@
 - [x] Every frontend window and meaningful state reviewed.
 - [x] Every backend command and externally visible operation traced.
 - [x] Confirmed defects fixed with regression coverage where deterministic.
-- [ ] Frontend audit, tests and production build pass.
-- [ ] Rust formatting, tests, strict Clippy and locked check pass.
-- [ ] Portable executable and NSIS installer are produced and verified.
+- [ ] Frontend audit, tests and production build pass on the final head.
+- [ ] Rust formatting, tests, strict Clippy and locked check pass on the final head.
+- [ ] Portable executable and NSIS installer are produced and verified from the final head.
 - [x] Temporary tooling is absent from the final diff.
 - [x] Documentation and audit report match the verified implementation.
 - [ ] PR is squash-merged into `main`.

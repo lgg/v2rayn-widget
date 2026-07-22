@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings, ClientDiagnostics } from "@/lib/types";
 import "@/lib/i18n";
@@ -144,7 +144,9 @@ describe("HappSetupWindow", () => {
       target: { value: "C:\\Happ\\Happ.exe" }
     });
 
-    closeHandler?.();
+    await act(async () => {
+      closeHandler?.();
+    });
     expect(await screen.findByText("Unsaved settings")).toBeTruthy();
     expect(apiMocks.closeWindow).not.toHaveBeenCalled();
   });

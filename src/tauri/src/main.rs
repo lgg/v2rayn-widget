@@ -89,6 +89,10 @@ fn prepare_webview2_candidate(path: &std::path::Path) -> bool {
     true
 }
 
+fn window_is_resizable(label: &str) -> bool {
+    matches!(label, "main" | "debug")
+}
+
 fn restore_visible_aux_windows(app: &tauri::AppHandle, context: &str) {
     let settings = app.state::<AppState>().snapshot().settings;
 
@@ -221,7 +225,7 @@ fn main() {
             for label in ["main", "settings", "debug", "happ-setup"] {
                 if let Some(window) = app_handle.get_webview_window(label) {
                     let _ = window.set_always_on_top(settings.always_on_top);
-                    let _ = window.set_resizable(false);
+                    let _ = window.set_resizable(window_is_resizable(label));
 
                     if label == "main" {
                         if let Some(bounds) = settings.window_position.clone() {
@@ -329,4 +333,17 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::window_is_resizable;
+
+    #[test]
+    fn initial_window_resizability_matches_tauri_configuration() {
+        assert!(window_is_resizable("main"));
+        assert!(window_is_resizable("debug"));
+        assert!(!window_is_resizable("settings"));
+        assert!(!window_is_resizable("happ-setup"));
+    }
 }

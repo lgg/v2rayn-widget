@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const listenMock = vi.fn();
+const { listenMock } = vi.hoisted(() => ({ listenMock: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: listenMock,
 }));

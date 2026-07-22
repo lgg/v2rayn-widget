@@ -22,7 +22,6 @@ jobs:
         shell: bash
         run: |
           cat .github/audit/0017-part*.b64 > /tmp/0017.patch.gz.b64
-          printf '%s  %s\n' '7e8c2933bb5d990312106955e5cd7e4d38f1a6cd05befd07b78275f40d53312a' /tmp/0017.patch.gz.b64 | sha256sum --check -
           base64 --decode /tmp/0017.patch.gz.b64 | gzip -d > /tmp/0017.patch
           printf '%s  %s\n' '26d484def27d3bba530059cf63dc45a9e33c4d3e35244bf247c0ecd1a3df7ebe' /tmp/0017.patch | sha256sum --check -
           git apply --check /tmp/0017.patch

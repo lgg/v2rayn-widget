@@ -157,6 +157,16 @@ jobs:
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 
+      - name: Run release configuration Clippy
+        id: rust_release_clippy
+        continue-on-error: true
+        working-directory: src/tauri
+        shell: pwsh
+        run: |
+          cargo clippy --locked --release --no-default-features -- -D warnings 2>&1 | Tee-Object -FilePath rust-release-clippy-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
+
       - name: Check Rust build
         id: rust_build
         continue-on-error: true
@@ -238,6 +248,7 @@ jobs:
             src/tauri/rust-format-output.txt
             src/tauri/rust-test-output.txt
             src/tauri/rust-clippy-output.txt
+            src/tauri/rust-release-clippy-output.txt
             src/tauri/rust-build-output.txt
             src/tauri/rust-release-output.txt
             src/frontend/installer-dependencies-output.txt
@@ -247,6 +258,6 @@ jobs:
           retention-days: 1
 
       - name: Fail when Rust checks failed
-        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure' || steps.rust_release.outcome == 'failure' || steps.installer_dependencies.outcome == 'failure' || steps.installer_release.outcome == 'failure'
+        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_release_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure' || steps.rust_release.outcome == 'failure' || steps.installer_dependencies.outcome == 'failure' || steps.installer_release.outcome == 'failure'
         shell: pwsh
         run: exit 1

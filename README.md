@@ -112,6 +112,7 @@ Planning and decisions:
 - `project-tracking/decisions/0013-multi-client-adapter-architecture.md`
 - `project-tracking/reports/0013-add-proxy-client-adapters-and-happ-mvp-report.md`
 - `project-tracking/tasks/0014-post-merge-deep-audit.md`
+- `project-tracking/tasks/0015-final-main-tree-audit.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 
@@ -159,11 +160,12 @@ The Release Quality workflow additionally:
 
 - rejects high-severity frontend dependency advisories;
 - transfers the exact built frontend into the Tauri job;
-- checks changed Rust formatting;
+- checks formatting for the complete Rust workspace;
 - runs the Rust regression suite;
 - runs strict `cargo clippy --locked --all-targets -- -D warnings`;
 - executes `cargo check --locked`;
-- performs a locked release build and verifies that the portable Windows executable is produced.
+- performs a locked release build and verifies that the portable Windows executable is produced;
+- performs a clean locked Tauri/NSIS build and verifies that the Windows installer is produced.
 
 ## Build portable executable
 

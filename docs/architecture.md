@@ -131,15 +131,18 @@ Responsibilities:
 
 - resolve installation path;
 - read config, profile database and latest log;
+- keep observational config reads non-mutating and reject unsafe/concurrent config mutations;
 - monitor v2rayN/core processes;
+- scope process, privilege and Windows UI Automation operations to the configured installation PID;
 - run optional health checks;
 - resolve combined status;
 - toggle Enable TUN through Windows UI Automation;
 - use config plus reload/restart fallback when enabled;
 - list profiles;
 - experimentally select the active profile;
-- open/restart;
-- collect privilege/UIPI diagnostics.
+- open/restart from the configured installation directory;
+- verify matched-process termination before restart;
+- collect privilege/UIPI diagnostics for the selected process.
 
 Explicitly unsupported:
 
@@ -245,14 +248,16 @@ A separate future model must define list, active subscription, refresh, switch, 
 - rejects high-severity dependency advisories with `npm audit --audit-level=high`;
 - runs frontend tests and the TypeScript/Vite production build;
 - transfers the exact frontend `dist` artifact to the Rust job;
-- verifies changed Rust formatting;
+- verifies formatting for the complete Rust workspace;
 - runs Rust unit/regression tests;
 - runs strict Clippy with warnings denied;
 - runs `cargo check --locked`;
 - performs `cargo build --release --locked`;
 - verifies and uploads the produced portable executable as a one-day smoke artifact;
+- performs a clean locked Tauri/NSIS build;
+- verifies and uploads the produced Windows installer as a one-day smoke artifact;
 - preserves short-lived audit, test, build and release diagnostics.
 
 Network diagnostics disable redirects and ambient proxy settings, resolve each configured HTTP(S) endpoint, reject the endpoint if any answer is non-public, and pin hostname requests to the exact validated `SocketAddr` set with `reqwest::ClientBuilder::resolve_to_addrs`. This removes the second unvalidated DNS lookup that could otherwise permit DNS rebinding. Literal or resolved loopback, private, link-local, CGNAT, benchmark, documentation, multicast, reserved, NAT64, Teredo and 6to4 addresses are rejected.
 
-The Rust suite includes existing v2rayN resolver/config/log tests, exact profile-selection tests, network-target safety tests and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.
+The Rust suite includes v2rayN resolver/config/log tests, non-mutating backup observation, guarded config-update tests, selected-process launch/window tests, exact profile-selection tests, network-target safety tests and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.

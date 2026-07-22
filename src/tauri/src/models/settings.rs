@@ -55,9 +55,9 @@ pub fn default_connectivity_endpoints() -> Vec<String> {
 
 pub fn default_ip_endpoints() -> Vec<String> {
     vec![
-        "https://api.ipify.org?format=json".to_owned(),
+        "https://api.ipify.org/?format=json".to_owned(),
         "https://ifconfig.me/ip".to_owned(),
-        "https://icanhazip.com".to_owned(),
+        "https://icanhazip.com/".to_owned(),
     ]
 }
 

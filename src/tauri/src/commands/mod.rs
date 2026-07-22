@@ -32,12 +32,14 @@ use crate::{
     utils::{
         app_paths, autostart,
         settings_normalization::{
-            normalize_diagnostics_url, normalize_endpoint_list, normalize_optional_path,
-            normalize_settings,
+            normalize_diagnostics_url, normalize_optional_path, normalize_settings,
         },
         settings_store,
     },
 };
+
+#[cfg(test)]
+use crate::utils::settings_normalization::normalize_endpoint_list;
 
 const UIPI_MISMATCH_PREFIX: &str = "UIPI_MISMATCH";
 const PROFILE_IP_SETTLE_DELAY: Duration = Duration::from_secs(5);
@@ -1425,9 +1427,9 @@ mod tests {
     #[test]
     fn normalize_endpoint_list_uses_fallback_when_all_values_are_invalid() {
         let fallback = vec!["https://fallback.example".to_owned()];
-        let result = normalize_endpoint_list(vec!["not a url".to_owned()], fallback.clone());
+        let result = normalize_endpoint_list(vec!["not a url".to_owned()], fallback);
 
-        assert_eq!(result, fallback);
+        assert_eq!(result, vec!["https://fallback.example/".to_owned()]);
     }
 
     #[test]

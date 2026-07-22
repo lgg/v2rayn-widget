@@ -26,7 +26,7 @@ const DEFAULT_CONNECTIVITY_ENDPOINTS = [
   "https://www.cloudflare.com/cdn-cgi/trace"
 ];
 
-const DEFAULT_IP_ENDPOINTS = ["https://api.ipify.org?format=json", "https://ifconfig.me/ip", "https://icanhazip.com"];
+const DEFAULT_IP_ENDPOINTS = ["https://api.ipify.org/?format=json", "https://ifconfig.me/ip", "https://icanhazip.com/"];
 const DEFAULT_DIAGNOSTICS_URL = "https://ipleak.net/";
 
 const settingsWindow = getCurrentWindow();

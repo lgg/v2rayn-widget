@@ -88,6 +88,7 @@ fn normalize_endpoint_entries(values: Vec<String>) -> Vec<String> {
         .collect()
 }
 
+#[cfg(test)]
 pub fn is_allowed_http_endpoint(value: &str) -> bool {
     parse_allowed_http_endpoint(value).is_some()
 }

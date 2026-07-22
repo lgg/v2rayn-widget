@@ -83,6 +83,20 @@ pub struct HappProcessSnapshot {
 }
 
 pub fn read_process_snapshot() -> HappProcessSnapshot {
+    read_process_snapshot_for_executable(None)
+}
+
+pub fn read_process_snapshot_for_settings(settings: &AppSettings) -> HappProcessSnapshot {
+    match settings.happ_path.as_deref() {
+        Some(configured) => validate_executable_candidate(configured)
+            .as_deref()
+            .map(|path| read_process_snapshot_for_executable(Some(path)))
+            .unwrap_or_default(),
+        None => read_process_snapshot_for_executable(None),
+    }
+}
+
+fn read_process_snapshot_for_executable(target_executable: Option<&Path>) -> HappProcessSnapshot {
     let mut system = System::new_all();
     system.refresh_processes(ProcessesToUpdate::All, true);
 
@@ -96,6 +110,14 @@ pub fn read_process_snapshot() -> HappProcessSnapshot {
             }
 
             let executable = process.exe().map(Path::to_path_buf);
+            if target_executable.is_some_and(|target| {
+                !executable
+                    .as_deref()
+                    .is_some_and(|candidate| executable_paths_match(candidate, target))
+            }) {
+                return None;
+            }
+
             let rank = process_candidate_rank(
                 &process_name,
                 executable
@@ -115,17 +137,19 @@ pub fn read_process_snapshot() -> HappProcessSnapshot {
         .unwrap_or_default()
 }
 
-pub fn detect_executable(settings: &AppSettings) -> Option<PathBuf> {
-    settings
-        .happ_path
-        .as_deref()
-        .and_then(validate_executable_candidate)
-        .or_else(|| {
-            read_process_snapshot()
-                .executable
-                .filter(|path| is_valid_happ_executable(path))
-        })
+pub fn detect_available_executable() -> Option<PathBuf> {
+    read_process_snapshot()
+        .executable
+        .filter(|path| is_valid_happ_executable(path))
         .or_else(detect_common_install_path)
+}
+
+pub fn detect_executable(settings: &AppSettings) -> Option<PathBuf> {
+    if let Some(configured) = settings.happ_path.as_deref() {
+        return validate_executable_candidate(configured);
+    }
+
+    detect_available_executable()
 }
 
 pub fn validate_executable_candidate(value: &str) -> Option<PathBuf> {
@@ -138,7 +162,7 @@ pub async fn refresh(
     include_external_ip_probe: bool,
     force_full_probe: bool,
 ) -> anyhow::Result<DashboardStatus> {
-    let process = read_process_snapshot();
+    let process = read_process_snapshot_for_settings(settings);
     let effective_latency_mode = if force_full_probe {
         LatencyMode::Active
     } else {
@@ -218,12 +242,12 @@ pub async fn toggle(settings: &AppSettings) -> Result<DashboardStatus, String> {
         );
     }
 
-    let mut process = read_process_snapshot();
+    let mut process = read_process_snapshot_for_settings(settings);
     if !process.running {
         open(settings)?;
         for _ in 0..20 {
             tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-            process = read_process_snapshot();
+            process = read_process_snapshot_for_settings(settings);
             if process.running {
                 break;
             }
@@ -259,14 +283,18 @@ pub async fn toggle(settings: &AppSettings) -> Result<DashboardStatus, String> {
 }
 
 pub fn diagnostics(settings: &AppSettings) -> ClientDiagnostics {
-    let process = read_process_snapshot();
+    let process = read_process_snapshot_for_settings(settings);
     let ui = happ_ui::probe(process.pid);
 
     ClientDiagnostics {
         client_id: ProxyClientId::Happ,
         application_running: process.running,
         process_id: process.pid,
-        executable_path: detect_executable(settings).map(|path| path.to_string_lossy().to_string()),
+        executable_path: process
+            .executable
+            .clone()
+            .or_else(|| detect_executable(settings))
+            .map(|path| path.to_string_lossy().to_string()),
         window_found: ui.window_found,
         window_title: ui.window_title,
         connection_state: if process.running {
@@ -292,7 +320,25 @@ pub fn open(settings: &AppSettings) -> Result<(), String> {
             .to_owned()
     })?;
 
-    Command::new(&executable)
+    let existing = read_process_snapshot_for_executable(Some(&executable));
+    if existing.running {
+        let pid = existing
+            .pid
+            .ok_or_else(|| "Happ process was detected without a PID".to_owned())?;
+        happ_ui::activate_window(pid).map_err(|error| {
+            format!(
+                "Happ is already running from {}, but its exact window could not be activated; refusing to launch a duplicate instance: {error}",
+                executable.display()
+            )
+        })?;
+        return Ok(());
+    }
+
+    let mut command = Command::new(&executable);
+    if let Some(parent) = executable.parent() {
+        command.current_dir(parent);
+    }
+    command
         .spawn()
         .map_err(|error| format!("Could not open Happ at {}: {error}", executable.display()))?;
 
@@ -307,6 +353,19 @@ pub fn unsupported_control_error(action: &str) -> String {
     format!(
         "Happ action '{action}' is unavailable. Server/profile and subscription operations require a documented stable control path."
     )
+}
+
+fn executable_paths_match(left: &Path, right: &Path) -> bool {
+    normalized_executable_path(left) == normalized_executable_path(right)
+}
+
+fn normalized_executable_path(path: &Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_lowercase()
 }
 
 fn process_candidate_rank(name: &str, executable_is_valid: bool, pid: u32) -> u64 {
@@ -403,6 +462,29 @@ mod tests {
             process_candidate_rank("happ.exe", true, 20)
                 > process_candidate_rank("happ.exe", true, 10)
         );
+    }
+
+    #[test]
+    fn executable_path_matching_is_case_and_separator_insensitive() {
+        assert!(executable_paths_match(
+            Path::new("C:/Apps/Happ/Happ.exe"),
+            Path::new(r"c:\apps\happ\happ.exe")
+        ));
+        assert!(!executable_paths_match(
+            Path::new("C:/Apps/Happ/Happ.exe"),
+            Path::new("C:/Other/Happ.exe")
+        ));
+    }
+
+    #[test]
+    fn invalid_explicit_path_does_not_fall_back_to_another_installation() {
+        let settings = AppSettings {
+            happ_path: Some("C:\\missing\\Happ.exe".to_owned()),
+            ..AppSettings::default()
+        };
+
+        assert!(detect_executable(&settings).is_none());
+        assert!(!read_process_snapshot_for_settings(&settings).running);
     }
 
     #[test]

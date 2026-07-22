@@ -218,6 +218,9 @@ Key responsibilities:
 - gate controls using capabilities;
 - additionally require persisted Happ UIA consent before enabling connect;
 - render Settings, Debug and Happ Setup windows;
+- dispose asynchronous Tauri event registrations safely;
+- serialize live UI-setting writes and reject stale client operations;
+- expose explicit bootstrap/load/probe failure states and draft-aware native close handling;
 - apply visual settings and polling;
 - show transient errors and diagnostic information.
 
@@ -263,4 +266,4 @@ A separate future model must define list, active subscription, refresh, switch, 
 
 Network diagnostics disable redirects and ambient proxy settings, resolve each configured HTTP(S) endpoint, reject the endpoint if any answer is non-public, and pin hostname requests to the exact validated `SocketAddr` set with `reqwest::ClientBuilder::resolve_to_addrs`. This removes the second unvalidated DNS lookup that could otherwise permit DNS rebinding. Literal or resolved loopback, private, link-local, CGNAT, benchmark, documentation, multicast, reserved, NAT64, Teredo and 6to4 addresses are rejected.
 
-The Rust suite includes v2rayN resolver/config/log tests, strict-primary versus backup observation tests, schema-preserving and guarded config-update tests, serialized operation tests, selected-process launch/window tests, exact fail-closed UI action/profile classifiers, network-target safety tests and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.
+The Rust suite includes v2rayN resolver/config/log tests, strict-primary versus backup observation tests, schema-preserving and guarded config-update tests, serialized v2rayN/Happ operation tests, selected-process launch/window tests, settings normalization and debounced-position tests, exact fail-closed UI action/profile classifiers, network-target safety tests and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.

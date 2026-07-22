@@ -30,6 +30,10 @@ export async function getHappDiagnostics(): Promise<ClientDiagnostics> {
   return invoke<ClientDiagnostics>("get_happ_diagnostics");
 }
 
+export async function probeHappCandidate(path: string | null): Promise<ClientDiagnostics> {
+  return invoke<ClientDiagnostics>("probe_happ_candidate", { path });
+}
+
 export async function selectClient(clientId: ProxyClientId): Promise<AppSettings> {
   return invoke<AppSettings>("select_client", { clientId });
 }

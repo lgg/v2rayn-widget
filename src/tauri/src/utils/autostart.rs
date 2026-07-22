@@ -22,7 +22,13 @@ pub fn apply_autostart(enable: bool) -> Result<()> {
         key.set_value(VALUE_NAME, &command)
             .context("Failed to set autostart registry value")?;
     } else {
-        let _ = key.delete_value(VALUE_NAME);
+        match key.delete_value(VALUE_NAME) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).context("Failed to remove autostart registry value");
+            }
+        }
     }
 
     Ok(())

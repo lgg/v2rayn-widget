@@ -1,6 +1,5 @@
 import { SlidersHorizontal } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { openHappSetupWindow } from "@/lib/api";
 import type { ClientDescriptor, ProxyClientId } from "@/lib/types";
 
 interface ClientSelectorProps {
@@ -8,20 +7,22 @@ interface ClientSelectorProps {
   selectedClientId: ProxyClientId;
   disabled?: boolean;
   onSelect: (clientId: ProxyClientId) => void;
+  onConfigureHapp: () => void;
 }
 
 export function ClientSelector({
   clients,
   selectedClientId,
   disabled = false,
-  onSelect
+  onSelect,
+  onConfigureHapp
 }: ClientSelectorProps): JSX.Element {
   const { t } = useTranslation();
 
   return (
     <div className="flex items-center gap-2">
       <select
-        aria-label="Proxy client"
+        aria-label={t("fields.client")}
         className="no-drag min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none disabled:opacity-60"
         value={selectedClientId}
         disabled={disabled}
@@ -41,7 +42,7 @@ export function ClientSelector({
           title={t("actions.configureHapp")}
           disabled={disabled}
           className="no-drag rounded-md border border-white/30 p-1 disabled:opacity-60"
-          onClick={() => void openHappSetupWindow()}
+          onClick={onConfigureHapp}
         >
           <SlidersHorizontal className="h-4 w-4" />
         </button>

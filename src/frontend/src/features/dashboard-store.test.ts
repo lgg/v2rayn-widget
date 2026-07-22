@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   listSelectedClientItems: vi.fn(),
   openDebugWindow: vi.fn(),
   openDiagnosticsWindow: vi.fn(),
+  openHappSetupWindow: vi.fn(),
   openSelectedClient: vi.fn(),
   openSettingsWindow: vi.fn(),
   refreshSelectedClient: vi.fn(),

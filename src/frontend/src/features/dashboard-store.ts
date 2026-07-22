@@ -5,6 +5,7 @@ import {
   getStatus,
   listSelectedClientItems,
   openDebugWindow,
+  openHappSetupWindow,
   openDiagnosticsWindow,
   openSelectedClient,
   openSettingsWindow,
@@ -46,6 +47,7 @@ interface DashboardState {
   openSettings: () => Promise<void>;
   openDebug: () => Promise<void>;
   openDiagnostics: () => Promise<void>;
+  openHappSetup: () => Promise<void>;
   relaunchAsAdmin: () => Promise<void>;
   applyExternalSettings: (settings: AppSettings) => void;
   showNotice: (notice: Omit<UiNotice, "id">) => void;
@@ -459,11 +461,27 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   openSettings: async () => {
-    await openSettingsWindow();
+    try {
+      await openSettingsWindow();
+    } catch (error) {
+      set({ notice: buildNoticeFromError(error, i18n.t("errors.windowOpenFailed")) });
+    }
   },
 
   openDebug: async () => {
-    await openDebugWindow();
+    try {
+      await openDebugWindow();
+    } catch (error) {
+      set({ notice: buildNoticeFromError(error, i18n.t("errors.windowOpenFailed")) });
+    }
+  },
+
+  openHappSetup: async () => {
+    try {
+      await openHappSetupWindow();
+    } catch (error) {
+      set({ notice: buildNoticeFromError(error, i18n.t("errors.windowOpenFailed")) });
+    }
   },
 
   openDiagnostics: async () => {
@@ -480,7 +498,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   relaunchAsAdmin: async () => {
-    await relaunchWidgetAsAdmin();
+    try {
+      await relaunchWidgetAsAdmin();
+    } catch (error) {
+      set({ notice: buildNoticeFromError(error, i18n.t("errors.relaunchFailed")) });
+    }
   },
 
   applyExternalSettings: (settings) => {

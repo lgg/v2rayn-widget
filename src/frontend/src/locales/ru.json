@@ -127,7 +127,7 @@
   "debug.toggleUiOnly": "Нажать Enable Tun",
   "debug.clickReload": "Нажать Reload",
   "debug.selectProfileUi": "Выбрать профиль через UI",
-  "debug.profileNamePlaceholder": "Имя профиля (точно или частично)",
+  "debug.profileNamePlaceholder": "Точное имя профиля",
   "debug.toggleConfigOnly": "Только config toggle",
   "debug.toggleFull": "Полный toggle",
   "debug.refresh": "Обновить статус",
@@ -155,5 +155,16 @@
   "transport.unknown": "Неизвестно",
   "transport.proxy": "Прокси",
   "transport.tun": "TUN",
-  "transport.mixed": "Смешанный"
+  "transport.mixed": "Смешанный",
+  "actions.retry": "Повторить",
+  "errors.bootstrapFailed": "Не удалось инициализировать виджет.",
+  "errors.pathOperationFailed": "Не удалось определить или проверить путь к приложению.",
+  "errors.relaunchFailed": "Не удалось перезапустить виджет от имени администратора.",
+  "errors.windowOpenFailed": "Не удалось открыть запрошенное окно.",
+  "clientNotes.happEnabled": "Экспериментальное управление подключением Happ включено. Оно зависит от версии и Windows-сессии и безопасно прекращает работу при неоднозначности.",
+  "clientNotes.happDisabled": "Определение состояния Happ доступно, но управление подключением выключено до явной настройки и успешной проверки.",
+  "debug.profileNameLabel": "Точное имя профиля",
+  "debug.noProbeResult": "Результат проверки пока отсутствует.",
+  "debug.probeFailed": "Не удалось выполнить проверку UI Automation.",
+  "happSetup.pathPlaceholder": "C:\\\\Путь\\\\К\\\\Happ.exe"
 }

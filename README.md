@@ -49,7 +49,9 @@ Safe baseline:
 - opens Happ;
 - reports generic IP/latency diagnostics;
 - never infers Connected from process existence alone;
-- provides a dedicated Happ Setup and diagnostics window.
+- provides a dedicated Happ Setup and diagnostics window;
+- scopes runtime operations to the configured executable and serializes refresh/control/setup actions;
+- activates an exact running installation instead of launching a duplicate.
 
 Experimental connection control:
 
@@ -104,7 +106,9 @@ Four responsibility layers:
 
 Legacy v2rayN commands remain registered during staged migration so existing debug/control workflows are not removed in this refactor.
 
-Network diagnostics reject non-public literal and DNS-resolved targets, disable redirects and ambient proxy settings, and pin hostname requests to the exact public socket addresses that were validated before the request.
+Network diagnostics reject non-public literal and DNS-resolved targets, disable redirects and ambient proxy settings, and pin hostname requests to the exact public socket addresses that were validated before the request. Settings normalization bounds endpoint lists, polling and opacity values before persistence.
+
+All four local windows expose explicit loading/error behavior. Settings and Happ Setup route native close requests through unsaved-draft confirmation, and asynchronous Tauri listeners are disposed safely even when registration finishes after a React surface unmounts.
 
 ## Contributor workflow
 
@@ -122,6 +126,8 @@ Planning and decisions:
 - `project-tracking/reports/0016-post-merge-runtime-hardening-report.md`
 - `project-tracking/tasks/0017-final-post-merge-audit.md`
 - `project-tracking/reports/0017-final-post-merge-audit-report.md`
+- `project-tracking/tasks/0018-full-project-screen-audit.md`
+- `project-tracking/reports/0018-full-project-screen-audit-report.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 

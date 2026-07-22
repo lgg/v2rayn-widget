@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { Copy, Globe, RefreshCcw, Settings, SquareArrowOutUpRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ClientSelector } from "@/components/client-selector";
@@ -9,6 +8,7 @@ import { ProfileSelector } from "@/components/profile-selector";
 import { StatusBadge } from "@/components/status-badge";
 import { useDashboardStore } from "@/features/dashboard-store";
 import { setMainWindowHeight } from "@/lib/api";
+import { bindTauriListener } from "@/lib/tauri-listener";
 import { cn } from "@/lib/cn";
 import { selectedProfileIdForStatus } from "@/lib/profile-selection";
 import type { AppSettings, CapabilityState } from "@/lib/types";
@@ -21,6 +21,7 @@ export function App(): JSX.Element {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLElement | null>(null);
   const lastMeasuredHeight = useRef<number>(0);
+  const skippedInitialOperationalRefresh = useRef(false);
 
   const {
     bootstrap,
@@ -35,8 +36,10 @@ export function App(): JSX.Element {
     loading,
     actionLoading,
     notice,
+    error,
     pathNoticeKey,
     openDiagnostics,
+    openHappSetup,
     openSettings,
     openClient,
     relaunchAsAdmin,
@@ -66,6 +69,11 @@ export function App(): JSX.Element {
       return;
     }
 
+    if (!skippedInitialOperationalRefresh.current) {
+      skippedInitialOperationalRefresh.current = true;
+      return;
+    }
+
     void refresh();
   }, [
     refresh,
@@ -92,23 +100,13 @@ export function App(): JSX.Element {
     return () => window.clearTimeout(timer);
   }, [notice, clearNotice]);
 
-  useEffect(() => {
-    const setup = async (): Promise<(() => void) | undefined> => {
-      const unlisten = await listen<AppSettings>("settings-updated", (event) => {
+  useEffect(
+    () =>
+      bindTauriListener<AppSettings>("settings-updated", (event) => {
         applyExternalSettings(event.payload);
-      });
-      return unlisten;
-    };
-
-    let dispose: (() => void) | undefined;
-    void setup().then((unlisten) => {
-      dispose = unlisten;
-    });
-
-    return () => {
-      dispose?.();
-    };
-  }, [applyExternalSettings]);
+      }),
+    [applyExternalSettings],
+  );
 
   const showInfoPanel = useMemo(() => {
     if (!settings) {
@@ -137,7 +135,9 @@ export function App(): JSX.Element {
       }
 
       lastMeasuredHeight.current = measured;
-      void setMainWindowHeight(measured);
+      void setMainWindowHeight(measured).catch(() => {
+        lastMeasuredHeight.current = 0;
+      });
     };
 
     updateHeight();
@@ -160,10 +160,25 @@ export function App(): JSX.Element {
     };
   }, [loading, settings, showInfoPanel, notice, status, actionLoading, profiles.length, clients.length]);
 
-  if (loading || !status || !settings) {
+  if (loading) {
     return (
       <main data-tauri-drag-region className="drag-region h-full overflow-hidden text-sm text-muted">
-        <div className="flex h-full items-center justify-center">{t("common.loading")}</div>
+        <div role="status" className="flex h-full items-center justify-center">{t("common.loading")}</div>
+      </main>
+    );
+  }
+
+  if (!status || !settings) {
+    return (
+      <main data-tauri-drag-region className="drag-region h-full overflow-hidden p-4">
+        <section className="glass flex h-full flex-col items-center justify-center gap-4 rounded-3xl border border-white/40 p-5 text-center dark:border-slate-700/80">
+          <p role="alert" className="text-sm text-rose-300">
+            {error || t("errors.bootstrapFailed")}
+          </p>
+          <button type="button" className="no-drag rounded-lg border px-3 py-2" onClick={() => void bootstrap()}>
+            {t("actions.retry")}
+          </button>
+        </section>
       </main>
     );
   }
@@ -175,6 +190,9 @@ export function App(): JSX.Element {
   const canSelectItems = capabilityAvailable(selectedClient?.capabilities.select_item);
   const showProfileSelector = settings.show_profile_selector && canListItems;
   const selectedProfileId = selectedProfileIdForStatus(profiles, status.active_profile_name);
+  const selectedClientStatusNote = selectedClient?.id === "happ"
+    ? t(settings.happ_allow_ui_automation ? "clientNotes.happEnabled" : "clientNotes.happDisabled")
+    : selectedClient?.status_note;
 
   const showLowerBlock = showInfoPanel || settings.show_action_buttons;
   const copyIp = async (): Promise<void> => {
@@ -218,6 +236,7 @@ export function App(): JSX.Element {
               selectedClientId={settings.selected_client}
               disabled={actionLoading}
               onSelect={(clientId) => void selectClient(clientId)}
+              onConfigureHapp={() => void openHappSetup()}
             />
           </div>
 
@@ -248,17 +267,17 @@ export function App(): JSX.Element {
           <StatusBadge status={status.status} />
         </div>
 
-        <div title={canToggle ? undefined : selectedClient?.status_note}>
+        <div title={canToggle ? undefined : selectedClientStatusNote}>
           <ConnectButton
             status={status.connection_state}
-            disabled={actionLoading || !canToggle}
+            disabled={actionLoading || !canToggle || status.connection_state === "Connecting"}
             onClick={() => void toggleConnection()}
           />
         </div>
 
         {selectedClient && !canToggle && (
           <p className="mt-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-center text-[11px] leading-4 text-muted">
-            {selectedClient.status_note}
+            {selectedClientStatusNote}
           </p>
         )}
 
@@ -269,6 +288,7 @@ export function App(): JSX.Element {
             {settings.show_action_buttons && (
               <div className={`no-drag mt-4 grid gap-2 text-xs ${settings.diagnostics_enabled ? "grid-cols-4" : "grid-cols-3"}`}>
                 <button
+                  type="button"
                   className="group rounded-2xl border border-white/25 bg-white/5 px-2 py-2 transition hover:bg-white/10"
                   onClick={() => void refresh()}
                   disabled={actionLoading}
@@ -277,6 +297,7 @@ export function App(): JSX.Element {
                   <span className="text-[12px] lowercase">{t("actions.refresh")}</span>
                 </button>
                 <button
+                  type="button"
                   className="group rounded-2xl border border-white/25 bg-white/5 px-2 py-2 transition hover:bg-white/10"
                   onClick={() => void openClient()}
                 >
@@ -284,6 +305,7 @@ export function App(): JSX.Element {
                   <span className="text-[12px] lowercase">{t("actions.openClient")}</span>
                 </button>
                 <button
+                  type="button"
                   className="group rounded-2xl border border-white/25 bg-white/5 px-2 py-2 transition hover:bg-white/10"
                   onClick={() => void copyIp()}
                 >
@@ -292,6 +314,7 @@ export function App(): JSX.Element {
                 </button>
                 {settings.diagnostics_enabled && (
                   <button
+                    type="button"
                     className="group rounded-2xl border border-white/25 bg-white/5 px-2 py-2 transition hover:bg-white/10"
                     onClick={() => void openDiagnostics()}
                   >
@@ -306,6 +329,7 @@ export function App(): JSX.Element {
 
         {notice && (
           <div
+            role={notice.kind === "error" ? "alert" : "status"}
             className={cn(
               "no-drag mt-3 rounded-xl border px-3 py-2 text-xs shadow-float",
               notice.kind === "error"

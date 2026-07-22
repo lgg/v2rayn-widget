@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Bug, Check, FolderCheck, Globe, Languages, MoonStar, Shield, SlidersHorizontal, Sun, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -14,6 +13,8 @@ import {
   updateSettings,
   validateV2RayNPath
 } from "@/lib/api";
+import { SerializedTaskQueue } from "@/lib/serialized-task-queue";
+import { bindTauriListener } from "@/lib/tauri-listener";
 import type { AppSettings, LocaleInfo, UiSettingsPatch } from "@/lib/types";
 
 const APP_VERSION = "1.0.0";
@@ -25,7 +26,7 @@ const DEFAULT_CONNECTIVITY_ENDPOINTS = [
   "https://www.cloudflare.com/cdn-cgi/trace"
 ];
 
-const DEFAULT_IP_ENDPOINTS = ["https://api.ipify.org?format=json", "https://ifconfig.me/ip", "https://icanhazip.com"];
+const DEFAULT_IP_ENDPOINTS = ["https://api.ipify.org/?format=json", "https://ifconfig.me/ip", "https://icanhazip.com/"];
 const DEFAULT_DIAGNOSTICS_URL = "https://ipleak.net/";
 
 const settingsWindow = getCurrentWindow();
@@ -37,7 +38,6 @@ async function closeSettingsWindow(): Promise<void> {
     await settingsWindow.hide();
   }
 }
-
 
 function parseLines(value: string): string[] {
   return value
@@ -127,6 +127,7 @@ export function SettingsWindow(): JSX.Element {
   const [draftDirty, setDraftDirty] = useState(false);
   const draftDirtyRef = useRef(false);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+  const uiSettingsQueueRef = useRef(new SerializedTaskQueue());
 
   const updateDraftDirty = (value: boolean): void => {
     draftDirtyRef.current = value;
@@ -166,9 +167,9 @@ export function SettingsWindow(): JSX.Element {
     };
   }, [i18n]);
 
-  useEffect(() => {
-    const bind = async (): Promise<(() => void) | undefined> => {
-      const unlisten = await listen<AppSettings>("settings-updated", async (event) => {
+  useEffect(
+    () =>
+      bindTauriListener<AppSettings>("settings-updated", (event) => {
         setSettings((prev) => {
           if (!prev) {
             return event.payload;
@@ -182,18 +183,22 @@ export function SettingsWindow(): JSX.Element {
         }
         applyTheme(event.payload.theme);
         applyVisual(event.payload);
-        await i18n.changeLanguage(event.payload.language);
-      });
-      return unlisten;
-    };
+        void i18n.changeLanguage(event.payload.language);
+      }),
+    [i18n],
+  );
 
-    let dispose: (() => void) | undefined;
-    void bind().then((unlisten) => {
-      dispose = unlisten;
-    });
-
-    return () => dispose?.();
-  }, [i18n]);
+  useEffect(
+    () =>
+      bindTauriListener("settings-close-requested", () => {
+        if (draftDirtyRef.current) {
+          setConfirmDiscardOpen(true);
+        } else {
+          void closeSettingsWindow();
+        }
+      }),
+    [],
+  );
 
   const pathIsManual = settings?.v2rayn_path_mode === "manual";
 
@@ -204,7 +209,7 @@ export function SettingsWindow(): JSX.Element {
 
     setSaveError(null);
     try {
-      const saved = await applyUiSettings(patch);
+      const saved = await uiSettingsQueueRef.current.enqueue(() => applyUiSettings(patch));
       setSettings((prev) => (prev ? mergeUiFields(prev, saved) : saved));
       applyTheme(saved.theme);
       applyVisual(saved);
@@ -301,7 +306,7 @@ export function SettingsWindow(): JSX.Element {
   if (loading) {
     return (
       <main data-tauri-drag-region className="drag-region h-full">
-        <div className="flex h-full items-center justify-center text-sm text-muted">{t("common.loading")}</div>
+        <div role="status" className="flex h-full items-center justify-center text-sm text-muted">{t("common.loading")}</div>
       </main>
     );
   }
@@ -384,6 +389,7 @@ export function SettingsWindow(): JSX.Element {
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
+                aria-pressed={settings.theme === "light"}
                 className="rounded-xl border bg-white/80 px-3 py-2 dark:bg-slate-900/80"
                 onClick={() => {
                   setSettings((prev) => (prev ? { ...prev, theme: "light" } : prev));
@@ -396,6 +402,7 @@ export function SettingsWindow(): JSX.Element {
               </button>
               <button
                 type="button"
+                aria-pressed={settings.theme === "dark"}
                 className="rounded-xl border bg-white/80 px-3 py-2 dark:bg-slate-900/80"
                 onClick={() => {
                   setSettings((prev) => (prev ? { ...prev, theme: "dark" } : prev));
@@ -655,6 +662,7 @@ export function SettingsWindow(): JSX.Element {
             <label className="flex items-center gap-2">
               <input
                 type="radio"
+                name="v2rayn-path-mode"
                 checked={settings.v2rayn_path_mode === "auto"}
                 onChange={() => {
                   updateDraftDirty(true);
@@ -668,6 +676,7 @@ export function SettingsWindow(): JSX.Element {
             <label className="flex items-center gap-2">
               <input
                 type="radio"
+                name="v2rayn-path-mode"
                 checked={settings.v2rayn_path_mode === "manual"}
                 onChange={() => {
                   updateDraftDirty(true);
@@ -679,6 +688,7 @@ export function SettingsWindow(): JSX.Element {
             </label>
 
             <input
+              aria-label={t("settings.v2raynPath")}
               className={`w-full rounded-xl border px-3 py-2 disabled:opacity-60 dark:bg-slate-900/90 ${pathError ? "border-rose-400 bg-rose-50/80 dark:bg-rose-500/10" : "bg-white/90"}`}
               disabled={!pathIsManual}
               value={settings.v2rayn_path ?? ""}
@@ -695,13 +705,18 @@ export function SettingsWindow(): JSX.Element {
                 type="button"
                 className="rounded-lg border px-2 py-1"
                 onClick={async () => {
-                  const detected = await detectV2RayNPath();
-                  if (detected) {
-                    updateDraftDirty(true);
-                    setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "manual", v2rayn_path: detected } : prev));
-                    setPathValidation(t("settings.pathDetected"));
-                  } else {
-                    setPathValidation(t("settings.pathNotDetected"));
+                  setPathError(null);
+                  try {
+                    const detected = await detectV2RayNPath();
+                    if (detected) {
+                      updateDraftDirty(true);
+                      setSettings((prev) => (prev ? { ...prev, v2rayn_path_mode: "manual", v2rayn_path: detected } : prev));
+                      setPathValidation(t("settings.pathDetected"));
+                    } else {
+                      setPathValidation(t("settings.pathNotDetected"));
+                    }
+                  } catch {
+                    setPathError(t("errors.pathOperationFailed"));
                   }
                 }}
               >
@@ -719,14 +734,18 @@ export function SettingsWindow(): JSX.Element {
                     setPathValidation(t("settings.pathEmpty"));
                     return;
                   }
-                  const result = await validateV2RayNPath(path);
-                  updateDraftDirty(true);
-                  setSettings((prev) => (prev ? { ...prev, v2rayn_path: result.normalized_path } : prev));
-                  setPathValidation(t(result.message_key));
-                  if (!result.is_valid) {
-                    setPathError(t(result.message_key));
-                  } else {
-                    setPathError(null);
+                  try {
+                    const result = await validateV2RayNPath(path);
+                    updateDraftDirty(true);
+                    setSettings((prev) => (prev ? { ...prev, v2rayn_path: result.normalized_path } : prev));
+                    setPathValidation(t(result.message_key));
+                    if (!result.is_valid) {
+                      setPathError(t(result.message_key));
+                    } else {
+                      setPathError(null);
+                    }
+                  } catch {
+                    setPathError(t("errors.pathOperationFailed"));
                   }
                 }}
               >
@@ -766,11 +785,11 @@ export function SettingsWindow(): JSX.Element {
             <hr className="my-3 border-white/20" />
 
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="rounded-lg border px-2 py-1" onClick={() => void openDebugWindow()}>
+              <button type="button" className="rounded-lg border px-2 py-1" onClick={() => void openDebugWindow().catch(() => setSaveError(t("errors.windowOpenFailed")))}>
                 <Bug className="mr-1 inline h-4 w-4" />
                 {t("actions.openDebugTools")}
               </button>
-              <button type="button" className="rounded-lg border px-2 py-1" onClick={() => void relaunchWidgetAsAdmin()}>
+              <button type="button" className="rounded-lg border px-2 py-1" onClick={() => void relaunchWidgetAsAdmin().catch(() => setSaveError(t("errors.relaunchFailed")))}>
                 <Shield className="mr-1 inline h-4 w-4" />
                 {t("actions.relaunchAdmin")}
               </button>
@@ -788,15 +807,3 @@ export function SettingsWindow(): JSX.Element {
     </main>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-

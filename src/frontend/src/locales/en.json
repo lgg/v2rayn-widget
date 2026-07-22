@@ -127,7 +127,7 @@
   "debug.toggleUiOnly": "Click Enable Tun",
   "debug.clickReload": "Click Reload",
   "debug.selectProfileUi": "Select profile by UI",
-  "debug.profileNamePlaceholder": "Profile name (exact/partial)",
+  "debug.profileNamePlaceholder": "Exact profile name",
   "debug.toggleConfigOnly": "Toggle config only",
   "debug.toggleFull": "Run full toggle",
   "debug.refresh": "Refresh status",
@@ -155,5 +155,16 @@
   "transport.unknown": "Unknown",
   "transport.proxy": "Proxy",
   "transport.tun": "TUN",
-  "transport.mixed": "Mixed"
+  "transport.mixed": "Mixed",
+  "actions.retry": "Retry",
+  "errors.bootstrapFailed": "Could not initialize the widget.",
+  "errors.pathOperationFailed": "Could not detect or validate the application path.",
+  "errors.relaunchFailed": "Could not restart the widget as Administrator.",
+  "errors.windowOpenFailed": "Could not open the requested window.",
+  "clientNotes.happEnabled": "Experimental Happ connection control is enabled. It remains version- and session-sensitive and fails closed when the target is ambiguous.",
+  "clientNotes.happDisabled": "Happ status detection is available, but connection control is disabled until it is explicitly configured and successfully probed.",
+  "debug.profileNameLabel": "Exact profile name",
+  "debug.noProbeResult": "No probe result is available yet.",
+  "debug.probeFailed": "UI Automation probe failed.",
+  "happSetup.pathPlaceholder": "C:\\\\Path\\\\To\\\\Happ.exe"
 }

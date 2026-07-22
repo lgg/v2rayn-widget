@@ -1,4 +1,7 @@
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, MutexGuard,
+};
 
 use crate::models::{
     client::ProxyClientId,
@@ -25,6 +28,8 @@ pub struct AppState {
     inner: Mutex<AppStateInner>,
     settings_update_lock: Mutex<()>,
     v2rayn_operation_lock: tokio::sync::Mutex<()>,
+    happ_operation_lock: tokio::sync::Mutex<()>,
+    window_position_revision: AtomicU64,
 }
 
 impl AppState {
@@ -37,6 +42,8 @@ impl AppState {
             }),
             settings_update_lock: Mutex::new(()),
             v2rayn_operation_lock: tokio::sync::Mutex::new(()),
+            happ_operation_lock: tokio::sync::Mutex::new(()),
+            window_position_revision: AtomicU64::new(0),
         }
     }
 
@@ -48,6 +55,10 @@ impl AppState {
 
     pub async fn lock_v2rayn_operation(&self) -> tokio::sync::MutexGuard<'_, ()> {
         self.v2rayn_operation_lock.lock().await
+    }
+
+    pub async fn lock_happ_operation(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.happ_operation_lock.lock().await
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -67,10 +78,17 @@ impl AppState {
         guard.settings = settings;
     }
 
-    pub fn update_window_position(&self, position: WindowPosition) -> AppSettings {
+    pub fn update_window_position(&self, position: WindowPosition) -> Option<u64> {
         let mut guard = self.inner.lock().expect("AppState lock poisoned");
+        if guard.settings.window_position.as_ref() == Some(&position) {
+            return None;
+        }
         guard.settings.window_position = Some(position);
-        guard.settings.clone()
+        Some(self.window_position_revision.fetch_add(1, Ordering::SeqCst) + 1)
+    }
+
+    pub fn window_position_revision_is_current(&self, revision: u64) -> bool {
+        self.window_position_revision.load(Ordering::SeqCst) == revision
     }
 
     pub fn replace_settings_and_status(
@@ -163,5 +181,41 @@ mod tests {
         let state = AppState::new(AppSettings::default(), DashboardStatus::default());
         let _first = state.lock_v2rayn_operation().await;
         assert!(state.v2rayn_operation_lock.try_lock().is_err());
+    }
+
+    #[test]
+    fn window_position_revision_changes_only_for_a_new_position() {
+        let state = AppState::new(AppSettings::default(), DashboardStatus::default());
+        let position = WindowPosition {
+            x: 10,
+            y: 20,
+            width: 360,
+            height: 500,
+        };
+
+        let first = state
+            .update_window_position(position.clone())
+            .expect("first position is new");
+        let unchanged = state.update_window_position(position);
+        let second = state
+            .update_window_position(WindowPosition {
+                x: 11,
+                y: 20,
+                width: 360,
+                height: 500,
+            })
+            .expect("changed position is new");
+
+        assert!(unchanged.is_none());
+        assert!(second > first);
+        assert!(!state.window_position_revision_is_current(first));
+        assert!(state.window_position_revision_is_current(second));
+    }
+
+    #[tokio::test]
+    async fn happ_operation_lock_serializes_commands() {
+        let state = AppState::new(AppSettings::default(), DashboardStatus::default());
+        let _first = state.lock_happ_operation().await;
+        assert!(state.happ_operation_lock.try_lock().is_err());
     }
 }

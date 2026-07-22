@@ -1,0 +1,60 @@
+name: Apply 0018 Clippy Fix On Push
+
+on:
+  push:
+    branches:
+      - audit/0018-full-project-screen-audit
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-0018-clippy-final
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: audit/0018-full-project-screen-audit
+          fetch-depth: 0
+
+      - name: Apply exact rollback-preserving fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/tauri/src/commands/mod.rs')
+          content = path.read_text(encoding='utf-8')
+          old = '''        set_all_windows_always_on_top(app, next.always_on_top).map_err(|error| {
+            let _ = set_all_windows_always_on_top(app, previous.always_on_top);
+            error
+        })?;
+'''
+          new = '''        set_all_windows_always_on_top(app, next.always_on_top).inspect_err(|_| {
+            let _ = set_all_windows_always_on_top(app, previous.always_on_top);
+        })?;
+'''
+          if content.count(old) != 1:
+              raise SystemExit(f'expected one exact match, found {content.count(old)}')
+          path.write_text(content.replace(old, new), encoding='utf-8')
+
+      - name: Format, remove transport and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all --manifest-path src/tauri/Cargo.toml
+          rm -f .github/workflows/apply-0018-clippy-on-push.yml
+          git diff --check
+          grep -F 'inspect_err(|_|' src/tauri/src/commands/mod.rs
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m '0018: preserve rollback with inspect_err'
+          git push origin HEAD:audit/0018-full-project-screen-audit

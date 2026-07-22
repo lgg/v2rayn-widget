@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "@/styles/globals.css";
@@ -7,24 +6,20 @@ import { App } from "@/app/App";
 import { DebugWindow } from "@/app/DebugWindow";
 import { HappSetupWindow } from "@/app/HappSetupWindow";
 import { SettingsWindow } from "@/app/SettingsWindow";
+import { resolveWindowSurface } from "@/lib/window-surface";
 
 function Root(): JSX.Element {
-  const [label, setLabel] = useState<string>("main");
+  const surface = resolveWindowSurface(getCurrentWindow().label);
 
-  useEffect(() => {
-    const current = getCurrentWindow();
-    setLabel(current.label);
-  }, []);
-
-  if (label === "settings") {
+  if (surface === "settings") {
     return <SettingsWindow />;
   }
 
-  if (label === "debug") {
+  if (surface === "debug") {
     return <DebugWindow />;
   }
 
-  if (label === "happ-setup") {
+  if (surface === "happ-setup") {
     return <HappSetupWindow />;
   }
 

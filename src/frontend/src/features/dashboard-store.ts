@@ -15,7 +15,7 @@ import {
   relaunchWidgetAsAdmin,
   selectClient as selectClientApi,
   selectClientItem as selectClientItemApi,
-  toggleSelectedClient
+  toggleSelectedClient,
 } from "@/lib/api";
 import i18n from "@/lib/i18n";
 import type {
@@ -24,7 +24,7 @@ import type {
   DashboardStatus,
   ProfileSummary,
   ProxyClientId,
-  UiNotice
+  UiNotice,
 } from "@/lib/types";
 
 interface DashboardState {
@@ -56,6 +56,7 @@ let postRouteRefreshTimer: number | null = null;
 let refreshInFlight = false;
 let manualRefreshQueued = false;
 let clientGeneration = 0;
+let settingsRevision = 0;
 
 function invalidateClientOperations(): number {
   clientGeneration += 1;
@@ -67,9 +68,15 @@ function invalidateClientOperations(): number {
   return clientGeneration;
 }
 
-function clientOperationIsCurrent(generation: number, clientId: ProxyClientId | undefined): boolean {
-  return generation === clientGeneration
-    && (clientId === undefined || useDashboardStore.getState().settings?.selected_client === clientId);
+function clientOperationIsCurrent(
+  generation: number,
+  clientId: ProxyClientId | undefined,
+): boolean {
+  return (
+    generation === clientGeneration &&
+    (clientId === undefined ||
+      useDashboardStore.getState().settings?.selected_client === clientId)
+  );
 }
 
 function applyTheme(theme: "light" | "dark"): void {
@@ -89,9 +96,15 @@ function applyVisualSettings(settings: AppSettings): void {
   const root = document.documentElement;
   const body = document.body;
 
-  const opacity = Math.max(10, Math.min(100, Math.round(settings.window_opacity_percent)));
+  const opacity = Math.max(
+    10,
+    Math.min(100, Math.round(settings.window_opacity_percent)),
+  );
   root.style.setProperty("--widget-opacity", `${opacity / 100}`);
-  body.classList.toggle("widget-effect-disabled", !settings.window_effect_enabled);
+  body.classList.toggle(
+    "widget-effect-disabled",
+    !settings.window_effect_enabled,
+  );
 }
 
 function pathNoticeFor(settings: AppSettings): string | null {
@@ -114,7 +127,7 @@ function defaultStatus(): DashboardStatus {
     latency_ms: null,
     last_error: null,
     last_event: null,
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
   };
 }
 
@@ -139,15 +152,15 @@ function buildNoticeFromError(error: unknown, fallback: string): UiNotice {
       message: i18n.t("errors.uipiMismatch"),
       action: {
         type: "relaunch_admin",
-        label: i18n.t("actions.relaunchAdmin")
-      }
+        label: i18n.t("actions.relaunchAdmin"),
+      },
     };
   }
 
   return {
     id: Date.now(),
     kind: "error",
-    message: raw
+    message: raw,
   };
 }
 
@@ -164,20 +177,26 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   bootstrap: async () => {
     const generation = clientGeneration;
+    const revision = settingsRevision;
     set({ loading: true, error: null });
 
     try {
-      const [settings, clients] = await Promise.all([getSettings(), getClientCatalog()]);
+      const [settings, clients] = await Promise.all([
+        getSettings(),
+        getClientCatalog(),
+      ]);
       applyTheme(settings.theme);
       applyLanguage(settings.language);
       applyVisualSettings(settings);
 
       const [status, profiles] = await Promise.all([
-        refreshSelectedClientStartup().catch(() => getStatus().catch(() => defaultStatus())),
-        listSelectedClientItems().catch(() => [])
+        refreshSelectedClientStartup().catch(() =>
+          getStatus().catch(() => defaultStatus()),
+        ),
+        listSelectedClientItems().catch(() => []),
       ]);
 
-      if (generation !== clientGeneration) {
+      if (generation !== clientGeneration || revision !== settingsRevision) {
         return;
       }
 
@@ -188,10 +207,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         profiles,
         pathNoticeKey: pathNoticeFor(settings),
         loading: false,
-        error: null
+        error: null,
       });
     } catch (error) {
-      if (generation !== clientGeneration) {
+      if (generation !== clientGeneration || revision !== settingsRevision) {
         return;
       }
       set({
@@ -201,7 +220,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         clients: [],
         profiles: [],
         pathNoticeKey: null,
-        error: error instanceof Error ? error.message : "bootstrap_failed"
+        error: error instanceof Error ? error.message : "bootstrap_failed",
       });
     }
   },
@@ -224,7 +243,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
     refreshInFlight = true;
     try {
-      const status = background ? await refreshSelectedClientBackground() : await refreshSelectedClient();
+      const status = background
+        ? await refreshSelectedClientBackground()
+        : await refreshSelectedClient();
       const profiles = await listSelectedClientItems().catch(() => []);
 
       if (!clientOperationIsCurrent(generation, clientId)) {
@@ -234,7 +255,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       set((prev) => ({
         status,
         profiles,
-        actionLoading: background ? prev.actionLoading : false
+        actionLoading: background ? prev.actionLoading : false,
       }));
     } catch (error) {
       if (!clientOperationIsCurrent(generation, clientId)) {
@@ -244,7 +265,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         set({
           actionLoading: false,
           error: error instanceof Error ? error.message : "refresh_failed",
-          notice: buildNoticeFromError(error, i18n.t("errors.refreshFailed"))
+          notice: buildNoticeFromError(error, i18n.t("errors.refreshFailed")),
         });
       }
     } finally {
@@ -270,7 +291,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       error: null,
       profiles: [],
       status: defaultStatus(),
-      settings: { ...current, selected_client: clientId }
+      settings: { ...current, selected_client: clientId },
     });
     try {
       const settings = await selectClientApi(clientId);
@@ -281,7 +302,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const [status, profiles, clients] = await Promise.all([
         refreshSelectedClientStartup().catch(() => defaultStatus()),
         listSelectedClientItems().catch(() => []),
-        getClientCatalog().catch(() => get().clients)
+        getClientCatalog().catch(() => get().clients),
       ]);
 
       if (!clientOperationIsCurrent(generation, clientId)) {
@@ -294,7 +315,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         status,
         profiles,
         actionLoading: false,
-        pathNoticeKey: pathNoticeFor(settings)
+        pathNoticeKey: pathNoticeFor(settings),
       });
     } catch (error) {
       if (!clientOperationIsCurrent(generation, clientId)) {
@@ -306,7 +327,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         profiles: previousProfiles,
         actionLoading: false,
         error: error instanceof Error ? error.message : "select_client_failed",
-        notice: buildNoticeFromError(error, i18n.t("errors.clientSwitchFailed"))
+        notice: buildNoticeFromError(
+          error,
+          i18n.t("errors.clientSwitchFailed"),
+        ),
       });
     }
   },
@@ -337,7 +361,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
             }
             set((prev) => ({
               status: refreshedStatus,
-              profiles: profiles.length > 0 ? profiles : prev.profiles
+              profiles: profiles.length > 0 ? profiles : prev.profiles,
             }));
           } catch {
             // Keep fast route-change UX even if delayed network refresh fails.
@@ -356,7 +380,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       set({
         actionLoading: false,
         error: error instanceof Error ? error.message : "toggle_failed",
-        notice: buildNoticeFromError(error, i18n.t("errors.toggleFailed"))
+        notice: buildNoticeFromError(error, i18n.t("errors.toggleFailed")),
       });
     }
   },
@@ -386,13 +410,18 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         void (async () => {
           try {
             const refreshedStatus = await refreshSelectedClientPostRoute();
-            const refreshedProfiles = await listSelectedClientItems().catch(() => []);
+            const refreshedProfiles = await listSelectedClientItems().catch(
+              () => [],
+            );
             if (!clientOperationIsCurrent(generation, clientId)) {
               return;
             }
             set((prev) => ({
               status: refreshedStatus,
-              profiles: refreshedProfiles.length > 0 ? refreshedProfiles : prev.profiles
+              profiles:
+                refreshedProfiles.length > 0
+                  ? refreshedProfiles
+                  : prev.profiles,
             }));
           } catch {
             // Keep fast item-switch UX even if delayed network refresh fails.
@@ -411,7 +440,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       set({
         actionLoading: false,
         error: error instanceof Error ? error.message : "set_item_failed",
-        notice: buildNoticeFromError(error, i18n.t("errors.profileSwitchFailed"))
+        notice: buildNoticeFromError(
+          error,
+          i18n.t("errors.profileSwitchFailed"),
+        ),
       });
     }
   },
@@ -421,7 +453,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       await openSelectedClient();
     } catch (error) {
       set({
-        notice: buildNoticeFromError(error, i18n.t("errors.openFailed"))
+        notice: buildNoticeFromError(error, i18n.t("errors.openFailed")),
       });
     }
   },
@@ -439,7 +471,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       await openDiagnosticsWindow();
     } catch (error) {
       set({
-        notice: buildNoticeFromError(error, i18n.t("errors.diagnosticsOpenFailed"))
+        notice: buildNoticeFromError(
+          error,
+          i18n.t("errors.diagnosticsOpenFailed"),
+        ),
       });
     }
   },
@@ -449,12 +484,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   applyExternalSettings: (settings) => {
+    settingsRevision += 1;
     const previousSettings = get().settings;
-    const operationalContextChanged = previousSettings !== null
-      && (previousSettings.selected_client !== settings.selected_client
-        || previousSettings.happ_path !== settings.happ_path
-        || previousSettings.happ_allow_ui_automation !== settings.happ_allow_ui_automation);
-    const previousClient = previousSettings?.selected_client;
+    const operationalContextChanged =
+      previousSettings === null ||
+      previousSettings.selected_client !== settings.selected_client ||
+      previousSettings.v2rayn_path_mode !== settings.v2rayn_path_mode ||
+      previousSettings.v2rayn_path !== settings.v2rayn_path ||
+      previousSettings.happ_path !== settings.happ_path ||
+      previousSettings.happ_allow_ui_automation !==
+        settings.happ_allow_ui_automation ||
+      previousSettings.mock_mode_enabled !== settings.mock_mode_enabled;
     if (operationalContextChanged) {
       invalidateClientOperations();
     }
@@ -463,11 +503,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     applyVisualSettings(settings);
     set({
       settings,
+      loading: false,
+      error: null,
       pathNoticeKey: pathNoticeFor(settings),
-      ...(operationalContextChanged ? { actionLoading: false } : {}),
-      ...(previousClient !== undefined && previousClient !== settings.selected_client
-        ? { status: defaultStatus(), profiles: [] }
-        : {})
+      ...(operationalContextChanged
+        ? { status: defaultStatus(), profiles: [], actionLoading: false }
+        : {}),
     });
 
     const generation = clientGeneration;
@@ -484,9 +525,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set({
       notice: {
         ...notice,
-        id: Date.now()
-      }
+        id: Date.now(),
+      },
     }),
 
-  clearNotice: () => set({ notice: null })
+  clearNotice: () => set({ notice: null }),
 }));

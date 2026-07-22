@@ -1,6 +1,10 @@
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppSettings, ClientDescriptor, DashboardStatus } from "@/lib/types";
+import type {
+  AppSettings,
+  ClientDescriptor,
+  DashboardStatus,
+} from "@/lib/types";
 
 const apiMocks = vi.hoisted(() => ({
   getClientCatalog: vi.fn(),
@@ -18,7 +22,7 @@ const apiMocks = vi.hoisted(() => ({
   relaunchWidgetAsAdmin: vi.fn(),
   selectClient: vi.fn(),
   selectClientItem: vi.fn(),
-  toggleSelectedClient: vi.fn()
+  toggleSelectedClient: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => apiMocks);
@@ -52,10 +56,13 @@ const baseSettings: AppSettings = {
   v2rayn_path: null,
   happ_path: null,
   happ_allow_ui_automation: false,
-  window_position: null
+  window_position: null,
 };
 
-function descriptor(id: "v2rayn" | "happ", toggle: "supported" | "experimental" | "research_required"): ClientDescriptor {
+function descriptor(
+  id: "v2rayn" | "happ",
+  toggle: "supported" | "experimental" | "research_required",
+): ClientDescriptor {
   return {
     id,
     display_name: id === "v2rayn" ? "v2rayN" : "Happ",
@@ -74,8 +81,8 @@ function descriptor(id: "v2rayn" | "happ", toggle: "supported" | "experimental" 
       list_subscriptions: "unsupported",
       switch_subscription: "unsupported",
       refresh_subscription: "unsupported",
-      manage_subscriptions: "unsupported"
-    }
+      manage_subscriptions: "unsupported",
+    },
   };
 }
 
@@ -89,7 +96,7 @@ function status(updatedAt: string): DashboardStatus {
     latency_ms: null,
     last_error: null,
     last_event: null,
-    updated_at: updatedAt
+    updated_at: updatedAt,
   };
 }
 
@@ -105,29 +112,39 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 describe("dashboard store refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.getSettings.mockResolvedValue(baseSettings);
+    apiMocks.getStatus.mockResolvedValue(status("fallback"));
+    apiMocks.refreshSelectedClientStartup.mockResolvedValue(status("startup"));
     apiMocks.listSelectedClientItems.mockResolvedValue([]);
     apiMocks.getClientCatalog.mockResolvedValue([
       descriptor("v2rayn", "supported"),
-      descriptor("happ", "research_required")
+      descriptor("happ", "research_required"),
     ]);
     useDashboardStore.setState({
       status: null,
       settings: baseSettings,
-      clients: [descriptor("v2rayn", "supported"), descriptor("happ", "research_required")],
+      clients: [
+        descriptor("v2rayn", "supported"),
+        descriptor("happ", "research_required"),
+      ],
       profiles: [],
       loading: false,
       actionLoading: false,
       error: null,
-      notice: null
+      notice: null,
     });
   });
 
   it("queues a manual refresh when background refresh is already running", async () => {
     const background = deferred<DashboardStatus>();
-    apiMocks.refreshSelectedClientBackground.mockReturnValueOnce(background.promise);
+    apiMocks.refreshSelectedClientBackground.mockReturnValueOnce(
+      background.promise,
+    );
     apiMocks.refreshSelectedClient.mockResolvedValueOnce(status("manual"));
 
-    const backgroundRun = useDashboardStore.getState().refresh({ background: true });
+    const backgroundRun = useDashboardStore
+      .getState()
+      .refresh({ background: true });
     const manualRun = useDashboardStore.getState().refresh();
 
     expect(useDashboardStore.getState().actionLoading).toBe(true);
@@ -155,17 +172,24 @@ describe("dashboard store refresh", () => {
 
   it("does not let an old background refresh overwrite a newly selected client", async () => {
     const background = deferred<DashboardStatus>();
-    apiMocks.refreshSelectedClientBackground.mockReturnValueOnce(background.promise);
-    apiMocks.selectClient.mockResolvedValueOnce({ ...baseSettings, selected_client: "happ" });
+    apiMocks.refreshSelectedClientBackground.mockReturnValueOnce(
+      background.promise,
+    );
+    apiMocks.selectClient.mockResolvedValueOnce({
+      ...baseSettings,
+      selected_client: "happ",
+    });
     apiMocks.refreshSelectedClientStartup.mockResolvedValueOnce({
       ...status("happ"),
       status: "Disconnected",
       connection_state: "Disconnected",
       tun_enabled: false,
-      active_profile_name: null
+      active_profile_name: null,
     });
 
-    const oldRefresh = useDashboardStore.getState().refresh({ background: true });
+    const oldRefresh = useDashboardStore
+      .getState()
+      .refresh({ background: true });
     await useDashboardStore.getState().selectClient("happ");
     background.resolve(status("old-v2rayn"));
     await oldRefresh;
@@ -177,28 +201,31 @@ describe("dashboard store refresh", () => {
   it("reloads dynamic capability descriptors after external settings change", async () => {
     apiMocks.getClientCatalog.mockResolvedValueOnce([
       descriptor("v2rayn", "supported"),
-      descriptor("happ", "experimental")
+      descriptor("happ", "experimental"),
     ]);
 
     useDashboardStore.getState().applyExternalSettings({
       ...baseSettings,
       selected_client: "happ",
-      happ_allow_ui_automation: true
+      happ_allow_ui_automation: true,
     });
 
     await waitFor(() => {
-      expect(useDashboardStore.getState().clients.find((client) => client.id === "happ")?.capabilities.toggle_connection)
-        .toBe("experimental");
+      expect(
+        useDashboardStore
+          .getState()
+          .clients.find((client) => client.id === "happ")?.capabilities
+          .toggle_connection,
+      ).toBe("experimental");
     });
   });
-
 
   it("clears a stale action spinner when Happ operational settings change", async () => {
     const toggle = deferred<DashboardStatus>();
     apiMocks.toggleSelectedClient.mockReturnValueOnce(toggle.promise);
     useDashboardStore.setState({
       settings: { ...baseSettings, selected_client: "happ" },
-      actionLoading: false
+      actionLoading: false,
     });
 
     const staleToggle = useDashboardStore.getState().toggleConnection();
@@ -208,14 +235,16 @@ describe("dashboard store refresh", () => {
       ...baseSettings,
       selected_client: "happ",
       happ_path: "C:\\Happ\\Happ.exe",
-      happ_allow_ui_automation: true
+      happ_allow_ui_automation: true,
     });
 
     expect(useDashboardStore.getState().actionLoading).toBe(false);
 
     toggle.resolve(status("stale-toggle"));
     await staleToggle;
-    expect(useDashboardStore.getState().status?.updated_at).not.toBe("stale-toggle");
+    expect(useDashboardStore.getState().status?.updated_at).not.toBe(
+      "stale-toggle",
+    );
   });
 
   it("does not let an older catalog request overwrite newer Happ capabilities", async () => {
@@ -225,28 +254,105 @@ describe("dashboard store refresh", () => {
       .mockReturnValueOnce(olderCatalog.promise)
       .mockReturnValueOnce(newerCatalog.promise);
 
-    useDashboardStore.setState({ settings: { ...baseSettings, selected_client: "happ" } });
-    useDashboardStore.getState().applyExternalSettings({
-      ...baseSettings,
-      selected_client: "happ",
-      happ_allow_ui_automation: false
+    useDashboardStore.setState({
+      settings: { ...baseSettings, selected_client: "happ" },
     });
     useDashboardStore.getState().applyExternalSettings({
       ...baseSettings,
       selected_client: "happ",
-      happ_allow_ui_automation: true
+      happ_allow_ui_automation: false,
+    });
+    useDashboardStore.getState().applyExternalSettings({
+      ...baseSettings,
+      selected_client: "happ",
+      happ_allow_ui_automation: true,
     });
 
-    newerCatalog.resolve([descriptor("v2rayn", "supported"), descriptor("happ", "experimental")]);
+    newerCatalog.resolve([
+      descriptor("v2rayn", "supported"),
+      descriptor("happ", "experimental"),
+    ]);
     await waitFor(() => {
-      expect(useDashboardStore.getState().clients.find((client) => client.id === "happ")?.capabilities.toggle_connection)
-        .toBe("experimental");
+      expect(
+        useDashboardStore
+          .getState()
+          .clients.find((client) => client.id === "happ")?.capabilities
+          .toggle_connection,
+      ).toBe("experimental");
     });
 
-    olderCatalog.resolve([descriptor("v2rayn", "supported"), descriptor("happ", "research_required")]);
+    olderCatalog.resolve([
+      descriptor("v2rayn", "supported"),
+      descriptor("happ", "research_required"),
+    ]);
     await Promise.resolve();
-    expect(useDashboardStore.getState().clients.find((client) => client.id === "happ")?.capabilities.toggle_connection)
-      .toBe("experimental");
+    expect(
+      useDashboardStore
+        .getState()
+        .clients.find((client) => client.id === "happ")?.capabilities
+        .toggle_connection,
+    ).toBe("experimental");
+  });
+
+  it("does not leave bootstrap loading or overwrite authoritative external settings", async () => {
+    const staleSettings = deferred<AppSettings>();
+    const staleCatalog = deferred<ClientDescriptor[]>();
+    apiMocks.getSettings.mockReturnValueOnce(staleSettings.promise);
+    apiMocks.getClientCatalog.mockReturnValueOnce(staleCatalog.promise);
+    useDashboardStore.setState({
+      status: null,
+      settings: null,
+      clients: [],
+      profiles: [],
+      loading: true,
+      actionLoading: false,
+      error: null,
+    });
+
+    const bootstrap = useDashboardStore.getState().bootstrap();
+    const authoritative = {
+      ...baseSettings,
+      selected_client: "happ" as const,
+      happ_path: "C:\\Happ\\Happ.exe",
+    };
+    useDashboardStore.getState().applyExternalSettings(authoritative);
+
+    expect(useDashboardStore.getState().loading).toBe(false);
+    expect(useDashboardStore.getState().settings).toEqual(authoritative);
+    expect(useDashboardStore.getState().status?.connection_state).toBe(
+      "Unknown",
+    );
+
+    staleSettings.resolve(baseSettings);
+    staleCatalog.resolve([descriptor("v2rayn", "supported")]);
+    await bootstrap;
+
+    expect(useDashboardStore.getState().loading).toBe(false);
+    expect(useDashboardStore.getState().settings).toEqual(authoritative);
+    expect(useDashboardStore.getState().clients).not.toEqual([
+      descriptor("v2rayn", "supported"),
+    ]);
+  });
+  it("does not let bootstrap overwrite a newer UI-only settings event", async () => {
+    const staleSettings = deferred<AppSettings>();
+    const staleCatalog = deferred<ClientDescriptor[]>();
+    apiMocks.getSettings.mockReturnValueOnce(staleSettings.promise);
+    apiMocks.getClientCatalog.mockReturnValueOnce(staleCatalog.promise);
+
+    const bootstrap = useDashboardStore.getState().bootstrap();
+    const authoritative = {
+      ...baseSettings,
+      theme: "dark" as const,
+      show_clock: false,
+    };
+    useDashboardStore.getState().applyExternalSettings(authoritative);
+
+    staleSettings.resolve(baseSettings);
+    staleCatalog.resolve([descriptor("v2rayn", "supported")]);
+    await bootstrap;
+
+    expect(useDashboardStore.getState().loading).toBe(false);
+    expect(useDashboardStore.getState().settings).toEqual(authoritative);
   });
 
 });

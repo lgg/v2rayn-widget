@@ -138,6 +138,7 @@
   "errors.clientSwitchFailed": "Не удалось переключить клиентское приложение",
   "errors.profileSwitchFailed": "Не удалось переключить профиль или сервер",
   "errors.settingsSaveFailed": "Не удалось сохранить настройки",
+  "errors.settingsLoadFailed": "Не удалось загрузить настройки",
   "errors.openFailed": "Не удалось открыть выбранное приложение",
   "errors.restartFailed": "Не удалось перезапустить v2rayN",
   "errors.diagnosticsOpenFailed": "Не удалось открыть страницу диагностики",

@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 pub fn app_data_dir() -> Result<PathBuf> {
-    let config_dir = dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Unable to resolve config directory"))?;
+    let config_dir =
+        dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Unable to resolve config directory"))?;
     Ok(config_dir.join("v2rayn-widget"))
 }
 
@@ -27,14 +28,20 @@ pub fn detect_v2rayn_path() -> Option<PathBuf> {
     }
 
     if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-        candidates.push(PathBuf::from(local_app_data).join("Programs").join("v2rayN"));
+        candidates.push(
+            PathBuf::from(local_app_data)
+                .join("Programs")
+                .join("v2rayN"),
+        );
     }
 
     if let Some(user_profile) = std::env::var_os("USERPROFILE") {
         candidates.push(PathBuf::from(user_profile).join("Downloads").join("v2rayN"));
     }
 
-    candidates.into_iter().find(|candidate| is_valid_v2rayn_path(candidate))
+    candidates
+        .into_iter()
+        .find(|candidate| is_valid_v2rayn_path(candidate))
 }
 
 pub fn is_valid_v2rayn_path(path: &Path) -> bool {

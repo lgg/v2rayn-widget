@@ -1,7 +1,7 @@
-#[cfg(target_os = "windows")]
-use anyhow::{Context, Result};
 #[cfg(not(target_os = "windows"))]
 use anyhow::{anyhow, Result};
+#[cfg(target_os = "windows")]
+use anyhow::{Context, Result};
 
 #[cfg(target_os = "windows")]
 use winreg::{enums::HKEY_CURRENT_USER, RegKey};

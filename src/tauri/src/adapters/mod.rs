@@ -4,6 +4,7 @@ pub mod v2rayn;
 use tauri::State;
 
 use crate::{
+    commands,
     models::{
         client::{ClientDescriptor, ClientDiagnostics, ProxyClientId, TransportMode},
         profile::ProfileSummary,
@@ -155,12 +156,14 @@ impl ProxyClientAdapter for RegisteredAdapter {
             Self::Happ => Ok(happ::diagnostics(&state.snapshot().settings)),
             Self::V2rayn => {
                 let snapshot = state.snapshot();
-                let process = process_monitor::read_process_snapshot();
+                let base_path = commands::resolve_v2rayn_base_path(&snapshot.settings);
+                let process =
+                    process_monitor::read_process_snapshot_for_base_path(base_path.as_deref());
                 Ok(ClientDiagnostics {
                     client_id: ProxyClientId::V2rayn,
                     application_running: process.v2rayn_running,
                     process_id: process.v2rayn_pid,
-                    executable_path: snapshot.settings.v2rayn_path.clone(),
+                    executable_path: base_path.map(|path| path.to_string_lossy().to_string()),
                     window_found: false,
                     window_title: None,
                     connection_state: snapshot.status.connection_state,

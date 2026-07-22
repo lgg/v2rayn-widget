@@ -39,9 +39,30 @@ if (Test-Path $globalRustupInit) {
     Copy-Item -Path $globalRustupInit -Destination (Join-Path $localCargoBin "rustup-init.exe") -Force
 }
 
-$vsDevCmd = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
-if (-not (Test-Path $vsDevCmd)) {
-    throw "VsDevCmd.bat not found. Install Microsoft.VisualStudio.2022.BuildTools."
+$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+$vsDevCmd = $null
+if (Test-Path $vswhere) {
+    $vsInstallPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if ($vsInstallPath) {
+        $candidate = Join-Path $vsInstallPath "Common7\Tools\VsDevCmd.bat"
+        if (Test-Path $candidate) {
+            $vsDevCmd = $candidate
+        }
+    }
+}
+
+if (-not $vsDevCmd) {
+    $fallbacks = @(
+        "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat",
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat",
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\Tools\VsDevCmd.bat",
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
+    )
+    $vsDevCmd = $fallbacks | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+
+if (-not $vsDevCmd) {
+    throw "VsDevCmd.bat not found. Install Visual Studio 2022 C++ build tools."
 }
 
 $envDump = cmd /c "`"$vsDevCmd`" -arch=x64 && set"

@@ -104,7 +104,7 @@ jobs:
   rust-windows:
     needs: frontend
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -116,18 +116,24 @@ jobs:
           name: frontend-dist
           path: src/frontend/dist
 
+      - name: Set up Node.js for installer smoke
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.17.1
+          package-manager-cache: false
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Check changed Rust formatting
+      - name: Check all Rust formatting
         id: rust_format
         continue-on-error: true
         working-directory: src/tauri
         shell: pwsh
         run: |
-          rustfmt --edition 2021 --check --config skip_children=true src/main.rs src/adapters/mod.rs src/adapters/happ.rs src/adapters/v2rayn.rs src/client_commands.rs src/commands/mod.rs src/models/client.rs src/models/settings.rs src/models/status.rs src/services/config_reader.rs src/services/health_check.rs src/services/happ_ui.rs src/services/ui_controller.rs src/state/app_state.rs src/utils/settings_store.rs 2>&1 | Tee-Object -FilePath rust-format-output.txt
+          cargo fmt --all -- --check 2>&1 | Tee-Object -FilePath rust-format-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
 
@@ -184,6 +190,45 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Install frontend dependencies for installer smoke
+        id: installer_dependencies
+        continue-on-error: true
+        working-directory: src/frontend
+        shell: pwsh
+        run: |
+          npm config set registry "https://registry.npmjs.org/" --global
+          npm config set cache "$env:RUNNER_TEMP\npm-installer-cache" --global
+          npm cache clean --force
+          npm ci --no-audit --no-fund 2>&1 | Tee-Object -FilePath installer-dependencies-output.txt
+          $commandExitCode = $LASTEXITCODE
+          exit $commandExitCode
+
+      - name: Build NSIS installer smoke artifact
+        if: steps.installer_dependencies.outcome == 'success'
+        id: installer_release
+        continue-on-error: true
+        working-directory: src/tauri
+        shell: pwsh
+        run: |
+          $tauriCli = (Resolve-Path "../frontend/node_modules/.bin/tauri.cmd").Path
+          & $tauriCli build --bundles nsis --config "tauri.installer.conf.json" --ci -- --locked 2>&1 | Tee-Object -FilePath installer-release-output.txt
+          $commandExitCode = $LASTEXITCODE
+          if ($commandExitCode -ne 0) { exit $commandExitCode }
+          $installers = @(Get-ChildItem "target/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue)
+          if ($installers.Count -eq 0) {
+            Write-Error "NSIS installer was not produced"
+            exit 1
+          }
+
+      - name: Upload NSIS installer smoke artifact
+        if: steps.installer_release.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsis-installer-smoke
+          path: src/tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload Rust diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -195,10 +240,13 @@ jobs:
             src/tauri/rust-clippy-output.txt
             src/tauri/rust-build-output.txt
             src/tauri/rust-release-output.txt
+            src/frontend/installer-dependencies-output.txt
+            src/tauri/installer-release-output.txt
+            ${{ runner.temp }}/npm-installer-cache/_logs/*.log
           if-no-files-found: warn
           retention-days: 1
 
       - name: Fail when Rust checks failed
-        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure' || steps.rust_release.outcome == 'failure'
+        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure' || steps.rust_release.outcome == 'failure' || steps.installer_dependencies.outcome == 'failure' || steps.installer_release.outcome == 'failure'
         shell: pwsh
         run: exit 1

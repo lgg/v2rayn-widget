@@ -6,12 +6,13 @@ use once_cell::sync::Lazy;
 use crate::models::settings::{
     default_connectivity_endpoints, default_diagnostics_url, default_ip_endpoints, AppSettings,
 };
-use crate::utils::{app_paths, locale};
+use crate::utils::{app_paths, file_store, locale};
 
 static SETTINGS_WRITE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub fn load_settings() -> Result<AppSettings> {
     let path = app_paths::settings_file_path()?;
+    file_store::recover_backup_if_missing(&path)?;
 
     if !path.exists() {
         let defaults = AppSettings {
@@ -22,8 +23,10 @@ pub fn load_settings() -> Result<AppSettings> {
         return Ok(defaults);
     }
 
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read settings file: {}", path.display()))?;
+    let content = file_store::read_validated_string(&path, |value| {
+        serde_json::from_str::<AppSettings>(value).is_ok()
+    })
+    .with_context(|| format!("Failed to read valid settings file: {}", path.display()))?;
 
     let mut parsed: AppSettings = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse settings JSON: {}", path.display()))?;
@@ -78,7 +81,7 @@ pub fn save_settings(settings: &AppSettings) -> Result<()> {
         .with_context(|| format!("Failed to create settings directory: {}", parent.display()))?;
 
     let content = serde_json::to_string_pretty(settings)?;
-    fs::write(&path, content)
+    file_store::replace_with_backup(&path, content.as_bytes())
         .with_context(|| format!("Failed to write settings file: {}", path.display()))?;
 
     Ok(())

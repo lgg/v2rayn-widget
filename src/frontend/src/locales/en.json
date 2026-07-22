@@ -138,6 +138,7 @@
   "errors.clientSwitchFailed": "Could not switch client application",
   "errors.profileSwitchFailed": "Profile/server switch failed",
   "errors.settingsSaveFailed": "Could not save settings",
+  "errors.settingsLoadFailed": "Could not load settings",
   "errors.openFailed": "Could not open selected application",
   "errors.restartFailed": "Could not restart v2rayN",
   "errors.diagnosticsOpenFailed": "Could not open diagnostics page",

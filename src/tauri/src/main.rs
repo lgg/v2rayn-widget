@@ -28,53 +28,37 @@ fn configure_webview2_user_data_dir() {
         _ => "user",
     };
 
-    let session_segment = {
-        let pid = std::process::id();
-        let millis = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|value| value.as_millis())
-            .unwrap_or(0);
-        format!("{pid}-{millis}")
-    };
-
     let mut candidates = Vec::new();
+    let mut add_candidate = |candidate: std::path::PathBuf| {
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
+        }
+    };
 
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(parent) = exe_path.parent() {
-            candidates.push(
-                parent
-                    .join(".webview2")
-                    .join(privilege_segment)
-                    .join(&session_segment),
-            );
+            add_candidate(parent.join(".webview2").join(privilege_segment));
         }
     }
 
-    candidates.push(
-        std::env::temp_dir()
-            .join("v2rayn-widget")
-            .join("webview2")
-            .join(privilege_segment)
-            .join(&session_segment),
-    );
-
     if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-        candidates.push(
+        add_candidate(
             std::path::PathBuf::from(local_app_data)
                 .join("v2rayn-widget")
                 .join("webview2")
-                .join(privilege_segment)
-                .join(&session_segment),
+                .join(privilege_segment),
         );
     }
 
+    add_candidate(
+        std::env::temp_dir()
+            .join("v2rayn-widget")
+            .join("webview2")
+            .join(privilege_segment),
+    );
+
     if let Ok(current_dir) = std::env::current_dir() {
-        candidates.push(
-            current_dir
-                .join(".webview2")
-                .join(privilege_segment)
-                .join(&session_segment),
-        );
+        add_candidate(current_dir.join(".webview2").join(privilege_segment));
     }
 
     for candidate in candidates {
@@ -132,7 +116,13 @@ fn main() {
         eprintln!("logging init failed: {error}");
     }
 
-    let settings = settings_store::load_settings().unwrap_or_default();
+    let settings = match settings_store::load_settings() {
+        Ok(settings) => settings,
+        Err(error) => {
+            error!(?error, "failed to load settings; using in-memory defaults");
+            Default::default()
+        }
+    };
     let state = AppState::new(settings.clone(), DashboardStatus::default());
 
     tauri::Builder::default()

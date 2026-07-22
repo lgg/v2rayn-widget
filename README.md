@@ -23,7 +23,9 @@ Preserved behind the compatibility adapter:
 - config toggle plus reload/restart fallback;
 - profile list;
 - experimental active profile switching;
-- open/restart and privilege diagnostics.
+- open/restart and privilege diagnostics;
+- process, privilege and UI control scoped to the configured installation;
+- non-mutating status reads and fail-closed config updates.
 
 Explicit limitations:
 
@@ -113,6 +115,8 @@ Planning and decisions:
 - `project-tracking/reports/0013-add-proxy-client-adapters-and-happ-mvp-report.md`
 - `project-tracking/tasks/0014-post-merge-deep-audit.md`
 - `project-tracking/tasks/0015-final-main-tree-audit.md`
+- `project-tracking/tasks/0016-post-merge-runtime-hardening.md`
+- `project-tracking/reports/0016-post-merge-runtime-hardening-report.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 

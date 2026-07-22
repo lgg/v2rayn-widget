@@ -1259,9 +1259,8 @@ fn apply_runtime_settings_delta(
     let autostart_changed = previous.autostart_with_windows != next.autostart_with_windows;
 
     if always_on_top_changed {
-        set_all_windows_always_on_top(app, next.always_on_top).map_err(|error| {
+        set_all_windows_always_on_top(app, next.always_on_top).inspect_err(|_| {
             let _ = set_all_windows_always_on_top(app, previous.always_on_top);
-            error
         })?;
     }
 

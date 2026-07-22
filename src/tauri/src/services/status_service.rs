@@ -65,13 +65,7 @@ pub fn resolve_status(inputs: StatusInputs) -> DashboardStatus {
         ConnectionState::Connecting
     };
 
-    let status = match connection_state {
-        ConnectionState::Connected => ConnectionState::Connected,
-        ConnectionState::Disconnected => ConnectionState::Disconnected,
-        ConnectionState::Error => ConnectionState::Error,
-        ConnectionState::Connecting => ConnectionState::Connecting,
-        ConnectionState::Unknown => ConnectionState::Unknown,
-    };
+    let status = connection_state;
 
     DashboardStatus {
         status,

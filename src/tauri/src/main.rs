@@ -11,7 +11,7 @@ mod utils;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
+    Emitter, Manager, Runtime, WebviewWindow, WindowEvent,
 };
 use tracing::{error, info, warn};
 
@@ -93,21 +93,46 @@ fn window_is_resizable(label: &str) -> bool {
     matches!(label, "main" | "debug")
 }
 
+fn show_unminimize_focus<R: Runtime>(window: &WebviewWindow<R>, context: &str) {
+    let label = window.label();
+    if let Err(error) = window.show() {
+        warn!(?error, %label, %context, "failed to show window");
+    }
+    if let Err(error) = window.unminimize() {
+        warn!(?error, %label, %context, "failed to unminimize window");
+    }
+    if let Err(error) = window.set_focus() {
+        warn!(?error, %label, %context, "failed to focus window");
+    }
+}
+
 fn restore_visible_aux_windows(app: &tauri::AppHandle, context: &str) {
     let settings = app.state::<AppState>().snapshot().settings;
 
     for label in ["settings", "debug", "happ-setup"] {
         if let Some(window) = app.get_webview_window(label) {
-            if window.is_visible().unwrap_or(false) {
-                let _ = window.show();
-                let _ = window.unminimize();
-
-                let _ = window.set_always_on_top(true);
-                if !settings.always_on_top {
-                    let _ = window.set_always_on_top(false);
+            match window.is_visible() {
+                Ok(true) => {
+                    if let Err(error) = window.show() {
+                        warn!(?error, %label, %context, "failed to show auxiliary window");
+                    }
+                    if let Err(error) = window.unminimize() {
+                        warn!(?error, %label, %context, "failed to unminimize auxiliary window");
+                    }
+                    if let Err(error) = window.set_always_on_top(true) {
+                        warn!(?error, %label, %context, "failed to raise auxiliary window");
+                    }
+                    if !settings.always_on_top {
+                        if let Err(error) = window.set_always_on_top(false) {
+                            warn!(?error, %label, %context, "failed to restore auxiliary always-on-top state");
+                        }
+                    }
+                    info!(%label, %context, "restored visible auxiliary window");
                 }
-
-                info!(%label, %context, "restored visible auxiliary window");
+                Ok(false) => {}
+                Err(error) => {
+                    warn!(?error, %label, %context, "failed to inspect auxiliary window visibility")
+                }
             }
         }
     }
@@ -161,17 +186,13 @@ fn main() {
                 .on_menu_event(move |app, event| match event.id().0.as_str() {
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
+                            show_unminimize_focus(&window, "tray_show");
                             restore_visible_aux_windows(app, "tray_show");
                         }
                     }
                     "settings" => {
                         if let Some(window) = app.get_webview_window("settings") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
+                            show_unminimize_focus(&window, "tray_settings");
                         }
                     }
                     "refresh" => {
@@ -206,9 +227,7 @@ fn main() {
                     {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
+                            show_unminimize_focus(&window, "tray_left_click");
                             restore_visible_aux_windows(app, "tray_left_click");
                         }
                     }
@@ -218,19 +237,25 @@ fn main() {
             app.manage(tray);
 
             if let Some(main_window) = app_handle.get_webview_window("main") {
-                let _ = main_window.show();
-                let _ = main_window.unminimize();
+                show_unminimize_focus(&main_window, "startup");
             }
 
             for label in ["main", "settings", "debug", "happ-setup"] {
                 if let Some(window) = app_handle.get_webview_window(label) {
-                    let _ = window.set_always_on_top(settings.always_on_top);
-                    let _ = window.set_resizable(window_is_resizable(label));
+                    if let Err(error) = window.set_always_on_top(settings.always_on_top) {
+                        warn!(?error, %label, "failed to apply initial always-on-top state");
+                    }
+                    if let Err(error) = window.set_resizable(window_is_resizable(label)) {
+                        warn!(?error, %label, "failed to apply initial resizable state");
+                    }
 
                     if label == "main" {
                         if let Some(bounds) = settings.window_position.clone() {
-                            let _ = window
-                                .set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y));
+                            if let Err(error) = window
+                                .set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y))
+                            {
+                                warn!(?error, "failed to restore main window position");
+                            }
                         }
                     }
 
@@ -249,7 +274,9 @@ fn main() {
                 "main" => match event {
                     WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
-                        let _ = window.hide();
+                        if let Err(error) = window.hide() {
+                            warn!(?error, "failed to hide main window");
+                        }
                     }
                     WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
                         let state = app.state::<AppState>();
@@ -257,15 +284,27 @@ fn main() {
                         if let (Ok(position), Ok(size)) =
                             (window.outer_position(), window.outer_size())
                         {
-                            let settings = state.update_window_position(WindowPosition {
-                                x: position.x,
-                                y: position.y,
-                                width: size.width,
-                                height: size.height,
-                            });
-
-                            if let Err(error) = settings_store::save_settings(&settings) {
-                                warn!(?error, "failed to persist window position");
+                            if let Some(revision) =
+                                state.update_window_position(WindowPosition {
+                                    x: position.x,
+                                    y: position.y,
+                                    width: size.width,
+                                    height: size.height,
+                                })
+                            {
+                                let app_handle = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                                    let state = app_handle.state::<AppState>();
+                                    let _settings_update = state.lock_settings_update();
+                                    if !state.window_position_revision_is_current(revision) {
+                                        return;
+                                    }
+                                    let settings = state.snapshot().settings;
+                                    if let Err(error) = settings_store::save_settings(&settings) {
+                                        warn!(?error, "failed to persist debounced window position");
+                                    }
+                                });
                             }
                         }
                     }
@@ -274,10 +313,28 @@ fn main() {
                     }
                     _ => {}
                 },
-                "settings" | "debug" | "happ-setup" => {
+                "settings" => {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        let _ = window.hide();
+                        if let Err(error) = window.emit("settings-close-requested", ()) {
+                            warn!(?error, "failed to forward native settings close request; leaving the window visible to avoid discarding an unsaved draft");
+                        }
+                    }
+                }
+                "happ-setup" => {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        if let Err(error) = window.emit("happ-setup-close-requested", ()) {
+                            warn!(?error, "failed to forward native Happ setup close request; leaving the window visible to avoid discarding an unsaved draft");
+                        }
+                    }
+                }
+                "debug" => {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        if let Err(error) = window.hide() {
+                            warn!(?error, "failed to hide debug window");
+                        }
                     }
                 }
                 _ => {}
@@ -288,6 +345,7 @@ fn main() {
             client_commands::get_selected_client,
             client_commands::get_selected_client_diagnostics,
             client_commands::get_happ_diagnostics,
+            client_commands::probe_happ_candidate,
             client_commands::open_happ_setup_window,
             client_commands::select_client,
             client_commands::detect_happ_path,

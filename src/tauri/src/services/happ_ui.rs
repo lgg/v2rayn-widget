@@ -311,6 +311,20 @@ mod windows_impl {
         }
     }
 
+    pub fn activate_window(process_id: u32) -> Result<()> {
+        let hwnd = find_happ_window(process_id)
+            .ok_or_else(|| anyhow!("No visible Happ window matched PID {process_id}"))?;
+        let _ = bring_to_front(hwnd);
+        let visible = unsafe { IsWindowVisible(hwnd).as_bool() };
+        let focused = unsafe { SetForegroundWindow(hwnd).as_bool() };
+        if !visible || !focused {
+            return Err(anyhow!(
+                "Windows refused to show or focus the Happ window for PID {process_id}"
+            ));
+        }
+        Ok(())
+    }
+
     pub fn toggle_connection(process_id: Option<u32>) -> Result<HappToggleOutcome> {
         let process_id = process_id.ok_or_else(|| anyhow!("Happ process is not running"))?;
         let hwnd = find_happ_window(process_id)
@@ -634,6 +648,16 @@ pub fn probe(_process_id: Option<u32>) -> HappUiSnapshot {
         note: "Happ UI Automation is only available on Windows".to_owned(),
         ..HappUiSnapshot::default()
     }
+}
+
+#[cfg(target_os = "windows")]
+pub fn activate_window(process_id: u32) -> anyhow::Result<()> {
+    windows_impl::activate_window(process_id)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn activate_window(_process_id: u32) -> anyhow::Result<()> {
+    anyhow::bail!("Happ UI Automation is only available on Windows")
 }
 
 #[cfg(target_os = "windows")]

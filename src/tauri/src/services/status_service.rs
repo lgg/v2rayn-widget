@@ -69,7 +69,7 @@ pub fn resolve_status(inputs: StatusInputs) -> DashboardStatus {
         ConnectionState::Connected => ConnectionState::Connected,
         ConnectionState::Disconnected => ConnectionState::Disconnected,
         ConnectionState::Error => ConnectionState::Error,
-        ConnectionState::Connecting => ConnectionState::Unknown,
+        ConnectionState::Connecting => ConnectionState::Connecting,
         ConnectionState::Unknown => ConnectionState::Unknown,
     };
 
@@ -157,7 +157,7 @@ mod tests {
 
         let resolved = resolve_status(inputs);
         assert_eq!(resolved.connection_state, ConnectionState::Connecting);
-        assert_eq!(resolved.status, ConnectionState::Unknown);
+        assert_eq!(resolved.status, ConnectionState::Connecting);
     }
 
     #[test]

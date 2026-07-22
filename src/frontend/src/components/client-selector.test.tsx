@@ -4,12 +4,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import "@/lib/i18n";
 
-const apiMocks = vi.hoisted(() => ({
-  openHappSetupWindow: vi.fn().mockResolvedValue(undefined)
-}));
-
-vi.mock("@/lib/api", () => apiMocks);
-
 import { ClientSelector } from "@/components/client-selector";
 import type { ClientDescriptor } from "@/lib/types";
 
@@ -67,13 +61,14 @@ describe("ClientSelector", () => {
         clients={clients}
         selectedClientId="v2rayn"
         onSelect={onSelect}
+        onConfigureHapp={() => undefined}
       />
     );
 
     expect(screen.getByRole("option", { name: "v2rayN" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Happ" })).toBeTruthy();
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Proxy client" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Client application" }), {
       target: { value: "happ" }
     });
 
@@ -81,16 +76,18 @@ describe("ClientSelector", () => {
   });
 
   it("opens adapter setup while Happ is selected", () => {
+    const onConfigureHapp = vi.fn();
     render(
       <ClientSelector
         clients={clients}
         selectedClientId="happ"
         onSelect={() => undefined}
+        onConfigureHapp={onConfigureHapp}
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Configure Happ adapter" }));
-    expect(apiMocks.openHappSetupWindow).toHaveBeenCalledTimes(1);
+    expect(onConfigureHapp).toHaveBeenCalledTimes(1);
   });
 
   it("can be disabled while an adapter switch is in progress", () => {
@@ -100,9 +97,10 @@ describe("ClientSelector", () => {
         selectedClientId="v2rayn"
         disabled
         onSelect={() => undefined}
+        onConfigureHapp={() => undefined}
       />
     );
 
-    expect(screen.getByRole("combobox", { name: "Proxy client" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("combobox", { name: "Client application" }).hasAttribute("disabled")).toBe(true);
   });
 });

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings } from "@/lib/types";
 import "@/lib/i18n";
 
+const eventMocks = vi.hoisted(() => ({ listen: vi.fn() }));
 const apiMocks = vi.hoisted(() => ({
   applyUiSettings: vi.fn(),
   closeWindow: vi.fn(),
@@ -17,9 +18,7 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => apiMocks);
 
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn().mockResolvedValue(() => undefined)
-}));
+vi.mock("@tauri-apps/api/event", () => eventMocks);
 
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: vi.fn(() => ({
@@ -62,6 +61,7 @@ const baseSettings: AppSettings = {
 describe("SettingsWindow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    eventMocks.listen.mockResolvedValue(() => undefined);
     apiMocks.getSettings.mockResolvedValue(baseSettings);
     apiMocks.getAvailableLocales.mockResolvedValue([
       { code: "en", label: "English", native_label: "English" }
@@ -109,6 +109,25 @@ describe("SettingsWindow", () => {
       diagnostics_enabled: true,
       diagnostics_url: "https://browserleaks.com/ip"
     });
+  });
+
+  it("warns before native close with unsaved draft settings", async () => {
+    let closeHandler: (() => void) | undefined;
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: () => void) => {
+      if (eventName === "settings-close-requested") {
+        closeHandler = handler;
+      }
+      return () => undefined;
+    });
+
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Autostart with Windows"));
+    closeHandler?.();
+
+    expect(await screen.findByText("Unsaved settings")).not.toBeNull();
+    expect(apiMocks.closeWindow).not.toHaveBeenCalled();
   });
 
   it("warns before closing with unsaved draft settings", async () => {
@@ -186,5 +205,4 @@ describe("SettingsWindow", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Could not save settings");
     expect(apiMocks.closeWindow).not.toHaveBeenCalled();
   });
-
 });

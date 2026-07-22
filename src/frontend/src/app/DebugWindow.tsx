@@ -22,7 +22,11 @@ async function closeDebugWindow(): Promise<void> {
   try {
     await closeWindow("debug");
   } catch {
-    await debugWindow.hide();
+    try {
+      await debugWindow.hide();
+    } catch {
+      // The native close handler remains available if both command paths fail.
+    }
   }
 }
 
@@ -39,6 +43,8 @@ export function DebugWindow(): JSX.Element {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<UiDebugReport | null>(null);
+  const [initialProbePending, setInitialProbePending] = useState(true);
+  const [probeError, setProbeError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [profileNameInput, setProfileNameInput] = useState("");
 
@@ -58,10 +64,14 @@ export function DebugWindow(): JSX.Element {
   const run = async (
     title: string,
     fn: () => Promise<unknown>,
-    options?: { captureSnapshot?: boolean; refreshProbe?: boolean }
-  ): Promise<void> => {
+    options?: { captureSnapshot?: boolean; refreshProbe?: boolean; probeOperation?: boolean }
+  ): Promise<boolean> => {
     setBusy(true);
     const withSnapshot = options?.captureSnapshot ?? true;
+    if (options?.probeOperation) {
+      setProbeError(null);
+      setReport(null);
+    }
 
     try {
       append(`RUN ${title}`);
@@ -79,12 +89,19 @@ export function DebugWindow(): JSX.Element {
       if (options?.refreshProbe) {
         const refreshed = await runUiDebugProbe();
         setReport(refreshed);
+        setProbeError(null);
       }
+      return true;
     } catch (error) {
-      append(`ERR ${title}: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      append(`ERR ${title}: ${message}`);
+      if (options?.probeOperation || options?.refreshProbe) {
+        setProbeError(message.trim() || t("debug.probeFailed"));
+      }
       if (withSnapshot) {
         await captureSnapshot("after_err");
       }
+      return false;
     } finally {
       setBusy(false);
     }
@@ -98,8 +115,8 @@ export function DebugWindow(): JSX.Element {
         setReport(result);
         return "probe complete";
       },
-      { captureSnapshot: true }
-    );
+      { captureSnapshot: true, probeOperation: true }
+    ).finally(() => setInitialProbePending(false));
   }, []);
 
   return (
@@ -107,16 +124,17 @@ export function DebugWindow(): JSX.Element {
       <section className="glass flex h-full flex-col overflow-hidden rounded-3xl border border-white/40 p-4 dark:border-slate-700/80">
         <header className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{t("debug.title")}</h2>
-          <button className="no-drag rounded-lg border px-2 py-1" onClick={() => void closeDebugWindow()}>
+          <button type="button" className="no-drag rounded-lg border px-2 py-1" onClick={() => void closeDebugWindow()}>
             {t("common.close")}
           </button>
         </header>
 
         <div className="no-drag mb-3 grid grid-cols-2 gap-2 text-xs">
-          <button className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("open_v2rayn", openV2RayN)}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("open_v2rayn", openV2RayN)}>
             {t("debug.openV2Rayn")}
           </button>
           <button
+            type="button"
             className="rounded-lg border px-2 py-2"
             disabled={busy}
             onClick={() =>
@@ -127,13 +145,14 @@ export function DebugWindow(): JSX.Element {
                   setReport(result);
                   return result.note;
                 },
-                { captureSnapshot: true }
+                { captureSnapshot: true, probeOperation: true }
               )
             }
           >
             {t("debug.probe")}
           </button>
           <button
+            type="button"
             className="rounded-lg border px-2 py-2"
             disabled={busy}
             onClick={() => void run("click_enable_tun", debugToggleViaUiOnly, { refreshProbe: true })}
@@ -141,6 +160,7 @@ export function DebugWindow(): JSX.Element {
             {t("debug.toggleUiOnly")}
           </button>
           <button
+            type="button"
             className="rounded-lg border px-2 py-2"
             disabled={busy}
             onClick={() => void run("click_reload", debugClickReloadViaUi, { refreshProbe: true })}
@@ -149,6 +169,7 @@ export function DebugWindow(): JSX.Element {
           </button>
           <div className="col-span-2 grid grid-cols-[1fr_auto] gap-2">
             <input
+              aria-label={t("debug.profileNameLabel")}
               className="rounded-lg border bg-transparent px-2 py-2"
               disabled={busy}
               value={profileNameInput}
@@ -156,6 +177,7 @@ export function DebugWindow(): JSX.Element {
               placeholder={t("debug.profileNamePlaceholder")}
             />
             <button
+              type="button"
               className="rounded-lg border px-3 py-2"
               disabled={busy || profileNameInput.trim().length === 0}
               onClick={() =>
@@ -169,23 +191,26 @@ export function DebugWindow(): JSX.Element {
               {t("debug.selectProfileUi")}
             </button>
           </div>
-          <button className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("toggle_config_only", debugToggleViaConfigOnly)}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("toggle_config_only", debugToggleViaConfigOnly)}>
             {t("debug.toggleConfigOnly")}
           </button>
-          <button className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("toggle_full", toggleTunViaUi, { refreshProbe: true })}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("toggle_full", toggleTunViaUi, { refreshProbe: true })}>
             {t("debug.toggleFull")}
           </button>
-          <button className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("refresh", refreshStatus)}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("refresh", refreshStatus)}>
             {t("debug.refresh")}
           </button>
-          <button className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("relaunch_admin", relaunchWidgetAsAdmin, { captureSnapshot: false })}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("relaunch_admin", relaunchWidgetAsAdmin, { captureSnapshot: false })}>
             {t("actions.relaunchAdmin")}
           </button>
         </div>
 
         <div className="no-drag grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-hidden">
-          <section className="overflow-y-auto rounded-xl border bg-white/70 p-3 text-xs dark:bg-slate-900/70">
+          <section aria-live="polite" className="overflow-y-auto rounded-xl border bg-white/70 p-3 text-xs dark:bg-slate-900/70">
             <p className="font-semibold">{t("debug.probeResult")}</p>
+            {probeError && (
+              <p role="alert" className="mt-2 text-rose-600 dark:text-rose-300">{probeError}</p>
+            )}
             {report ? (
               <>
                 <p className="mt-2">window_found: {String(report.window_found)}</p>
@@ -203,45 +228,47 @@ export function DebugWindow(): JSX.Element {
                 <p className="mt-2">note: {report.note}</p>
 
                 <p className="mt-3 font-semibold">tun candidates:</p>
-                <ul className="list-disc pl-4">
-                  {report.tun_candidates.map((item, idx) => (
-                    <li key={`${item}-${idx}`} className="break-all">
-                      {item}
-                    </li>
-                  ))}
-                </ul>
+                {report.tun_candidates.length > 0 ? (
+                  <ul className="list-disc pl-4">
+                    {report.tun_candidates.map((item, idx) => (
+                      <li key={`${item}-${idx}`} className="break-all">{item}</li>
+                    ))}
+                  </ul>
+                ) : <p>{t("common.none")}</p>}
 
                 <p className="mt-3 font-semibold">reload candidates:</p>
-                <ul className="list-disc pl-4">
-                  {report.reload_candidates.map((item, idx) => (
-                    <li key={`${item}-${idx}`} className="break-all">
-                      {item}
-                    </li>
-                  ))}
-                </ul>
+                {report.reload_candidates.length > 0 ? (
+                  <ul className="list-disc pl-4">
+                    {report.reload_candidates.map((item, idx) => (
+                      <li key={`${item}-${idx}`} className="break-all">{item}</li>
+                    ))}
+                  </ul>
+                ) : <p>{t("common.none")}</p>}
 
                 <p className="mt-3 font-semibold">UIA dump ({report.uia_nodes.length}):</p>
-                <ul className="list-disc pl-4">
-                  {report.uia_nodes.map((item, idx) => (
-                    <li key={`${item.automation_id ?? "-"}-${idx}`} className="break-all">
-                      {`${item.control_type} | ${item.name ?? "-"} | id=${item.automation_id ?? "-"} | class=${item.class_name ?? "-"} | bounds=${item.bounds ?? "-"}`}
-                    </li>
-                  ))}
-                </ul>
+                {report.uia_nodes.length > 0 ? (
+                  <ul className="list-disc pl-4">
+                    {report.uia_nodes.map((item, idx) => (
+                      <li key={`${item.automation_id ?? "-"}-${idx}`} className="break-all">
+                        {`${item.control_type} | ${item.name ?? "-"} | id=${item.automation_id ?? "-"} | class=${item.class_name ?? "-"} | bounds=${item.bounds ?? "-"}`}
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p>{t("common.none")}</p>}
               </>
+            ) : initialProbePending ? (
+              <p role="status" className="mt-2">{t("common.loading")}</p>
             ) : (
-              <p className="mt-2">{t("common.loading")}</p>
+              <p className="mt-2">{t("debug.noProbeResult")}</p>
             )}
           </section>
 
-          <section className="overflow-y-auto rounded-xl border bg-white/70 p-3 text-xs dark:bg-slate-900/70">
+          <section aria-live="polite" className="overflow-y-auto rounded-xl border bg-white/70 p-3 text-xs dark:bg-slate-900/70">
             <p className="font-semibold">{t("debug.log")}</p>
             <div className="mt-2 space-y-1 font-mono">
-              {log.map((line, idx) => (
-                <p key={`${line}-${idx}`} className="break-all">
-                  {line}
-                </p>
-              ))}
+              {log.length > 0 ? log.map((line, idx) => (
+                <p key={`${line}-${idx}`} className="break-all">{line}</p>
+              )) : <p>{t("common.none")}</p>}
             </div>
           </section>
         </div>
@@ -249,6 +276,3 @@ export function DebugWindow(): JSX.Element {
     </main>
   );
 }
-
-
-

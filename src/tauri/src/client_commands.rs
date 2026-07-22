@@ -46,12 +46,33 @@ pub async fn get_happ_diagnostics(state: State<'_, AppState>) -> Result<ClientDi
 }
 
 #[tauri::command]
+pub async fn probe_happ_candidate(
+    path: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ClientDiagnostics, String> {
+    let mut settings = state.snapshot().settings;
+    settings.happ_path = match path.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(value) => {
+            let validation = validate_happ_path_value(value)?;
+            if !validation.is_valid {
+                return Err(validation.message_key);
+            }
+            Some(validation.normalized_path)
+        }
+    };
+
+    let _happ_operation = state.lock_happ_operation().await;
+    Ok(happ::diagnostics(&settings))
+}
+
+#[tauri::command]
 pub async fn open_happ_setup_window(app: AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("happ-setup")
         .ok_or_else(|| "Happ setup window is not registered".to_owned())?;
     window.show().map_err(|error| error.to_string())?;
-    let _ = window.unminimize();
+    window.unminimize().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -80,8 +101,8 @@ pub async fn select_client(
 
 #[tauri::command]
 pub async fn detect_happ_path(state: State<'_, AppState>) -> Result<Option<String>, String> {
-    Ok(happ::detect_executable(&state.snapshot().settings)
-        .map(|path| path.to_string_lossy().to_string()))
+    let _happ_operation = state.lock_happ_operation().await;
+    Ok(happ::detect_available_executable().map(|path| path.to_string_lossy().to_string()))
 }
 
 #[tauri::command]
@@ -95,6 +116,7 @@ pub async fn update_happ_settings(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AppSettings, String> {
+    let _happ_operation = state.lock_happ_operation().await;
     let _settings_update = state.lock_settings_update();
     let snapshot = state.snapshot();
     let mut settings = snapshot.settings.clone();

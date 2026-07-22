@@ -5,16 +5,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings, ClientDiagnostics } from "@/lib/types";
 import "@/lib/i18n";
 
+const eventMocks = vi.hoisted(() => ({ listen: vi.fn() }));
+const windowMocks = vi.hoisted(() => ({ hide: vi.fn() }));
 const apiMocks = vi.hoisted(() => ({
   closeWindow: vi.fn(),
   detectHappPath: vi.fn(),
-  getHappDiagnostics: vi.fn(),
   getSettings: vi.fn(),
+  probeHappCandidate: vi.fn(),
   updateHappSettings: vi.fn(),
   validateHappPath: vi.fn()
 }));
 
 vi.mock("@/lib/api", () => apiMocks);
+vi.mock("@tauri-apps/api/event", () => eventMocks);
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ hide: windowMocks.hide })
+}));
 
 import { HappSetupWindow } from "@/app/HappSetupWindow";
 
@@ -67,6 +73,8 @@ const diagnostics: ClientDiagnostics = {
 describe("HappSetupWindow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    eventMocks.listen.mockResolvedValue(() => undefined);
+    apiMocks.closeWindow.mockResolvedValue(undefined);
     apiMocks.getSettings.mockResolvedValue(settings);
     apiMocks.validateHappPath.mockResolvedValue({
       is_valid: true,
@@ -77,10 +85,10 @@ describe("HappSetupWindow", () => {
       ...settings,
       ...payload
     }));
-    apiMocks.getHappDiagnostics.mockResolvedValue(diagnostics);
+    apiMocks.probeHappCandidate.mockResolvedValue(diagnostics);
   });
 
-  it("persists explicit experimental control consent", async () => {
+  it("probes and persists explicit experimental control consent for the current candidate", async () => {
     render(<HappSetupWindow />);
     await screen.findByRole("heading", { name: "Happ adapter setup" });
 
@@ -89,6 +97,8 @@ describe("HappSetupWindow", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Run Happ probe" }));
     await screen.findByText("Probe complete");
+    expect(apiMocks.probeHappCandidate).toHaveBeenCalledWith("C:\\Happ\\Happ.exe");
+
     fireEvent.click(screen.getByLabelText(/I understand and enable/));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -119,5 +129,31 @@ describe("HappSetupWindow", () => {
     expect(actionRow).toBeTruthy();
     expect(scoreRow).toBeTruthy();
     expect(screen.getByText("Probe complete")).toBeTruthy();
+  });
+
+  it("warns before native close when the setup draft changed", async () => {
+    let closeHandler: (() => void) | undefined;
+    eventMocks.listen.mockImplementation(async (_event: string, handler: () => void) => {
+      closeHandler = handler;
+      return () => undefined;
+    });
+
+    render(<HappSetupWindow />);
+    await screen.findByRole("heading", { name: "Happ adapter setup" });
+    fireEvent.change(screen.getByLabelText("Executable path"), {
+      target: { value: "C:\\Happ\\Happ.exe" }
+    });
+
+    closeHandler?.();
+    expect(await screen.findByText("Unsaved settings")).toBeTruthy();
+    expect(apiMocks.closeWindow).not.toHaveBeenCalled();
+  });
+
+  it("leaves loading and shows an error when settings cannot load", async () => {
+    apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
+    render(<HappSetupWindow />);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("disk failure");
+    expect(screen.queryByText("Loading...")).toBeNull();
   });
 });

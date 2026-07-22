@@ -1,5 +1,4 @@
 use std::{
-    net::IpAddr,
     path::{Path, PathBuf},
     process::Command,
     time::{Duration, Instant},
@@ -18,8 +17,7 @@ use crate::{
         path_validation::PathValidation,
         profile::ProfileSummary,
         settings::{
-            default_connectivity_endpoints, default_diagnostics_url, default_ip_endpoints,
-            AppSettings, LatencyMode, UiSettingsPatch, V2RayNPathMode,
+            default_diagnostics_url, AppSettings, LatencyMode, UiSettingsPatch, V2RayNPathMode,
         },
         status::{ConnectionState, DashboardStatus},
     },
@@ -31,7 +29,14 @@ use crate::{
         ui_controller,
     },
     state::app_state::AppState,
-    utils::{app_paths, autostart, settings_store},
+    utils::{
+        app_paths, autostart,
+        settings_normalization::{
+            normalize_diagnostics_url, normalize_endpoint_list, normalize_optional_path,
+            normalize_settings,
+        },
+        settings_store,
+    },
 };
 
 const UIPI_MISMATCH_PREFIX: &str = "UIPI_MISMATCH";
@@ -466,16 +471,23 @@ pub async fn update_settings(
     let _settings_update = state.lock_settings_update();
     let snapshot = state.snapshot();
     let settings = merge_general_settings_payload(payload, &snapshot.settings);
-    let status = if settings.mock_mode_enabled {
-        build_mock_status(&snapshot.status, &settings, None, None)
+    let status = if snapshot.settings.mock_mode_enabled != settings.mock_mode_enabled {
+        if settings.mock_mode_enabled {
+            build_mock_status(&snapshot.status, &settings, None, None)
+        } else {
+            DashboardStatus::default()
+        }
     } else {
         snapshot.status
     };
 
-    settings_store::save_settings(&settings).map_err(|error| error.to_string())?;
+    apply_runtime_settings_delta(&app, &snapshot.settings, &settings)?;
+    if let Err(error) = settings_store::save_settings(&settings) {
+        rollback_runtime_settings_delta(&app, &settings, &snapshot.settings);
+        return Err(error.to_string());
+    }
     state.replace_settings_and_status_invalidating_context(settings.clone(), status);
 
-    apply_runtime_settings(&app, &settings);
     emit_settings_updated(&app, &settings);
 
     Ok(settings)
@@ -489,9 +501,10 @@ pub async fn apply_ui_settings(
 ) -> Result<AppSettings, String> {
     let _settings_update = state.lock_settings_update();
     let snapshot = state.snapshot();
-    let previous_mock_mode = snapshot.settings.mock_mode_enabled;
+    let previous_settings = snapshot.settings;
+    let previous_mock_mode = previous_settings.mock_mode_enabled;
     let previous_status = snapshot.status;
-    let mut merged = snapshot.settings;
+    let mut merged = previous_settings.clone();
 
     if let Some(value) = payload.language {
         merged.language = value;
@@ -534,7 +547,11 @@ pub async fn apply_ui_settings(
     }
     let settings = normalize_settings(merged);
 
-    settings_store::save_settings(&settings).map_err(|error| error.to_string())?;
+    apply_runtime_settings_delta(&app, &previous_settings, &settings)?;
+    if let Err(error) = settings_store::save_settings(&settings) {
+        rollback_runtime_settings_delta(&app, &settings, &previous_settings);
+        return Err(error.to_string());
+    }
     if previous_mock_mode != settings.mock_mode_enabled {
         let status = if settings.mock_mode_enabled {
             build_mock_status(&previous_status, &settings, None, None)
@@ -546,7 +563,6 @@ pub async fn apply_ui_settings(
         state.update_settings(settings.clone());
     }
 
-    apply_runtime_settings(&app, &settings);
     emit_settings_updated(&app, &settings);
 
     Ok(settings)
@@ -578,9 +594,9 @@ pub async fn open_diagnostics_window(
 
     if let Some(window) = app.get_webview_window("diagnostics") {
         window.navigate(url).map_err(|error| error.to_string())?;
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+        window.show().map_err(|error| error.to_string())?;
+        window.unminimize().map_err(|error| error.to_string())?;
+        window.set_focus().map_err(|error| error.to_string())?;
         return Ok(());
     }
 
@@ -590,6 +606,7 @@ pub async fn open_diagnostics_window(
         .min_inner_size(760.0, 520.0)
         .resizable(true)
         .decorations(true)
+        .always_on_top(settings.always_on_top)
         .visible(true)
         .build()
         .map_err(|error| error.to_string())?;
@@ -789,6 +806,15 @@ pub async fn list_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileSumm
 
 #[tauri::command]
 pub async fn close_window(label: String, app: AppHandle) -> Result<(), String> {
+    if !matches!(
+        label.as_str(),
+        "main" | "settings" | "debug" | "happ-setup" | "diagnostics"
+    ) {
+        return Err(format!(
+            "Window cannot be hidden through this command: {label}"
+        ));
+    }
+
     let window = app
         .get_webview_window(&label)
         .ok_or_else(|| format!("Window not found: {label}"))?;
@@ -797,9 +823,9 @@ pub async fn close_window(label: String, app: AppHandle) -> Result<(), String> {
 
     if label != "main" {
         if let Some(main) = app.get_webview_window("main") {
-            let _ = main.show();
-            let _ = main.unminimize();
-            let _ = main.set_focus();
+            main.show().map_err(|error| error.to_string())?;
+            main.unminimize().map_err(|error| error.to_string())?;
+            main.set_focus().map_err(|error| error.to_string())?;
         }
     }
 
@@ -938,13 +964,13 @@ fn detect_v2rayn_path_best_effort() -> Option<PathBuf> {
 
 pub(crate) fn resolve_v2rayn_base_path(settings: &AppSettings) -> Option<PathBuf> {
     match settings.v2rayn_path_mode {
-        V2RayNPathMode::Manual => normalize_manual_path(settings.v2rayn_path.clone())
+        V2RayNPathMode::Manual => normalize_optional_path(settings.v2rayn_path.clone())
             .map(PathBuf::from)
             .filter(|path| app_paths::is_valid_v2rayn_path(path)),
         V2RayNPathMode::Auto => detect_v2rayn_path_best_effort(),
     }
     .or_else(|| {
-        normalize_manual_path(settings.v2rayn_path.clone())
+        normalize_optional_path(settings.v2rayn_path.clone())
             .as_deref()
             .map(Path::new)
             .filter(|path| app_paths::is_valid_v2rayn_path(path))
@@ -963,98 +989,6 @@ fn merge_general_settings_payload(payload: AppSettings, current: &AppSettings) -
     settings.happ_allow_ui_automation = current.happ_allow_ui_automation;
     settings.window_position = current.window_position.clone();
     settings
-}
-
-fn normalize_settings(mut settings: AppSettings) -> AppSettings {
-    settings.poll_interval_sec = settings.poll_interval_sec.clamp(1, 3600);
-    settings.window_opacity_percent = settings.window_opacity_percent.clamp(10, 100);
-    settings.v2rayn_path = normalize_manual_path(settings.v2rayn_path);
-    settings.happ_path = normalize_manual_path(settings.happ_path);
-    settings.diagnostics_url = normalize_diagnostics_url(&settings.diagnostics_url)
-        .map(|url| url.to_string())
-        .unwrap_or_else(default_diagnostics_url);
-
-    settings.connectivity_endpoints = normalize_endpoint_list(
-        settings.connectivity_endpoints,
-        default_connectivity_endpoints(),
-    );
-
-    settings.ip_endpoints = normalize_endpoint_list(settings.ip_endpoints, default_ip_endpoints());
-
-    settings
-}
-
-fn normalize_diagnostics_url(value: &str) -> Option<Url> {
-    let trimmed = value.trim();
-    let candidate = if trimmed.is_empty() {
-        default_diagnostics_url()
-    } else if trimmed.contains("://") {
-        trimmed.to_owned()
-    } else {
-        format!("https://{trimmed}")
-    };
-
-    let url = Url::parse(&candidate).ok()?;
-    match url.scheme() {
-        "http" | "https" if url.host_str().is_some() => Some(url),
-        _ => None,
-    }
-}
-
-fn normalize_manual_path(value: Option<String>) -> Option<String> {
-    value
-        .map(|path| path.trim().to_owned())
-        .filter(|path| !path.is_empty())
-}
-
-fn normalize_endpoint_list(values: Vec<String>, fallback: Vec<String>) -> Vec<String> {
-    let filtered = values
-        .into_iter()
-        .map(|value| value.trim().to_owned())
-        .filter(|value| is_allowed_http_endpoint(value))
-        .collect::<Vec<_>>();
-
-    if filtered.is_empty() {
-        fallback
-    } else {
-        filtered
-    }
-}
-
-fn is_allowed_http_endpoint(value: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(value) else {
-        return false;
-    };
-
-    if !matches!(url.scheme(), "http" | "https") {
-        return false;
-    }
-
-    let Some(host) = url.host_str() else {
-        return false;
-    };
-
-    is_allowed_endpoint_host(host)
-}
-
-fn is_allowed_endpoint_host(host: &str) -> bool {
-    let host = host.trim().trim_matches(['[', ']']).to_lowercase();
-    if host.is_empty()
-        || host == "localhost"
-        || host.ends_with(".localhost")
-        || host.ends_with(".local")
-        || host.ends_with(".lan")
-        || host.ends_with(".internal")
-        || host.ends_with(".home.arpa")
-        || host.ends_with(".test")
-        || host.ends_with(".invalid")
-    {
-        return false;
-    }
-
-    host.parse::<IpAddr>()
-        .map(health_check::is_public_endpoint_ip)
-        .unwrap_or(true)
 }
 
 fn profile_name_matches(current: Option<&str>, expected: &str) -> bool {
@@ -1314,16 +1248,62 @@ async fn wait_for_v2rayn_running_state(
     }
 }
 
-fn apply_runtime_settings(app: &AppHandle, settings: &AppSettings) {
-    for label in ["main", "settings", "debug", "happ-setup"] {
-        if let Some(window) = app.get_webview_window(label) {
-            let _ = window.set_always_on_top(settings.always_on_top);
+fn apply_runtime_settings_delta(
+    app: &AppHandle,
+    previous: &AppSettings,
+    next: &AppSettings,
+) -> Result<(), String> {
+    let always_on_top_changed = previous.always_on_top != next.always_on_top;
+    let autostart_changed = previous.autostart_with_windows != next.autostart_with_windows;
+
+    if always_on_top_changed {
+        set_all_windows_always_on_top(app, next.always_on_top).map_err(|error| {
+            let _ = set_all_windows_always_on_top(app, previous.always_on_top);
+            error
+        })?;
+    }
+
+    if autostart_changed {
+        if let Err(error) = autostart::apply_autostart(next.autostart_with_windows) {
+            if always_on_top_changed {
+                let _ = set_all_windows_always_on_top(app, previous.always_on_top);
+            }
+            return Err(error.to_string());
         }
     }
 
-    if let Err(error) = autostart::apply_autostart(settings.autostart_with_windows) {
-        warn!(?error, "failed to apply autostart setting");
+    Ok(())
+}
+
+fn rollback_runtime_settings_delta(app: &AppHandle, applied: &AppSettings, previous: &AppSettings) {
+    if applied.always_on_top != previous.always_on_top {
+        if let Err(error) = set_all_windows_always_on_top(app, previous.always_on_top) {
+            warn!(
+                ?error,
+                "failed to roll back always-on-top after settings persistence failure"
+            );
+        }
     }
+
+    if applied.autostart_with_windows != previous.autostart_with_windows {
+        if let Err(error) = autostart::apply_autostart(previous.autostart_with_windows) {
+            warn!(
+                ?error,
+                "failed to roll back autostart after settings persistence failure"
+            );
+        }
+    }
+}
+
+fn set_all_windows_always_on_top(app: &AppHandle, value: bool) -> Result<(), String> {
+    for label in ["main", "settings", "debug", "happ-setup", "diagnostics"] {
+        if let Some(window) = app.get_webview_window(label) {
+            window.set_always_on_top(value).map_err(|error| {
+                format!("Could not update always-on-top for window '{label}': {error}")
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn emit_settings_updated(app: &AppHandle, settings: &AppSettings) {
@@ -1337,9 +1317,9 @@ fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
         .get_webview_window(label)
         .ok_or_else(|| format!("Window not found: {label}"))?;
 
-    let _ = window.show();
-    let _ = window.unminimize();
-    let _ = window.set_focus();
+    window.show().map_err(|error| error.to_string())?;
+    window.unminimize().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())?;
 
     Ok(())
 }

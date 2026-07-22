@@ -2,11 +2,10 @@ use std::{fs, sync::Mutex};
 
 use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
+use tracing::warn;
 
-use crate::models::settings::{
-    default_connectivity_endpoints, default_diagnostics_url, default_ip_endpoints, AppSettings,
-};
-use crate::utils::{app_paths, file_store, locale};
+use crate::models::settings::AppSettings;
+use crate::utils::{app_paths, file_store, locale, settings_normalization};
 
 static SETTINGS_WRITE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
@@ -28,44 +27,21 @@ pub fn load_settings() -> Result<AppSettings> {
     })
     .with_context(|| format!("Failed to read valid settings file: {}", path.display()))?;
 
-    let mut parsed: AppSettings = serde_json::from_str(&content)
+    let parsed: AppSettings = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse settings JSON: {}", path.display()))?;
+    let normalized = settings_normalization::normalize_settings(parsed.clone());
 
-    if parsed.language.trim().is_empty() {
-        parsed.language = locale::detect_default_language();
+    if normalized != parsed {
+        if let Err(error) = save_settings(&normalized) {
+            warn!(
+                ?error,
+                path = %path.display(),
+                "loaded settings were normalized in memory but could not be persisted"
+            );
+        }
     }
 
-    if parsed.poll_interval_sec == 0 {
-        parsed.poll_interval_sec = 10;
-    }
-
-    parsed.window_opacity_percent = parsed.window_opacity_percent.clamp(10, 100);
-
-    if parsed.diagnostics_url.trim().is_empty() {
-        parsed.diagnostics_url = default_diagnostics_url();
-    } else {
-        parsed.diagnostics_url = parsed.diagnostics_url.trim().to_owned();
-    }
-
-    parsed.v2rayn_path = parsed
-        .v2rayn_path
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty());
-
-    parsed.happ_path = parsed
-        .happ_path
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty());
-
-    if parsed.connectivity_endpoints.is_empty() {
-        parsed.connectivity_endpoints = default_connectivity_endpoints();
-    }
-
-    if parsed.ip_endpoints.is_empty() {
-        parsed.ip_endpoints = default_ip_endpoints();
-    }
-
-    Ok(parsed)
+    Ok(normalized)
 }
 
 pub fn save_settings(settings: &AppSettings) -> Result<()> {

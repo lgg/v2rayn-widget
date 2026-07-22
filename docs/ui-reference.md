@@ -2,59 +2,63 @@
 
 ## Style direction
 
-- compact floating utility card,
-- rounded corners,
-- soft translucent panel,
-- dark/light themes,
-- minimal chrome.
+- compact floating utility card;
+- rounded translucent surfaces;
+- dark/light themes;
+- minimal native chrome;
+- all interactive controls remain keyboard reachable.
 
-## Window layout
+## Main widget
 
-Top zone:
-- profile selector block (optional, can be hidden),
-- settings button.
+Top:
+- labelled client selector;
+- direct Happ Setup action when Happ is selected;
+- optional labelled profile selector;
+- Settings button.
 
 Center:
-- status chip,
-- large circular connect/toggle button.
+- status chip announced as live status;
+- connect/toggle button disabled while an action or `Connecting` state is active;
+- capability explanation when control is unavailable.
 
 Bottom:
-- info panel (connection + optional external IP + optional latency + live clock),
-- optional action row (`refresh`, `open`, `copy`) below info panel.
+- optional status/clock/IP/latency panel;
+- optional action row (`refresh`, `open`, `copy`, diagnostics);
+- transient notices announced as status or alert.
 
-## Settings panel
+Bootstrap failure replaces the loading state with an explicit error and Retry action.
 
-- full-height overlay panel,
-- internal scroll area,
-- sticky footer actions,
-- all user-configurable options in one place.
+## Settings window
 
-Mandatory options:
-- language,
-- theme,
-- always-on-top,
-- autostart,
-- poll interval,
-- time format,
-- profile selector visibility,
-- action buttons visibility,
-- external IP visibility,
-- latency visibility and source,
-- endpoints,
-- v2rayN path controls,
-- transparency effect toggle,
-- opacity slider,
-- about/version/github placeholder.
+- internal scroll area and persistent save footer;
+- native-close requests use the same unsaved-draft confirmation as the visible close button;
+- live visual settings are serialized and reconciled with authoritative backend state on failure;
+- draft-only application/network/path settings save atomically;
+- v2rayN auto/manual path inputs form one keyboard radio group;
+- load and save failures remain visible instead of closing the window.
 
-## UX behavior
+## Happ Setup window
 
-- window draggable on non-interactive areas,
-- close hides to tray,
-- errors shown as styled transient notice (no raw technical line),
-- background polling should not visibly pulse main controls.
+- automatic or explicit executable path;
+- probe runs against the unsaved candidate currently displayed;
+- experimental control cannot be enabled without a successful candidate probe;
+- process/window/action/transport diagnostics are redacted;
+- native and visible close actions protect an unsaved draft;
+- stale configured paths do not prevent discovery, while operational commands remain fail-closed to the configured installation.
 
-## Localization
+## Debug Tools window
 
-- all user-facing strings via i18n keys,
-- locale JSON files under `src/frontend/src/locales`,
-- default locales: `en`, `ru`.
+- explicit initial-probe loading and failure states;
+- failed probes clear stale successful results;
+- controls are disabled while an operation is active;
+- runtime log and redacted probe details scroll independently;
+- minimum window dimensions preserve a usable two-column layout.
+
+## Shared behavior
+
+- window draggable only on non-interactive regions;
+- close hides to tray instead of exiting;
+- asynchronous Tauri listener registration is safely disposed after unmount;
+- document language metadata follows EN/RU switching;
+- hidden clock UI does not retain a background one-second timer;
+- all user-facing frontend strings use locale JSON keys.

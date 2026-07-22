@@ -27,6 +27,14 @@ export function detectInitialLanguage(): string {
   return "en";
 }
 
+
+function applyDocumentLanguage(language: string): void {
+  document.documentElement.lang = language.toLowerCase().startsWith("ru") ? "ru" : "en";
+}
+
+applyDocumentLanguage(detectInitialLanguage());
+i18n.on("languageChanged", applyDocumentLanguage);
+
 void i18n.use(initReactI18next).init({
   resources,
   lng: detectInitialLanguage(),

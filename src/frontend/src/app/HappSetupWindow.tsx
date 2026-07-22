@@ -1,14 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AlertTriangle, CheckCircle2, FolderSearch, RefreshCcw, Save, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   closeWindow,
   detectHappPath,
-  getHappDiagnostics,
+  probeHappCandidate,
   getSettings,
   updateHappSettings,
   validateHappPath
 } from "@/lib/api";
+import { bindTauriListener } from "@/lib/tauri-listener";
 import type { AppSettings, ClientDiagnostics, StatusLevel, TransportMode } from "@/lib/types";
 
 function backendMessage(cause: unknown, fallback: string, translate: (key: string) => string): string {
@@ -30,6 +32,24 @@ function transportLabel(value: TransportMode, translate: (key: string) => string
   return translate(`transport.${value}`);
 }
 
+const happSetupWindow = getCurrentWindow();
+
+async function closeHappSetupWindow(): Promise<void> {
+  try {
+    await closeWindow("happ-setup");
+  } catch {
+    try {
+      await happSetupWindow.hide();
+    } catch {
+      // The native close handler remains available if both command paths fail.
+    }
+  }
+}
+
+function candidateKey(value: string | null | undefined): string {
+  return (value ?? "").trim().replaceAll("/", "\\").toLowerCase();
+}
+
 export function HappSetupWindow(): JSX.Element {
   const { t } = useTranslation();
   const translate = (key: string): string => t(key);
@@ -41,6 +61,9 @@ export function HappSetupWindow(): JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [probedCandidate, setProbedCandidate] = useState<string | null>(null);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+  const dirtyRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -69,10 +92,28 @@ export function HappSetupWindow(): JSX.Element {
     };
   }, [t]);
 
+  const dirty = settings !== null
+    && (candidateKey(path) !== candidateKey(settings.happ_path)
+      || allowUiAutomation !== settings.happ_allow_ui_automation);
+  dirtyRef.current = dirty;
+
+  useEffect(
+    () =>
+      bindTauriListener("happ-setup-close-requested", () => {
+        if (dirtyRef.current) {
+          setConfirmDiscardOpen(true);
+        } else {
+          void closeHappSetupWindow();
+        }
+      }),
+    [],
+  );
+
   const probeReady = diagnostics?.application_running === true
     && diagnostics.window_found
     && diagnostics.action_label !== null
-    && diagnostics.action_score !== null;
+    && diagnostics.action_score !== null
+    && probedCandidate === candidateKey(path);
 
   const detectPath = async (): Promise<void> => {
     setBusy(true);
@@ -83,6 +124,7 @@ export function HappSetupWindow(): JSX.Element {
       const detected = await detectHappPath();
       if (detected) {
         setPath(detected);
+        setProbedCandidate(null);
         setMessage(t("happSetup.pathDetected"));
       } else {
         setError(t("happSetup.pathNotDetected"));
@@ -100,7 +142,8 @@ export function HappSetupWindow(): JSX.Element {
     }
 
     const controlRequiresProbe = allowUiAutomation
-      && (!settings.happ_allow_ui_automation || path.trim() !== (settings.happ_path ?? ""));
+      && (!settings.happ_allow_ui_automation
+        || candidateKey(path) !== candidateKey(settings.happ_path));
     if (controlRequiresProbe && !probeReady) {
       setError(t("happSetup.probeRequired"));
       return;
@@ -128,6 +171,8 @@ export function HappSetupWindow(): JSX.Element {
       setSettings(saved);
       setPath(saved.happ_path ?? "");
       setAllowUiAutomation(saved.happ_allow_ui_automation);
+      setProbedCandidate(null);
+      setConfirmDiscardOpen(false);
       setMessage(t("happSetup.saved"));
     } catch (cause) {
       setError(backendMessage(cause, t("errors.settingsSaveFailed"), translate));
@@ -141,22 +186,51 @@ export function HappSetupWindow(): JSX.Element {
     setError(null);
     setMessage(null);
     try {
-      const result = await getHappDiagnostics();
+      const trimmed = path.trim();
+      let normalizedPath: string | null = null;
+      if (trimmed.length > 0) {
+        const validation = await validateHappPath(trimmed);
+        if (!validation.is_valid) {
+          setDiagnostics(null);
+          setProbedCandidate(null);
+          setError(t(validation.message_key));
+          return;
+        }
+        normalizedPath = validation.normalized_path;
+        setPath(normalizedPath);
+      }
+
+      const result = await probeHappCandidate(normalizedPath);
       setDiagnostics(result);
+      setProbedCandidate(candidateKey(normalizedPath));
       if (result.action_label === null || result.action_score === null) {
         setError(t("happSetup.probeNoAction"));
       }
     } catch (cause) {
       setDiagnostics(null);
+      setProbedCandidate(null);
       setError(backendMessage(cause, t("happSetup.probeFailed"), translate));
     } finally {
       setBusy(false);
     }
   };
 
+  const requestClose = async (): Promise<void> => {
+    if (dirtyRef.current) {
+      setConfirmDiscardOpen(true);
+      return;
+    }
+    await closeHappSetupWindow();
+  };
+
+  const discardAndClose = async (): Promise<void> => {
+    setConfirmDiscardOpen(false);
+    await closeHappSetupWindow();
+  };
+
   if (loading) {
     return (
-      <main className="drag-region flex h-full items-center justify-center text-sm text-muted">
+      <main className="drag-region flex h-full items-center justify-center text-sm text-muted" role="status">
         {t("common.loading")}
       </main>
     );
@@ -166,8 +240,8 @@ export function HappSetupWindow(): JSX.Element {
     return (
       <main data-tauri-drag-region className="drag-region h-full p-4">
         <section className="glass flex h-full flex-col items-center justify-center gap-4 rounded-3xl border p-5 text-center">
-          <p className="text-sm text-rose-300">{error ?? t("happSetup.loadFailed")}</p>
-          <button type="button" className="no-drag rounded-lg border px-3 py-2" onClick={() => void closeWindow("happ-setup")}>{t("common.close")}</button>
+          <p role="alert" className="text-sm text-rose-300">{error ?? t("happSetup.loadFailed")}</p>
+          <button type="button" className="no-drag rounded-lg border px-3 py-2" onClick={() => void requestClose()}>{t("common.close")}</button>
         </section>
       </main>
     );
@@ -185,23 +259,38 @@ export function HappSetupWindow(): JSX.Element {
             type="button"
             aria-label={t("common.close")}
             className="no-drag rounded-lg p-2 hover:bg-white/50 dark:hover:bg-slate-800"
-            onClick={() => void closeWindow("happ-setup")}
+            onClick={() => void requestClose()}
           >
             <X className="h-4 w-4" />
           </button>
         </header>
 
         <div className="no-drag min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 text-sm">
+          {confirmDiscardOpen && (
+            <section role="alert" className="rounded-xl border border-amber-300 bg-amber-50/90 p-3 text-sm text-amber-950 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-100">
+              <p className="font-medium">{t("settings.unsavedTitle")}</p>
+              <p className="mt-1 text-xs">{t("settings.unsavedMessage")}</p>
+              <div className="mt-3 flex justify-end gap-2">
+                <button type="button" className="rounded-lg border px-2 py-1 text-xs" onClick={() => setConfirmDiscardOpen(false)}>
+                  {t("settings.keepEditing")}
+                </button>
+                <button type="button" className="rounded-lg bg-amber-600 px-2 py-1 text-xs font-medium text-white" onClick={() => void discardAndClose()}>
+                  {t("settings.discardChanges")}
+                </button>
+              </div>
+            </section>
+          )}
           <fieldset className="space-y-3 rounded-xl border bg-white/70 p-3 dark:bg-slate-900/70">
             <legend className="px-1 font-medium text-muted">{t("happSetup.executable")}</legend>
             <input
               aria-label={t("happSetup.pathLabel")}
               className="w-full rounded-xl border bg-white/90 px-3 py-2 dark:bg-slate-900/90"
               value={path}
-              placeholder="C:\\Path\\To\\Happ.exe"
+              placeholder={t("happSetup.pathPlaceholder")}
               onChange={(event) => {
                 setPath(event.target.value);
                 setDiagnostics(null);
+                setProbedCandidate(null);
                 if (!settings.happ_allow_ui_automation) {
                   setAllowUiAutomation(false);
                 }
@@ -224,6 +313,7 @@ export function HappSetupWindow(): JSX.Element {
                 onClick={() => {
                   setPath("");
                   setDiagnostics(null);
+                  setProbedCandidate(null);
                   if (!settings.happ_allow_ui_automation) {
                     setAllowUiAutomation(false);
                   }
@@ -292,13 +382,13 @@ export function HappSetupWindow(): JSX.Element {
           </fieldset>
 
           {message && (
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-400/50 bg-emerald-500/10 p-3 text-xs">
+            <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-400/50 bg-emerald-500/10 p-3 text-xs">
               <CheckCircle2 className="h-4 w-4" />
               {message}
             </div>
           )}
           {error && (
-            <div className="rounded-xl border border-rose-400/50 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-200">
+            <div role="alert" className="rounded-xl border border-rose-400/50 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-200">
               {error}
             </div>
           )}
@@ -307,7 +397,7 @@ export function HappSetupWindow(): JSX.Element {
         <footer className="no-drag mt-3">
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || !dirty}
             className="w-full rounded-xl bg-accent px-3 py-2 font-medium text-white disabled:opacity-60"
             onClick={() => void save()}
           >

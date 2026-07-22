@@ -83,6 +83,11 @@ impl ProxyClientAdapter for RegisteredAdapter {
                 RefreshKind::PostRoute => v2rayn::refresh_post_route(state).await,
             },
             Self::Happ => {
+                let requested = state.snapshot();
+                let _happ_operation = state.lock_happ_operation().await;
+                if !state.context_matches(ProxyClientId::Happ, requested.client_epoch) {
+                    return Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed before the Happ operation started".to_owned());
+                }
                 let snapshot = state.snapshot();
                 let (latency, external_ip, force_full) = match kind {
                     RefreshKind::Foreground => (true, true, false),
@@ -111,6 +116,11 @@ impl ProxyClientAdapter for RegisteredAdapter {
         match self {
             Self::V2rayn => v2rayn::toggle(state).await,
             Self::Happ => {
+                let requested = state.snapshot();
+                let _happ_operation = state.lock_happ_operation().await;
+                if !state.context_matches(ProxyClientId::Happ, requested.client_epoch) {
+                    return Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed before the Happ operation started".to_owned());
+                }
                 let snapshot = state.snapshot();
                 let status = happ::toggle(&snapshot.settings).await?;
                 if state.update_status_if_context(
@@ -147,13 +157,23 @@ impl ProxyClientAdapter for RegisteredAdapter {
     async fn open(&self, state: State<'_, AppState>) -> Result<(), String> {
         match self {
             Self::V2rayn => v2rayn::open(state).await,
-            Self::Happ => happ::open(&state.snapshot().settings),
+            Self::Happ => {
+                let requested = state.snapshot();
+                let _happ_operation = state.lock_happ_operation().await;
+                if !state.context_matches(ProxyClientId::Happ, requested.client_epoch) {
+                    return Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed before the Happ operation started".to_owned());
+                }
+                happ::open(&state.snapshot().settings)
+            }
         }
     }
 
     async fn diagnostics(&self, state: State<'_, AppState>) -> Result<ClientDiagnostics, String> {
         match self {
-            Self::Happ => Ok(happ::diagnostics(&state.snapshot().settings)),
+            Self::Happ => {
+                let _happ_operation = state.lock_happ_operation().await;
+                Ok(happ::diagnostics(&state.snapshot().settings))
+            }
             Self::V2rayn => {
                 let snapshot = state.snapshot();
                 let base_path = commands::resolve_v2rayn_base_path(&snapshot.settings);

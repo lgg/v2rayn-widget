@@ -29,12 +29,17 @@ export function InfoPanel({ status, settings }: { status: DashboardStatus; setti
   const [now, setNow] = useState<Date>(() => new Date());
 
   useEffect(() => {
+    if (!settings.show_clock) {
+      return undefined;
+    }
+
+    setNow(new Date());
     const timer = window.setInterval(() => {
       setNow(new Date());
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, []);
+  }, [settings.show_clock]);
 
   const displayTime = useMemo(() => formatTime(now, settings.time_format), [now, settings.time_format]);
 

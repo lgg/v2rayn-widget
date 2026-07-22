@@ -65,7 +65,7 @@ pub fn default_diagnostics_url() -> String {
     "https://ipleak.net/".to_owned()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AppSettings {
     pub selected_client: ProxyClientId,

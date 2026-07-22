@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | In Progress |
+| Status | Verification |
 | Priority | P1 |
 | Type | full-project audit / hardening |
 | Created | 2026-07-22 |
@@ -26,13 +26,17 @@
 
 ## Acceptance Criteria
 
-- [ ] Complete repository inventory reviewed.
-- [ ] Every frontend window and meaningful state reviewed.
-- [ ] Every backend command and externally visible operation traced.
-- [ ] Confirmed defects fixed with regression coverage where deterministic.
+- [x] Complete repository inventory reviewed.
+- [x] Every frontend window and meaningful state reviewed.
+- [x] Every backend command and externally visible operation traced.
+- [x] Confirmed defects fixed with regression coverage where deterministic.
 - [ ] Frontend audit, tests and production build pass.
 - [ ] Rust formatting, tests, strict Clippy and locked check pass.
 - [ ] Portable executable and NSIS installer are produced and verified.
-- [ ] Temporary tooling is absent from the final diff.
-- [ ] Documentation and audit report match the verified implementation.
+- [x] Temporary tooling is absent from the final diff.
+- [x] Documentation and audit report match the verified implementation.
 - [ ] PR is squash-merged into `main`.
+
+## Report
+
+- `project-tracking/reports/0018-full-project-screen-audit-report.md`

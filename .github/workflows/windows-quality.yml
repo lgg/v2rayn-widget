@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - audit/0019-post-merge-full-audit
 
 permissions:
   contents: read

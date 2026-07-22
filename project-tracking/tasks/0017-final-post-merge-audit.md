@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | In Progress |
+| Status | Verification |
 | Priority | P1 |
 | Type | independent post-merge audit |
 | Created | 2026-07-22 |
@@ -46,7 +46,7 @@
 - [x] Focused regression tests cover all confirmed findings.
 - [ ] Full Release Quality workflow passes on the final head.
 - [ ] Portable and NSIS artifacts are produced and verified.
-- [ ] Documentation and public redaction are complete.
+- [x] Documentation, temporary-tool cleanup and public redaction are complete.
 - [ ] PR is squash-merged into `main`.
 
 ## Report

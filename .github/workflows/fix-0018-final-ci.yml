@@ -1,0 +1,114 @@
+name: Fix 0018 Final CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'audit/0018-full-project-screen-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply verified final fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"Expected exactly one match in {path}, found {text.count(old)}")
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace(
+              "src/tauri/src/commands/mod.rs",
+              """        settings_normalization::{
+              normalize_diagnostics_url, normalize_endpoint_list, normalize_optional_path,
+              normalize_settings,
+          },
+""",
+              """        settings_normalization::{
+              normalize_diagnostics_url, normalize_optional_path, normalize_settings,
+          },
+""",
+          )
+          replace(
+              "src/tauri/src/commands/mod.rs",
+              """};
+
+const UIPI_MISMATCH_PREFIX""",
+              """};
+
+#[cfg(test)]
+use crate::utils::settings_normalization::normalize_endpoint_list;
+
+const UIPI_MISMATCH_PREFIX""",
+          )
+          replace(
+              "src/tauri/src/commands/mod.rs",
+              """        let fallback = vec![\"https://fallback.example\".to_owned()];
+          let result = normalize_endpoint_list(vec![\"not a url\".to_owned()], fallback.clone());
+
+          assert_eq!(result, fallback);
+""",
+              """        let fallback = vec![\"https://fallback.example\".to_owned()];
+          let result = normalize_endpoint_list(vec![\"not a url\".to_owned()], fallback);
+
+          assert_eq!(result, vec![\"https://fallback.example/\".to_owned()]);
+""",
+          )
+          replace(
+              "src/tauri/src/utils/settings_normalization.rs",
+              """pub fn is_allowed_http_endpoint(value: &str) -> bool {
+""",
+              """#[cfg(test)]
+pub fn is_allowed_http_endpoint(value: &str) -> bool {
+""",
+          )
+          replace(
+              "src/tauri/src/models/settings.rs",
+              """        \"https://api.ipify.org?format=json\".to_owned(),
+          \"https://ifconfig.me/ip\".to_owned(),
+          \"https://icanhazip.com\".to_owned(),
+""",
+              """        \"https://api.ipify.org/?format=json\".to_owned(),
+          \"https://ifconfig.me/ip\".to_owned(),
+          \"https://icanhazip.com/\".to_owned(),
+""",
+          )
+          replace(
+              "src/frontend/src/app/SettingsWindow.tsx",
+              """const DEFAULT_IP_ENDPOINTS = [\"https://api.ipify.org?format=json\", \"https://ifconfig.me/ip\", \"https://icanhazip.com\"];
+""",
+              """const DEFAULT_IP_ENDPOINTS = [\"https://api.ipify.org/?format=json\", \"https://ifconfig.me/ip\", \"https://icanhazip.com/\"];
+""",
+          )
+
+      - name: Format and validate
+        shell: bash
+        run: |
+          cargo fmt --all --manifest-path src/tauri/Cargo.toml
+          git diff --check
+          grep -F 'https://api.ipify.org/?format=json' src/tauri/src/models/settings.rs
+          grep -F '#[cfg(test)]' src/tauri/src/utils/settings_normalization.rs
+
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-0018-final-ci.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m "0018: fix canonical endpoint verification"
+          git push origin HEAD:${{ github.head_ref }}

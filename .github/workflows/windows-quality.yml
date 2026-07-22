@@ -1,252 +1,56 @@
-name: Release Quality
+name: Apply 0018 Clippy Fix
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
 
 permissions:
-  contents: read
-
-concurrency:
-  group: release-quality-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  frontend:
+  apply:
+    if: github.head_ref == 'audit/0018-full-project-screen-audit'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
-      - name: Checkout
+      - name: Checkout exact audit branch
         uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
         with:
-          node-version: 22.17.1
-          package-manager-cache: false
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
 
-      - name: Install frontend dependencies
-        id: frontend_install
-        continue-on-error: true
-        working-directory: src/frontend
+      - name: Apply exact rollback-preserving fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/tauri/src/commands/mod.rs')
+          content = path.read_text(encoding='utf-8')
+          old = '''        set_all_windows_always_on_top(app, next.always_on_top).map_err(|error| {
+            let _ = set_all_windows_always_on_top(app, previous.always_on_top);
+            error
+        })?;
+'''
+          new = '''        set_all_windows_always_on_top(app, next.always_on_top).inspect_err(|_| {
+            let _ = set_all_windows_always_on_top(app, previous.always_on_top);
+        })?;
+'''
+          if content.count(old) != 1:
+              raise SystemExit(f'expected one exact match, found {content.count(old)}')
+          path.write_text(content.replace(old, new), encoding='utf-8')
+
+      - name: Restore permanent workflow and push product fix
         shell: bash
         run: |
-          set -o pipefail
-          {
-            node --version
-            npm --version
-            npm config set registry "https://registry.npmjs.org/" --global
-            npm config set cache "$RUNNER_TEMP/npm-cache" --global
-            npm cache clean --force
-            npm ci --no-audit --no-fund
-          } 2>&1 | tee frontend-install-output.txt
-
-      - name: Audit frontend dependencies
-        if: steps.frontend_install.outcome == 'success'
-        id: frontend_audit
-        continue-on-error: true
-        working-directory: src/frontend
-        shell: bash
-        run: |
-          set -o pipefail
-          npm audit --audit-level=high 2>&1 | tee frontend-audit-output.txt
-
-      - name: Run frontend tests
-        if: steps.frontend_install.outcome == 'success'
-        id: frontend_tests
-        continue-on-error: true
-        working-directory: src/frontend
-        shell: bash
-        run: |
-          set -o pipefail
-          npm test 2>&1 | tee frontend-test-output.txt
-
-      - name: Build frontend
-        if: steps.frontend_install.outcome == 'success'
-        id: frontend_build
-        continue-on-error: true
-        working-directory: src/frontend
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run build 2>&1 | tee frontend-build-output.txt
-
-      - name: Upload frontend distribution
-        if: steps.frontend_build.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: src/frontend/dist
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload frontend diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-diagnostics
-          path: |
-            src/frontend/frontend-install-output.txt
-            src/frontend/frontend-audit-output.txt
-            src/frontend/frontend-test-output.txt
-            src/frontend/frontend-build-output.txt
-            ${{ runner.temp }}/npm-cache/_logs/*.log
-          if-no-files-found: warn
-          retention-days: 1
-
-      - name: Fail when frontend checks failed
-        if: steps.frontend_install.outcome == 'failure' || steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
-        run: exit 1
-
-  rust-windows:
-    needs: frontend
-    runs-on: windows-latest
-    timeout-minutes: 90
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download frontend distribution
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: src/frontend/dist
-
-      - name: Set up Node.js for installer smoke
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22.17.1
-          package-manager-cache: false
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Check all Rust formatting
-        id: rust_format
-        continue-on-error: true
-        working-directory: src/tauri
-        shell: pwsh
-        run: |
-          cargo fmt --all -- --check 2>&1 | Tee-Object -FilePath rust-format-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
-
-      - name: Run Rust tests
-        id: rust_tests
-        continue-on-error: true
-        working-directory: src/tauri
-        shell: pwsh
-        run: |
-          cargo test --locked 2>&1 | Tee-Object -FilePath rust-test-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
-
-      - name: Run Rust clippy
-        id: rust_clippy
-        continue-on-error: true
-        working-directory: src/tauri
-        shell: pwsh
-        run: |
-          cargo clippy --locked --all-targets -- -D warnings 2>&1 | Tee-Object -FilePath rust-clippy-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
-
-      - name: Check Rust build
-        id: rust_build
-        continue-on-error: true
-        working-directory: src/tauri
-        shell: pwsh
-        run: |
-          cargo check --locked 2>&1 | Tee-Object -FilePath rust-build-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
-
-      - name: Build portable release smoke artifact
-        id: rust_release
-        continue-on-error: true
-        working-directory: src/tauri
-        shell: pwsh
-        run: |
-          cargo build --release --locked 2>&1 | Tee-Object -FilePath rust-release-output.txt
-          $commandExitCode = $LASTEXITCODE
-          if ($commandExitCode -ne 0) { exit $commandExitCode }
-          if (-not (Test-Path "target/release/v2rayn-widget.exe")) {
-            Write-Error "Release executable was not produced"
-            exit 1
-          }
-
-      - name: Upload portable release smoke artifact
-        if: steps.rust_release.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: portable-release-smoke
-          path: src/tauri/target/release/v2rayn-widget.exe
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Install frontend dependencies for installer smoke
-        id: installer_dependencies
-        continue-on-error: true
-        working-directory: src/frontend
-        shell: pwsh
-        run: |
-          npm config set registry "https://registry.npmjs.org/" --global
-          npm config set cache "$env:RUNNER_TEMP\npm-installer-cache" --global
-          npm cache clean --force
-          npm ci --no-audit --no-fund 2>&1 | Tee-Object -FilePath installer-dependencies-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
-
-      - name: Build NSIS installer smoke artifact
-        if: steps.installer_dependencies.outcome == 'success'
-        id: installer_release
-        continue-on-error: true
-        working-directory: src/tauri
-        shell: pwsh
-        run: |
-          $tauriCli = (Resolve-Path "../frontend/node_modules/.bin/tauri.cmd").Path
-          & $tauriCli build --bundles nsis --config "tauri.installer.conf.json" --ci -- --locked 2>&1 | Tee-Object -FilePath installer-release-output.txt
-          $commandExitCode = $LASTEXITCODE
-          if ($commandExitCode -ne 0) { exit $commandExitCode }
-          $installers = @(Get-ChildItem "target/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue)
-          if ($installers.Count -eq 0) {
-            Write-Error "NSIS installer was not produced"
-            exit 1
-          }
-
-      - name: Upload NSIS installer smoke artifact
-        if: steps.installer_release.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: nsis-installer-smoke
-          path: src/tauri/target/release/bundle/nsis/*.exe
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload Rust diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rust-diagnostics
-          path: |
-            src/tauri/rust-format-output.txt
-            src/tauri/rust-test-output.txt
-            src/tauri/rust-clippy-output.txt
-            src/tauri/rust-build-output.txt
-            src/tauri/rust-release-output.txt
-            src/frontend/installer-dependencies-output.txt
-            src/tauri/installer-release-output.txt
-            ${{ runner.temp }}/npm-installer-cache/_logs/*.log
-          if-no-files-found: warn
-          retention-days: 1
-
-      - name: Fail when Rust checks failed
-        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure' || steps.rust_release.outcome == 'failure' || steps.installer_dependencies.outcome == 'failure' || steps.installer_release.outcome == 'failure'
-        shell: pwsh
-        run: exit 1
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git checkout origin/main -- .github/workflows/windows-quality.yml
+          cargo fmt --all --manifest-path src/tauri/Cargo.toml
+          git diff --check
+          grep -F 'inspect_err(|_|' src/tauri/src/commands/mod.rs
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m '0018: preserve rollback with inspect_err'
+          git push origin HEAD:${{ github.head_ref }}

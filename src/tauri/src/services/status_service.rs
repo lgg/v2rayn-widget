@@ -108,6 +108,7 @@ mod tests {
             process: ProcessSnapshot {
                 v2rayn_running: true,
                 v2rayn_pid: Some(42),
+                v2rayn_pids: vec![42],
                 core_processes: vec![],
             },
             require_connectivity_check: true,

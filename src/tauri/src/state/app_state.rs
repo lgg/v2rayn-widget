@@ -24,6 +24,7 @@ struct AppStateInner {
 pub struct AppState {
     inner: Mutex<AppStateInner>,
     settings_update_lock: Mutex<()>,
+    v2rayn_operation_lock: tokio::sync::Mutex<()>,
 }
 
 impl AppState {
@@ -35,6 +36,7 @@ impl AppState {
                 client_epoch: 0,
             }),
             settings_update_lock: Mutex::new(()),
+            v2rayn_operation_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -42,6 +44,10 @@ impl AppState {
         self.settings_update_lock
             .lock()
             .expect("Settings update lock poisoned")
+    }
+
+    pub async fn lock_v2rayn_operation(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.v2rayn_operation_lock.lock().await
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -150,5 +156,12 @@ mod tests {
             original.client_epoch,
             DashboardStatus::default(),
         ));
+    }
+
+    #[tokio::test]
+    async fn v2rayn_operation_lock_serializes_commands() {
+        let state = AppState::new(AppSettings::default(), DashboardStatus::default());
+        let _first = state.lock_v2rayn_operation().await;
+        assert!(state.v2rayn_operation_lock.try_lock().is_err());
     }
 }

@@ -25,7 +25,10 @@ Preserved behind the compatibility adapter:
 - experimental active profile switching;
 - open/restart and privilege diagnostics;
 - process, privilege and UI control scoped to the configured installation;
-- non-mutating status reads and fail-closed config updates.
+- serialized refresh/control operations and stale-context rejection;
+- primary-only action confirmation with explicit desired-state fallback;
+- non-mutating status reads and fail-closed, schema-preserving config updates;
+- existing-process activation without duplicate launch.
 
 Explicit limitations:
 
@@ -117,6 +120,8 @@ Planning and decisions:
 - `project-tracking/tasks/0015-final-main-tree-audit.md`
 - `project-tracking/tasks/0016-post-merge-runtime-hardening.md`
 - `project-tracking/reports/0016-post-merge-runtime-hardening-report.md`
+- `project-tracking/tasks/0017-final-post-merge-audit.md`
+- `project-tracking/reports/0017-final-post-merge-audit-report.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 

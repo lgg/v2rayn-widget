@@ -2,7 +2,7 @@ use std::{
     net::IpAddr,
     path::{Path, PathBuf},
     process::Command,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use tauri::{
@@ -36,6 +36,11 @@ use crate::{
 
 const UIPI_MISMATCH_PREFIX: &str = "UIPI_MISMATCH";
 const PROFILE_IP_SETTLE_DELAY: Duration = Duration::from_secs(5);
+const UI_CONFIRM_TIMEOUT: Duration = Duration::from_secs(3);
+const UI_CONFIRM_POLL_INTERVAL: Duration = Duration::from_millis(150);
+const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(8);
+const PROCESS_START_TIMEOUT: Duration = Duration::from_secs(8);
+const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(150);
 
 #[tauri::command]
 pub async fn get_status(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
@@ -44,6 +49,14 @@ pub async fn get_status(state: State<'_, AppState>) -> Result<DashboardStatus, S
 
 #[tauri::command]
 pub async fn refresh_status(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let snapshot = state.snapshot();
 
     if snapshot.settings.mock_mode_enabled {
@@ -66,6 +79,14 @@ pub async fn refresh_status(state: State<'_, AppState>) -> Result<DashboardStatu
 pub async fn refresh_status_post_route(
     state: State<'_, AppState>,
 ) -> Result<DashboardStatus, String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let snapshot = state.snapshot();
 
     if snapshot.settings.mock_mode_enabled {
@@ -87,6 +108,14 @@ pub async fn refresh_status_post_route(
 pub async fn refresh_status_background(
     state: State<'_, AppState>,
 ) -> Result<DashboardStatus, String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let snapshot = state.snapshot();
 
     if snapshot.settings.mock_mode_enabled {
@@ -127,6 +156,14 @@ pub async fn refresh_status_background(
 
 #[tauri::command]
 pub async fn refresh_status_startup(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let snapshot = state.snapshot();
 
     if snapshot.settings.mock_mode_enabled {
@@ -147,6 +184,14 @@ pub async fn refresh_status_startup(state: State<'_, AppState>) -> Result<Dashbo
 
 #[tauri::command]
 pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardStatus, String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let snapshot = state.snapshot();
 
     if snapshot.settings.mock_mode_enabled {
@@ -162,22 +207,30 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
     let allow_restart_fallback = snapshot.settings.allow_restart_fallback;
     let base_path = resolve_v2rayn_base_path(&snapshot.settings)
         .ok_or_else(|| "v2rayN path not found".to_owned())?;
-    let target_pid = selected_v2rayn_pid(&base_path);
-    ensure_uipi_compatible_for_control(target_pid)?;
+    let target_pid = selected_v2rayn_window_pid(&base_path);
+    if target_pid.is_some() {
+        ensure_uipi_compatible_for_control(target_pid)?;
+    }
 
-    let before = config_reader::read_config(&base_path)
-        .ok()
-        .and_then(|cfg| cfg.enable_tun);
+    let before = config_reader::read_primary_config(&base_path)
+        .map_err(|error| format!("Could not read primary config before UI toggle: {error}"))?
+        .enable_tun
+        .ok_or_else(|| {
+            "Primary config does not expose a boolean EnableTun value; refusing an unconfirmable UI toggle"
+                .to_owned()
+        })?;
 
     let automation_result = ui_controller::toggle_tun_via_ui(target_pid);
+    let after_ui = if automation_result.is_ok() {
+        wait_for_tun_state_change(&base_path, before).await
+    } else {
+        config_reader::read_primary_config(&base_path)
+            .ok()
+            .and_then(|cfg| cfg.enable_tun)
+    };
 
-    tokio::time::sleep(Duration::from_millis(950)).await;
-
-    let after_ui = config_reader::read_config(&base_path)
-        .ok()
-        .and_then(|cfg| cfg.enable_tun);
-
-    let need_fallback = automation_result.is_err() || (before.is_some() && after_ui == before);
+    let need_fallback =
+        automation_result.is_err() || !tun_state_change_confirmed(Some(before), after_ui);
 
     if need_fallback {
         if !allow_restart_fallback {
@@ -196,45 +249,22 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
             );
         }
 
-        let expected_enable_tun = config_reader::toggle_tun_mode(&base_path)
+        let process_snapshot =
+            process_monitor::read_process_snapshot_for_base_path(Some(&base_path));
+        if process_snapshot.v2rayn_running {
+            ensure_v2rayn_processes_restartable(&process_snapshot.v2rayn_pids)?;
+        }
+
+        let expected_enable_tun = !before;
+        config_reader::set_tun_mode(&base_path, expected_enable_tun)
             .map_err(|error| format!("toggle failed (fallback): {error}"))?;
 
-        if process_monitor::read_process_snapshot_for_base_path(Some(&base_path)).v2rayn_running {
-            let mut reloaded_without_restart = false;
-
-            match ui_controller::click_reload_via_ui(target_pid) {
-                Ok(note) => {
-                    info!(%note, "fallback applied through UI Reload");
-                    tokio::time::sleep(Duration::from_millis(1200)).await;
-
-                    let after_reload = config_reader::read_config(&base_path)
-                        .ok()
-                        .and_then(|cfg| cfg.enable_tun);
-
-                    if after_reload == Some(expected_enable_tun) {
-                        reloaded_without_restart = true;
-                    } else {
-                        warn!(
-                            ?after_reload,
-                            expected_enable_tun,
-                            "UI Reload executed but expected state was not observed"
-                        );
-                    }
-                }
-                Err(error) => {
-                    warn!(
-                        ?error,
-                        "UI Reload is unavailable, using process restart fallback"
-                    );
-                }
-            }
-
-            if !reloaded_without_restart {
-                restart_v2rayn_process(&base_path).map_err(|error| {
-                    format!("toggle fallback changed config but restart failed: {error}")
-                })?;
-                tokio::time::sleep(Duration::from_millis(1200)).await;
-            }
+        if process_snapshot.v2rayn_running {
+            restart_v2rayn_process(&base_path).await.map_err(|error| {
+                format!(
+                    "toggle fallback set EnableTun={expected_enable_tun} but restart failed: {error}"
+                )
+            })?;
         }
     }
 
@@ -254,6 +284,14 @@ pub async fn set_active_profile(
     profile_id: String,
     state: State<'_, AppState>,
 ) -> Result<DashboardStatus, String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let snapshot = state.snapshot();
     let requested_profile_id = profile_id.trim().to_owned();
 
@@ -280,11 +318,13 @@ pub async fn set_active_profile(
     let allow_restart_fallback = snapshot.settings.allow_restart_fallback;
     let base_path = resolve_v2rayn_base_path(&snapshot.settings)
         .ok_or_else(|| "v2rayN path not found".to_owned())?;
-    let target_pid = selected_v2rayn_pid(&base_path);
-    ensure_uipi_compatible_for_control(target_pid)?;
+    let target_pid = selected_v2rayn_window_pid(&base_path);
+    if target_pid.is_some() {
+        ensure_uipi_compatible_for_control(target_pid)?;
+    }
 
-    let config_before = config_reader::read_config(&base_path).map_err(|error| {
-        error!(?error, "set_active_profile: initial config read failed");
+    let config_before = config_reader::read_primary_config(&base_path).map_err(|error| {
+        error!(?error, "set_active_profile: primary config read failed");
         error.to_string()
     })?;
 
@@ -320,11 +360,7 @@ pub async fn set_active_profile(
         match ui_controller::set_active_profile_via_ui(&target_profile.name, target_pid) {
             Ok(note) => {
                 info!(%note, target_profile = %target_profile.name, "UI profile switch attempt executed");
-                tokio::time::sleep(Duration::from_millis(900)).await;
-
-                let after_ui = config_reader::read_config(&base_path)
-                    .ok()
-                    .and_then(|cfg| cfg.active_profile_name);
+                let after_ui = wait_for_profile_name(&base_path, &target_profile.name).await;
 
                 applied_via_ui = profile_name_matches(after_ui.as_deref(), &target_profile.name);
 
@@ -350,45 +386,22 @@ pub async fn set_active_profile(
             );
         }
 
+        let process_snapshot =
+            process_monitor::read_process_snapshot_for_base_path(Some(&base_path));
+        if process_snapshot.v2rayn_running {
+            ensure_v2rayn_processes_restartable(&process_snapshot.v2rayn_pids)?;
+        }
+
         config_reader::set_active_profile(&base_path, &requested_profile_id).map_err(|error| {
             error!(?error, "set_active_profile fallback config write failed");
             error.to_string()
         })?;
 
         if process_snapshot.v2rayn_running {
-            let mut reloaded_without_restart = false;
-
-            match ui_controller::click_reload_via_ui(target_pid) {
-                Ok(note) => {
-                    info!(%note, "profile fallback applied through UI Reload");
-                    tokio::time::sleep(Duration::from_millis(1200)).await;
-
-                    let after_reload = config_reader::read_config(&base_path)
-                        .ok()
-                        .and_then(|cfg| cfg.active_profile_name);
-
-                    if profile_name_matches(after_reload.as_deref(), &target_profile.name) {
-                        reloaded_without_restart = true;
-                    } else {
-                        warn!(
-                            expected_profile = %target_profile.name,
-                            observed_profile = ?after_reload,
-                            "UI Reload executed but profile state was not updated"
-                        );
-                    }
-                }
-                Err(error) => {
-                    warn!(?error, "UI Reload unavailable for profile fallback");
-                }
-            }
-
-            if !reloaded_without_restart {
-                restart_v2rayn_process(&base_path).map_err(|error| {
-                    error!(?error, "restart after profile change fallback failed");
-                    error.to_string()
-                })?;
-                tokio::time::sleep(Duration::from_millis(1500)).await;
-            }
+            restart_v2rayn_process(&base_path).await.map_err(|error| {
+                error!(?error, "restart after profile change fallback failed");
+                error.to_string()
+            })?;
         }
     }
 
@@ -405,21 +418,38 @@ pub async fn set_active_profile(
 
 #[tauri::command]
 pub async fn open_v2rayn(state: State<'_, AppState>) -> Result<(), String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let settings = state.snapshot().settings;
     let base_path =
         resolve_v2rayn_base_path(&settings).ok_or_else(|| "v2rayN path not found".to_owned())?;
 
-    open_v2rayn_process(&base_path)
+    open_v2rayn_process(&base_path).await
 }
 
 #[tauri::command]
 pub async fn restart_v2rayn(state: State<'_, AppState>) -> Result<(), String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let settings = state.snapshot().settings;
     let base_path =
         resolve_v2rayn_base_path(&settings).ok_or_else(|| "v2rayN path not found".to_owned())?;
-    ensure_uipi_compatible_for_control(selected_v2rayn_pid(&base_path))?;
 
-    restart_v2rayn_process(&base_path).map_err(|error| error.to_string())
+    restart_v2rayn_process(&base_path)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -572,7 +602,7 @@ pub async fn run_ui_debug_probe(state: State<'_, AppState>) -> Result<UiDebugRep
     let settings = state.snapshot().settings;
     let target_pid = resolve_v2rayn_base_path(&settings)
         .as_deref()
-        .and_then(selected_v2rayn_pid);
+        .and_then(selected_v2rayn_window_pid);
     let mut report = ui_controller::debug_probe(target_pid).map_err(|error| error.to_string())?;
 
     if report.window_process_name.is_none() {
@@ -592,16 +622,33 @@ pub async fn run_ui_debug_probe(state: State<'_, AppState>) -> Result<UiDebugRep
 
 #[tauri::command]
 pub async fn debug_toggle_via_ui_only(state: State<'_, AppState>) -> Result<String, String> {
-    let target_pid = selected_v2rayn_pid_from_state(&state)?;
-    ensure_uipi_compatible_for_control(target_pid)?;
-    ui_controller::debug_toggle_via_ui_only(target_pid).map_err(|error| error.to_string())
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
+    let target_pid = selected_v2rayn_window_pid_from_state(&state)?;
+    ensure_uipi_compatible_for_control(Some(target_pid))?;
+    ui_controller::debug_toggle_via_ui_only(Some(target_pid)).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub async fn debug_click_reload_via_ui(state: State<'_, AppState>) -> Result<String, String> {
-    let target_pid = selected_v2rayn_pid_from_state(&state)?;
-    ensure_uipi_compatible_for_control(target_pid)?;
-    ui_controller::debug_click_reload_via_ui_only(target_pid).map_err(|error| error.to_string())
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
+    let target_pid = selected_v2rayn_window_pid_from_state(&state)?;
+    ensure_uipi_compatible_for_control(Some(target_pid))?;
+    ui_controller::debug_click_reload_via_ui_only(Some(target_pid))
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -609,9 +656,17 @@ pub async fn debug_select_profile_via_ui(
     profile_name: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let target_pid = selected_v2rayn_pid_from_state(&state)?;
-    ensure_uipi_compatible_for_control(target_pid)?;
-    ui_controller::debug_select_profile_via_ui_only(profile_name.trim(), target_pid)
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
+    let target_pid = selected_v2rayn_window_pid_from_state(&state)?;
+    ensure_uipi_compatible_for_control(Some(target_pid))?;
+    ui_controller::debug_select_profile_via_ui_only(profile_name.trim(), Some(target_pid))
         .map_err(|error| error.to_string())
 }
 
@@ -625,25 +680,32 @@ pub async fn debug_capture_runtime_snapshot(
 
 #[tauri::command]
 pub async fn debug_toggle_via_config_only(state: State<'_, AppState>) -> Result<String, String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let settings = state.snapshot().settings;
     let base_path =
         resolve_v2rayn_base_path(&settings).ok_or_else(|| "v2rayN path not found".to_owned())?;
-    let target_pid = selected_v2rayn_pid(&base_path);
-    ensure_uipi_compatible_for_control(target_pid)?;
+
+    let process_snapshot = process_monitor::read_process_snapshot_for_base_path(Some(&base_path));
+    if process_snapshot.v2rayn_running {
+        ensure_v2rayn_processes_restartable(&process_snapshot.v2rayn_pids)?;
+    }
 
     let value = config_reader::toggle_tun_mode(&base_path).map_err(|error| error.to_string())?;
 
-    if process_monitor::read_process_snapshot_for_base_path(Some(&base_path)).v2rayn_running {
-        match ui_controller::click_reload_via_ui(target_pid) {
-            Ok(note) => return Ok(format!("Config EnableTun set to {value}. {note}")),
-            Err(error) => {
-                restart_v2rayn_process(&base_path).map_err(|restart_error| {
-                    format!(
-                        "Config changed but reload ({error}) and restart ({restart_error}) both failed"
-                    )
-                })?;
-            }
-        }
+    if process_snapshot.v2rayn_running {
+        restart_v2rayn_process(&base_path)
+            .await
+            .map_err(|error| format!("Config changed but restart failed: {error}"))?;
+        return Ok(format!(
+            "Config EnableTun set to {value}. The selected v2rayN installation was restarted."
+        ));
     }
 
     Ok(format!("Config EnableTun set to {value}"))
@@ -697,6 +759,14 @@ pub async fn get_available_locales() -> Result<Vec<LocaleInfo>, String> {
 
 #[tauri::command]
 pub async fn list_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileSummary>, String> {
+    let requested_context = state.snapshot();
+    let _v2rayn_operation = state.lock_v2rayn_operation().await;
+    if !state.context_matches(ProxyClientId::V2rayn, requested_context.client_epoch) {
+        return Err(
+            "CLIENT_CONTEXT_CHANGED: selected proxy client changed before the v2rayN operation started"
+                .to_owned(),
+        );
+    }
     let settings = state.snapshot().settings;
 
     if settings.mock_mode_enabled {
@@ -1085,23 +1155,77 @@ fn commit_client_status(
     }
 }
 
-fn selected_v2rayn_pid(base_path: &Path) -> Option<u32> {
-    process_monitor::read_process_snapshot_for_base_path(Some(base_path)).v2rayn_pid
+async fn wait_for_tun_state_change(base_path: &Path, before: bool) -> Option<bool> {
+    let deadline = Instant::now() + UI_CONFIRM_TIMEOUT;
+    loop {
+        let observed = config_reader::read_primary_config(base_path)
+            .ok()
+            .and_then(|config| config.enable_tun);
+        if tun_state_change_confirmed(Some(before), observed) || Instant::now() >= deadline {
+            return observed;
+        }
+        tokio::time::sleep(UI_CONFIRM_POLL_INTERVAL).await;
+    }
 }
 
-fn selected_v2rayn_pid_from_state(state: &State<'_, AppState>) -> Result<Option<u32>, String> {
+fn tun_state_change_confirmed(before: Option<bool>, after: Option<bool>) -> bool {
+    matches!((before, after), (Some(previous), Some(current)) if previous != current)
+}
+
+async fn wait_for_profile_name(base_path: &Path, expected_name: &str) -> Option<String> {
+    let deadline = Instant::now() + UI_CONFIRM_TIMEOUT;
+    loop {
+        let observed = config_reader::read_primary_config(base_path)
+            .ok()
+            .and_then(|config| config.active_profile_name);
+        if profile_name_matches(observed.as_deref(), expected_name) || Instant::now() >= deadline {
+            return observed;
+        }
+        tokio::time::sleep(UI_CONFIRM_POLL_INTERVAL).await;
+    }
+}
+
+fn selected_v2rayn_window_pid(base_path: &Path) -> Option<u32> {
+    let snapshot = process_monitor::read_process_snapshot_for_base_path(Some(base_path));
+    ui_controller::find_v2rayn_window_pid(&snapshot.v2rayn_pids)
+}
+
+fn selected_v2rayn_window_pid_from_state(state: &State<'_, AppState>) -> Result<u32, String> {
     let settings = state.snapshot().settings;
     let base_path =
         resolve_v2rayn_base_path(&settings).ok_or_else(|| "v2rayN path not found".to_owned())?;
-    Ok(selected_v2rayn_pid(&base_path))
+    selected_v2rayn_window_pid(&base_path)
+        .ok_or_else(|| "v2rayN window not found for the configured installation".to_owned())
+}
+
+fn ensure_v2rayn_processes_restartable(target_pids: &[u32]) -> Result<(), String> {
+    for pid in target_pids {
+        let diagnostics = privilege::collect_v2rayn_privilege_diagnostics(Some(*pid)).map_err(
+            |error| {
+                format!(
+                    "Could not verify permissions for v2rayN PID {pid}; refusing to mutate config before restart: {error}"
+                )
+            },
+        )?;
+
+        if diagnostics.uipi_mismatch {
+            return Err(format!(
+                "{UIPI_MISMATCH_PREFIX}: v2rayN is running as Administrator (PID {pid}), but widget is running without Administrator rights. Refusing to mutate config because the selected installation cannot be restarted safely."
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 fn ensure_uipi_compatible_for_control(target_pid: Option<u32>) -> Result<(), String> {
-    let diagnostics =
-        privilege::collect_v2rayn_privilege_diagnostics(target_pid).map_err(|error| {
+    let diagnostics = match privilege::collect_v2rayn_privilege_diagnostics(target_pid) {
+        Ok(diagnostics) => diagnostics,
+        Err(error) => {
             warn!(?error, "privilege diagnostics failed");
-            error.to_string()
-        })?;
+            return Ok(());
+        }
+    };
 
     if diagnostics.uipi_mismatch {
         let pid = diagnostics
@@ -1123,22 +1247,40 @@ fn build_v2rayn_command(base_path: &Path) -> Command {
     command
 }
 
-fn open_v2rayn_process(base_path: &Path) -> Result<(), String> {
+async fn open_v2rayn_process(base_path: &Path) -> Result<(), String> {
+    let existing = process_monitor::read_process_snapshot_for_base_path(Some(base_path));
+    if existing.v2rayn_running {
+        ui_controller::activate_v2rayn_window(&existing.v2rayn_pids).map_err(|error| {
+            format!(
+                "v2rayN is already running for {}, but its window could not be activated; refusing to launch a duplicate instance: {error}",
+                base_path.display()
+            )
+        })?;
+        info!(base_path = %base_path.display(), "activated existing v2rayN window");
+        return Ok(());
+    }
+
     build_v2rayn_command(base_path)
         .spawn()
         .map_err(|error| error.to_string())?;
+
+    if !wait_for_v2rayn_running_state(base_path, true, PROCESS_START_TIMEOUT).await {
+        return Err(format!(
+            "v2rayN was launched from {}, but no matching process became available before the startup timeout",
+            base_path.display()
+        ));
+    }
 
     info!(base_path = %base_path.display(), "open_v2rayn requested");
     Ok(())
 }
 
-fn restart_v2rayn_process(base_path: &Path) -> anyhow::Result<()> {
+async fn restart_v2rayn_process(base_path: &Path) -> anyhow::Result<()> {
     let matched = process_monitor::terminate_v2rayn_at_path(base_path)?;
     if matched {
-        std::thread::sleep(Duration::from_millis(750));
-        if process_monitor::read_process_snapshot_for_base_path(Some(base_path)).v2rayn_running {
+        if !wait_for_v2rayn_running_state(base_path, false, PROCESS_EXIT_TIMEOUT).await {
             anyhow::bail!(
-                "Matched v2rayN process did not terminate; refusing to launch a duplicate instance"
+                "Matched v2rayN process did not terminate before the timeout; refusing to launch a duplicate instance"
             );
         }
     } else {
@@ -1148,7 +1290,28 @@ fn restart_v2rayn_process(base_path: &Path) -> anyhow::Result<()> {
         );
     }
 
-    open_v2rayn_process(base_path).map_err(anyhow::Error::msg)
+    open_v2rayn_process(base_path)
+        .await
+        .map_err(anyhow::Error::msg)
+}
+
+async fn wait_for_v2rayn_running_state(
+    base_path: &Path,
+    expected_running: bool,
+    timeout: Duration,
+) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let running =
+            process_monitor::read_process_snapshot_for_base_path(Some(base_path)).v2rayn_running;
+        if running == expected_running {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(PROCESS_POLL_INTERVAL).await;
+    }
 }
 
 fn apply_runtime_settings(app: &AppHandle, settings: &AppSettings) {
@@ -1224,6 +1387,16 @@ mod tests {
         assert!(!profile_name_matches(Some("US"), "RUSSIAN"));
         assert!(!profile_name_matches(None, "demo"));
         assert!(!profile_name_matches(Some("demo"), ""));
+    }
+
+    #[test]
+    fn tun_ui_result_requires_an_observable_state_change() {
+        assert!(tun_state_change_confirmed(Some(false), Some(true)));
+        assert!(tun_state_change_confirmed(Some(true), Some(false)));
+        assert!(!tun_state_change_confirmed(None, Some(true)));
+        assert!(!tun_state_change_confirmed(Some(true), Some(true)));
+        assert!(!tun_state_change_confirmed(Some(false), None));
+        assert!(!tun_state_change_confirmed(None, None));
     }
 
     #[test]

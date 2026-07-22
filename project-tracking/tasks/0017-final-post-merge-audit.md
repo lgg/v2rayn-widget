@@ -22,15 +22,33 @@
 - remove all temporary audit tooling before merge;
 - squash-merge the verified PR into `main`.
 
+## Confirmed Findings and Corrections
+
+- serialized foreground/background/control operations to prevent overlapping toggles and stale status commits;
+- made UI success depend on an observed primary-config transition;
+- replaced toggle-on-fallback with explicit desired-state setting;
+- removed unverified config-reread-as-reload logic;
+- rejected backup recovery, unknown TUN schemas and non-boolean field retyping on mutation;
+- retained and terminated every process belonging to the configured installation;
+- checked restart privileges before config mutation;
+- activated existing installations instead of spawning duplicates;
+- restricted TUN/Reload UI candidates to explicit actions;
+- required exact, unambiguous profile names;
+- added focused regression coverage for all deterministic findings.
+
 ## Acceptance Criteria
 
-- [ ] Every changed runtime path is reviewed together with all callers.
-- [ ] No control action can silently target another installation or stale process.
-- [ ] External config observation and mutation remain fail-closed and ownership-safe.
-- [ ] Restart/open behavior cannot report false success or create unintended duplicates.
-- [ ] Window runtime behavior matches the Tauri configuration.
-- [ ] Focused regression tests cover all confirmed findings.
+- [x] Every changed runtime path is reviewed together with all callers.
+- [x] No control action can silently target another installation or stale process.
+- [x] External config observation and mutation remain fail-closed and ownership-safe.
+- [x] Restart/open behavior cannot report false success or create unintended duplicates.
+- [x] Window runtime behavior matches the Tauri configuration.
+- [x] Focused regression tests cover all confirmed findings.
 - [ ] Full Release Quality workflow passes on the final head.
 - [ ] Portable and NSIS artifacts are produced and verified.
 - [ ] Documentation and public redaction are complete.
 - [ ] PR is squash-merged into `main`.
+
+## Report
+
+- `project-tracking/reports/0017-final-post-merge-audit-report.md`

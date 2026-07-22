@@ -1,21 +1,23 @@
 name: Fix 0018 Final CI
 
 on:
-  pull_request:
+  push:
+    branches:
+      - audit/0018-full-project-screen-audit
 
 permissions:
   contents: write
 
 jobs:
   fix:
-    if: github.head_ref == 'audit/0018-full-project-screen-audit'
+    if: github.ref == 'refs/heads/audit/0018-full-project-screen-audit'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout audit branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: audit/0018-full-project-screen-audit
           fetch-depth: 0
 
       - name: Apply verified final fixes
@@ -57,14 +59,14 @@ const UIPI_MISMATCH_PREFIX""",
           replace(
               "src/tauri/src/commands/mod.rs",
               """        let fallback = vec![\"https://fallback.example\".to_owned()];
-          let result = normalize_endpoint_list(vec![\"not a url\".to_owned()], fallback.clone());
+        let result = normalize_endpoint_list(vec![\"not a url\".to_owned()], fallback.clone());
 
-          assert_eq!(result, fallback);
+        assert_eq!(result, fallback);
 """,
               """        let fallback = vec![\"https://fallback.example\".to_owned()];
-          let result = normalize_endpoint_list(vec![\"not a url\".to_owned()], fallback);
+        let result = normalize_endpoint_list(vec![\"not a url\".to_owned()], fallback);
 
-          assert_eq!(result, vec![\"https://fallback.example/\".to_owned()]);
+        assert_eq!(result, vec![\"https://fallback.example/\".to_owned()]);
 """,
           )
           replace(
@@ -78,12 +80,12 @@ pub fn is_allowed_http_endpoint(value: &str) -> bool {
           replace(
               "src/tauri/src/models/settings.rs",
               """        \"https://api.ipify.org?format=json\".to_owned(),
-          \"https://ifconfig.me/ip\".to_owned(),
-          \"https://icanhazip.com\".to_owned(),
+        \"https://ifconfig.me/ip\".to_owned(),
+        \"https://icanhazip.com\".to_owned(),
 """,
               """        \"https://api.ipify.org/?format=json\".to_owned(),
-          \"https://ifconfig.me/ip\".to_owned(),
-          \"https://icanhazip.com/\".to_owned(),
+        \"https://ifconfig.me/ip\".to_owned(),
+        \"https://icanhazip.com/\".to_owned(),
 """,
           )
           replace(
@@ -111,4 +113,4 @@ pub fn is_allowed_http_endpoint(value: &str) -> bool {
           git add -A
           git diff --cached --check
           git commit -m "0018: fix canonical endpoint verification"
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin HEAD:audit/0018-full-project-screen-audit

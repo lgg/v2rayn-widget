@@ -49,6 +49,7 @@ mod windows_impl {
 
     #[derive(Default)]
     struct WindowSearch {
+        target_pid: u32,
         best: Option<(HWND, i32)>,
     }
 
@@ -110,12 +111,13 @@ mod windows_impl {
         }
     }
 
-    pub fn toggle_tun_via_ui() -> Result<()> {
-        click_enable_tun_via_ui().map(|_| ())
+    pub fn toggle_tun_via_ui(target_pid: Option<u32>) -> Result<()> {
+        click_enable_tun_via_ui(target_pid).map(|_| ())
     }
 
-    pub fn click_enable_tun_via_ui() -> Result<String> {
-        let hwnd = find_v2rayn_window().ok_or_else(|| anyhow!("v2rayN window not found"))?;
+    pub fn click_enable_tun_via_ui(target_pid: Option<u32>) -> Result<String> {
+        let hwnd = find_v2rayn_window(target_pid)
+            .ok_or_else(|| anyhow!("v2rayN window not found for the selected process"))?;
         let was_minimized = bring_target_window_to_front(hwnd);
 
         let result = (|| -> Result<String> {
@@ -146,8 +148,9 @@ mod windows_impl {
         result
     }
 
-    pub fn click_reload_via_ui() -> Result<String> {
-        let hwnd = find_v2rayn_window().ok_or_else(|| anyhow!("v2rayN window not found"))?;
+    pub fn click_reload_via_ui(target_pid: Option<u32>) -> Result<String> {
+        let hwnd = find_v2rayn_window(target_pid)
+            .ok_or_else(|| anyhow!("v2rayN window not found for the selected process"))?;
         let was_minimized = bring_target_window_to_front(hwnd);
 
         let result = (|| -> Result<String> {
@@ -167,13 +170,17 @@ mod windows_impl {
         result
     }
 
-    pub fn set_active_profile_via_ui(target_profile_name: &str) -> Result<String> {
+    pub fn set_active_profile_via_ui(
+        target_profile_name: &str,
+        target_pid: Option<u32>,
+    ) -> Result<String> {
         let profile_name = target_profile_name.trim();
         if profile_name.is_empty() {
             return Err(anyhow!("Profile name is empty"));
         }
 
-        let hwnd = find_v2rayn_window().ok_or_else(|| anyhow!("v2rayN window not found"))?;
+        let hwnd = find_v2rayn_window(target_pid)
+            .ok_or_else(|| anyhow!("v2rayN window not found for the selected process"))?;
         let was_minimized = bring_target_window_to_front(hwnd);
 
         let result = (|| -> Result<String> {
@@ -202,8 +209,8 @@ mod windows_impl {
         result
     }
 
-    pub fn debug_probe() -> Result<UiDebugReport> {
-        let hwnd = find_v2rayn_window();
+    pub fn debug_probe(target_pid: Option<u32>) -> Result<UiDebugReport> {
+        let hwnd = find_v2rayn_window(target_pid);
 
         let Some(window) = hwnd else {
             return Ok(UiDebugReport {
@@ -1078,18 +1085,22 @@ mod windows_impl {
         }
     }
 
-    fn find_v2rayn_window() -> Option<HWND> {
+    fn find_v2rayn_window(target_pid: Option<u32>) -> Option<HWND> {
+        let target_pid = target_pid?;
         let exact = unsafe { FindWindowW(None, windows::core::w!("v2rayN")).ok() };
         if let Some(hwnd) = exact {
             if !hwnd.is_invalid() {
                 let title = get_window_title(hwnd).to_lowercase();
-                if !title.contains("widget") {
+                if !title.contains("widget") && get_window_pid(hwnd) == Some(target_pid) {
                     return Some(hwnd);
                 }
             }
         }
 
-        let mut state = WindowSearch { best: None };
+        let mut state = WindowSearch {
+            target_pid,
+            best: None,
+        };
 
         unsafe {
             let _ = EnumWindows(
@@ -1112,6 +1123,11 @@ mod windows_impl {
             return BOOL(1);
         }
 
+        let search = &mut *(lparam.0 as *mut WindowSearch);
+        if get_window_pid(hwnd) != Some(search.target_pid) {
+            return BOOL(1);
+        }
+
         let score = if lower == "v2rayn" {
             120
         } else if lower.starts_with("v2rayn") {
@@ -1120,7 +1136,6 @@ mod windows_impl {
             70
         };
 
-        let search = &mut *(lparam.0 as *mut WindowSearch);
         let should_update = match search.best {
             Some((_, old_score)) => score > old_score,
             None => true,
@@ -1206,42 +1221,42 @@ mod windows_impl {
 }
 
 #[cfg(target_os = "windows")]
-pub fn toggle_tun_via_ui() -> Result<()> {
-    windows_impl::toggle_tun_via_ui()
+pub fn toggle_tun_via_ui(target_pid: Option<u32>) -> Result<()> {
+    windows_impl::toggle_tun_via_ui(target_pid)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn toggle_tun_via_ui() -> Result<()> {
+pub fn toggle_tun_via_ui(_target_pid: Option<u32>) -> Result<()> {
     Err(anyhow!("UI automation is only available on Windows"))
 }
 
 #[cfg(target_os = "windows")]
-pub fn click_reload_via_ui() -> Result<String> {
-    windows_impl::click_reload_via_ui()
+pub fn click_reload_via_ui(target_pid: Option<u32>) -> Result<String> {
+    windows_impl::click_reload_via_ui(target_pid)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn click_reload_via_ui() -> Result<String> {
+pub fn click_reload_via_ui(_target_pid: Option<u32>) -> Result<String> {
     Err(anyhow!("UI automation is only available on Windows"))
 }
 
 #[cfg(target_os = "windows")]
-pub fn set_active_profile_via_ui(profile_name: &str) -> Result<String> {
-    windows_impl::set_active_profile_via_ui(profile_name)
+pub fn set_active_profile_via_ui(profile_name: &str, target_pid: Option<u32>) -> Result<String> {
+    windows_impl::set_active_profile_via_ui(profile_name, target_pid)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn set_active_profile_via_ui(_profile_name: &str) -> Result<String> {
+pub fn set_active_profile_via_ui(_profile_name: &str, _target_pid: Option<u32>) -> Result<String> {
     Err(anyhow!("UI automation is only available on Windows"))
 }
 
 #[cfg(target_os = "windows")]
-pub fn debug_probe() -> Result<UiDebugReport> {
-    windows_impl::debug_probe()
+pub fn debug_probe(target_pid: Option<u32>) -> Result<UiDebugReport> {
+    windows_impl::debug_probe(target_pid)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn debug_probe() -> Result<UiDebugReport> {
+pub fn debug_probe(_target_pid: Option<u32>) -> Result<UiDebugReport> {
     Ok(UiDebugReport {
         window_found: false,
         note: "UI automation diagnostics are only available on Windows".to_owned(),
@@ -1250,31 +1265,37 @@ pub fn debug_probe() -> Result<UiDebugReport> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn debug_toggle_via_ui_only() -> Result<String> {
-    windows_impl::click_enable_tun_via_ui()
+pub fn debug_toggle_via_ui_only(target_pid: Option<u32>) -> Result<String> {
+    windows_impl::click_enable_tun_via_ui(target_pid)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn debug_toggle_via_ui_only() -> Result<String> {
+pub fn debug_toggle_via_ui_only(_target_pid: Option<u32>) -> Result<String> {
     Err(anyhow!("UI automation is only available on Windows"))
 }
 
 #[cfg(target_os = "windows")]
-pub fn debug_click_reload_via_ui_only() -> Result<String> {
-    windows_impl::click_reload_via_ui()
+pub fn debug_click_reload_via_ui_only(target_pid: Option<u32>) -> Result<String> {
+    windows_impl::click_reload_via_ui(target_pid)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn debug_click_reload_via_ui_only() -> Result<String> {
+pub fn debug_click_reload_via_ui_only(_target_pid: Option<u32>) -> Result<String> {
     Err(anyhow!("UI automation is only available on Windows"))
 }
 
 #[cfg(target_os = "windows")]
-pub fn debug_select_profile_via_ui_only(profile_name: &str) -> Result<String> {
-    windows_impl::set_active_profile_via_ui(profile_name)
+pub fn debug_select_profile_via_ui_only(
+    profile_name: &str,
+    target_pid: Option<u32>,
+) -> Result<String> {
+    windows_impl::set_active_profile_via_ui(profile_name, target_pid)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn debug_select_profile_via_ui_only(_profile_name: &str) -> Result<String> {
+pub fn debug_select_profile_via_ui_only(
+    _profile_name: &str,
+    _target_pid: Option<u32>,
+) -> Result<String> {
     Err(anyhow!("UI automation is only available on Windows"))
 }

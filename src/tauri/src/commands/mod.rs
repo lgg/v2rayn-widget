@@ -159,17 +159,17 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
         return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
     }
 
-    ensure_uipi_compatible_for_control()?;
-
     let allow_restart_fallback = snapshot.settings.allow_restart_fallback;
     let base_path = resolve_v2rayn_base_path(&snapshot.settings)
         .ok_or_else(|| "v2rayN path not found".to_owned())?;
+    let target_pid = selected_v2rayn_pid(&base_path);
+    ensure_uipi_compatible_for_control(target_pid)?;
 
     let before = config_reader::read_config(&base_path)
         .ok()
         .and_then(|cfg| cfg.enable_tun);
 
-    let automation_result = ui_controller::toggle_tun_via_ui();
+    let automation_result = ui_controller::toggle_tun_via_ui(target_pid);
 
     tokio::time::sleep(Duration::from_millis(950)).await;
 
@@ -202,7 +202,7 @@ pub async fn toggle_tun_via_ui(state: State<'_, AppState>) -> Result<DashboardSt
         if process_monitor::read_process_snapshot_for_base_path(Some(&base_path)).v2rayn_running {
             let mut reloaded_without_restart = false;
 
-            match ui_controller::click_reload_via_ui() {
+            match ui_controller::click_reload_via_ui(target_pid) {
                 Ok(note) => {
                     info!(%note, "fallback applied through UI Reload");
                     tokio::time::sleep(Duration::from_millis(1200)).await;
@@ -277,11 +277,11 @@ pub async fn set_active_profile(
         return commit_client_status(&state, ProxyClientId::V2rayn, snapshot.client_epoch, mock);
     }
 
-    ensure_uipi_compatible_for_control()?;
-
     let allow_restart_fallback = snapshot.settings.allow_restart_fallback;
     let base_path = resolve_v2rayn_base_path(&snapshot.settings)
         .ok_or_else(|| "v2rayN path not found".to_owned())?;
+    let target_pid = selected_v2rayn_pid(&base_path);
+    ensure_uipi_compatible_for_control(target_pid)?;
 
     let config_before = config_reader::read_config(&base_path).map_err(|error| {
         error!(?error, "set_active_profile: initial config read failed");
@@ -317,7 +317,7 @@ pub async fn set_active_profile(
     let mut applied_via_ui = false;
 
     if process_snapshot.v2rayn_running {
-        match ui_controller::set_active_profile_via_ui(&target_profile.name) {
+        match ui_controller::set_active_profile_via_ui(&target_profile.name, target_pid) {
             Ok(note) => {
                 info!(%note, target_profile = %target_profile.name, "UI profile switch attempt executed");
                 tokio::time::sleep(Duration::from_millis(900)).await;
@@ -358,7 +358,7 @@ pub async fn set_active_profile(
         if process_snapshot.v2rayn_running {
             let mut reloaded_without_restart = false;
 
-            match ui_controller::click_reload_via_ui() {
+            match ui_controller::click_reload_via_ui(target_pid) {
                 Ok(note) => {
                     info!(%note, "profile fallback applied through UI Reload");
                     tokio::time::sleep(Duration::from_millis(1200)).await;
@@ -414,11 +414,10 @@ pub async fn open_v2rayn(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn restart_v2rayn(state: State<'_, AppState>) -> Result<(), String> {
-    ensure_uipi_compatible_for_control()?;
-
     let settings = state.snapshot().settings;
     let base_path =
         resolve_v2rayn_base_path(&settings).ok_or_else(|| "v2rayN path not found".to_owned())?;
+    ensure_uipi_compatible_for_control(selected_v2rayn_pid(&base_path))?;
 
     restart_v2rayn_process(&base_path).map_err(|error| error.to_string())
 }
@@ -569,8 +568,12 @@ pub async fn open_diagnostics_window(
 }
 
 #[tauri::command]
-pub async fn run_ui_debug_probe() -> Result<UiDebugReport, String> {
-    let mut report = ui_controller::debug_probe().map_err(|error| error.to_string())?;
+pub async fn run_ui_debug_probe(state: State<'_, AppState>) -> Result<UiDebugReport, String> {
+    let settings = state.snapshot().settings;
+    let target_pid = resolve_v2rayn_base_path(&settings)
+        .as_deref()
+        .and_then(selected_v2rayn_pid);
+    let mut report = ui_controller::debug_probe(target_pid).map_err(|error| error.to_string())?;
 
     if report.window_process_name.is_none() {
         if let Some(pid) = report.window_pid {
@@ -578,7 +581,9 @@ pub async fn run_ui_debug_probe() -> Result<UiDebugReport, String> {
         }
     }
 
-    if let Ok(diag) = privilege::collect_v2rayn_privilege_diagnostics() {
+    if let Ok(diag) =
+        privilege::collect_v2rayn_privilege_diagnostics(report.window_pid.or(target_pid))
+    {
         report.privilege = diag;
     }
 
@@ -586,21 +591,27 @@ pub async fn run_ui_debug_probe() -> Result<UiDebugReport, String> {
 }
 
 #[tauri::command]
-pub async fn debug_toggle_via_ui_only() -> Result<String, String> {
-    ensure_uipi_compatible_for_control()?;
-    ui_controller::debug_toggle_via_ui_only().map_err(|error| error.to_string())
+pub async fn debug_toggle_via_ui_only(state: State<'_, AppState>) -> Result<String, String> {
+    let target_pid = selected_v2rayn_pid_from_state(&state)?;
+    ensure_uipi_compatible_for_control(target_pid)?;
+    ui_controller::debug_toggle_via_ui_only(target_pid).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub async fn debug_click_reload_via_ui() -> Result<String, String> {
-    ensure_uipi_compatible_for_control()?;
-    ui_controller::debug_click_reload_via_ui_only().map_err(|error| error.to_string())
+pub async fn debug_click_reload_via_ui(state: State<'_, AppState>) -> Result<String, String> {
+    let target_pid = selected_v2rayn_pid_from_state(&state)?;
+    ensure_uipi_compatible_for_control(target_pid)?;
+    ui_controller::debug_click_reload_via_ui_only(target_pid).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub async fn debug_select_profile_via_ui(profile_name: String) -> Result<String, String> {
-    ensure_uipi_compatible_for_control()?;
-    ui_controller::debug_select_profile_via_ui_only(profile_name.trim())
+pub async fn debug_select_profile_via_ui(
+    profile_name: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let target_pid = selected_v2rayn_pid_from_state(&state)?;
+    ensure_uipi_compatible_for_control(target_pid)?;
+    ui_controller::debug_select_profile_via_ui_only(profile_name.trim(), target_pid)
         .map_err(|error| error.to_string())
 }
 
@@ -614,16 +625,16 @@ pub async fn debug_capture_runtime_snapshot(
 
 #[tauri::command]
 pub async fn debug_toggle_via_config_only(state: State<'_, AppState>) -> Result<String, String> {
-    ensure_uipi_compatible_for_control()?;
-
     let settings = state.snapshot().settings;
     let base_path =
         resolve_v2rayn_base_path(&settings).ok_or_else(|| "v2rayN path not found".to_owned())?;
+    let target_pid = selected_v2rayn_pid(&base_path);
+    ensure_uipi_compatible_for_control(target_pid)?;
 
     let value = config_reader::toggle_tun_mode(&base_path).map_err(|error| error.to_string())?;
 
     if process_monitor::read_process_snapshot_for_base_path(Some(&base_path)).v2rayn_running {
-        match ui_controller::click_reload_via_ui() {
+        match ui_controller::click_reload_via_ui(target_pid) {
             Ok(note) => return Ok(format!("Config EnableTun set to {value}. {note}")),
             Err(error) => {
                 restart_v2rayn_process(&base_path).map_err(|restart_error| {
@@ -1074,11 +1085,23 @@ fn commit_client_status(
     }
 }
 
-fn ensure_uipi_compatible_for_control() -> Result<(), String> {
-    let diagnostics = privilege::collect_v2rayn_privilege_diagnostics().map_err(|error| {
-        warn!(?error, "privilege diagnostics failed");
-        error.to_string()
-    })?;
+fn selected_v2rayn_pid(base_path: &Path) -> Option<u32> {
+    process_monitor::read_process_snapshot_for_base_path(Some(base_path)).v2rayn_pid
+}
+
+fn selected_v2rayn_pid_from_state(state: &State<'_, AppState>) -> Result<Option<u32>, String> {
+    let settings = state.snapshot().settings;
+    let base_path =
+        resolve_v2rayn_base_path(&settings).ok_or_else(|| "v2rayN path not found".to_owned())?;
+    Ok(selected_v2rayn_pid(&base_path))
+}
+
+fn ensure_uipi_compatible_for_control(target_pid: Option<u32>) -> Result<(), String> {
+    let diagnostics =
+        privilege::collect_v2rayn_privilege_diagnostics(target_pid).map_err(|error| {
+            warn!(?error, "privilege diagnostics failed");
+            error.to_string()
+        })?;
 
     if diagnostics.uipi_mismatch {
         let pid = diagnostics
@@ -1094,25 +1117,36 @@ fn ensure_uipi_compatible_for_control() -> Result<(), String> {
     Ok(())
 }
 
-fn open_v2rayn_process(base_path: &Path) -> Result<(), String> {
-    let exe_path = base_path.join("v2rayN.exe");
+fn build_v2rayn_command(base_path: &Path) -> Command {
+    let mut command = Command::new(base_path.join("v2rayN.exe"));
+    command.current_dir(base_path);
+    command
+}
 
-    Command::new(exe_path)
+fn open_v2rayn_process(base_path: &Path) -> Result<(), String> {
+    build_v2rayn_command(base_path)
         .spawn()
         .map_err(|error| error.to_string())?;
 
-    info!("open_v2rayn requested");
+    info!(base_path = %base_path.display(), "open_v2rayn requested");
     Ok(())
 }
 
 fn restart_v2rayn_process(base_path: &Path) -> anyhow::Result<()> {
-    if !process_monitor::terminate_v2rayn_at_path(base_path) {
+    let matched = process_monitor::terminate_v2rayn_at_path(base_path)?;
+    if matched {
+        std::thread::sleep(Duration::from_millis(750));
+        if process_monitor::read_process_snapshot_for_base_path(Some(base_path)).v2rayn_running {
+            anyhow::bail!(
+                "Matched v2rayN process did not terminate; refusing to launch a duplicate instance"
+            );
+        }
+    } else {
         warn!(
             base_path = %base_path.display(),
             "no running v2rayN process matched configured path during restart"
         );
     }
-    std::thread::sleep(Duration::from_millis(750));
 
     open_v2rayn_process(base_path).map_err(anyhow::Error::msg)
 }
@@ -1259,5 +1293,16 @@ mod tests {
     fn normalize_diagnostics_url_rejects_non_http_schemes() {
         assert!(normalize_diagnostics_url("file:///C:/temp/check.html").is_none());
         assert!(normalize_diagnostics_url("javascript:alert(1)").is_none());
+    }
+    #[test]
+    fn v2rayn_command_uses_selected_installation_as_working_directory() {
+        let base_path = PathBuf::from("selected-v2rayn-installation");
+        let command = build_v2rayn_command(&base_path);
+
+        assert_eq!(command.get_current_dir(), Some(base_path.as_path()));
+        assert_eq!(
+            PathBuf::from(command.get_program()),
+            base_path.join("v2rayN.exe")
+        );
     }
 }

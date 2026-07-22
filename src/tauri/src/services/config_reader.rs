@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Mutex};
+use std::{fs, path::Path, path::PathBuf, sync::Mutex};
 
 use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
@@ -28,7 +28,7 @@ pub struct ConfigSnapshot {
 pub fn read_config(base_path: &Path) -> Result<ConfigSnapshot> {
     let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
 
-    let content = read_valid_config_string(&config_path)?;
+    let content = read_valid_config_string_for_observation(&config_path)?;
 
     let json: Value = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
@@ -55,7 +55,7 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
     let _write_guard = CONFIG_WRITE_LOCK
         .lock()
         .map_err(|_| anyhow::anyhow!("v2rayN config write lock is poisoned"))?;
-    let content = read_valid_config_string(&config_path)?;
+    let content = read_primary_config_string_for_update(&config_path)?;
 
     let mut json: Value = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
@@ -104,7 +104,7 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
     let serialized = serde_json::to_string_pretty(&json)
         .with_context(|| format!("Failed to serialize config JSON: {}", config_path.display()))?;
 
-    file_store::replace_with_backup(&config_path, serialized.as_bytes())
+    replace_config_if_unchanged(&config_path, &content, serialized.as_bytes())
         .with_context(|| format!("Failed to write config: {}", config_path.display()))?;
 
     Ok(())
@@ -116,7 +116,7 @@ pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
     let _write_guard = CONFIG_WRITE_LOCK
         .lock()
         .map_err(|_| anyhow::anyhow!("v2rayN config write lock is poisoned"))?;
-    let content = read_valid_config_string(&config_path)?;
+    let content = read_primary_config_string_for_update(&config_path)?;
 
     let mut json: Value = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
@@ -165,17 +165,97 @@ pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
     let serialized = serde_json::to_string_pretty(&json)
         .with_context(|| format!("Failed to serialize config JSON: {}", config_path.display()))?;
 
-    file_store::replace_with_backup(&config_path, serialized.as_bytes())
+    replace_config_if_unchanged(&config_path, &content, serialized.as_bytes())
         .with_context(|| format!("Failed to write config: {}", config_path.display()))?;
 
     Ok(next)
 }
 
-fn read_valid_config_string(config_path: &Path) -> Result<String> {
-    file_store::read_validated_string(config_path, |content| {
-        serde_json::from_str::<Value>(content).is_ok_and(|value| value.is_object())
-    })
-    .with_context(|| format!("Failed to read valid config: {}", config_path.display()))
+fn read_valid_config_string_for_observation(config_path: &Path) -> Result<String> {
+    let primary_result = fs::read_to_string(config_path);
+    if let Ok(content) = &primary_result {
+        if is_valid_config(content) {
+            return Ok(content.clone());
+        }
+    }
+
+    let primary_problem = match &primary_result {
+        Ok(_) => format!(
+            "Primary config failed validation: {}",
+            config_path.display()
+        ),
+        Err(error) => format!(
+            "Failed to read primary config {}: {error}",
+            config_path.display()
+        ),
+    };
+    let backup = config_backup_path(config_path);
+    let backup_content = fs::read_to_string(&backup).with_context(|| {
+        format!(
+            "{primary_problem}; failed to read backup {}",
+            backup.display()
+        )
+    })?;
+    if !is_valid_config(&backup_content) {
+        return Err(anyhow::anyhow!(
+            "{primary_problem}; backup failed validation: {}",
+            backup.display()
+        ));
+    }
+
+    tracing::warn!(
+        primary = %config_path.display(),
+        backup = %backup.display(),
+        "using valid v2rayN config backup for observation without modifying the primary file"
+    );
+    Ok(backup_content)
+}
+
+fn read_primary_config_string_for_update(config_path: &Path) -> Result<String> {
+    file_store::recover_backup_if_missing(config_path)?;
+    let content = fs::read_to_string(config_path).with_context(|| {
+        format!(
+            "Failed to read config for update: {}",
+            config_path.display()
+        )
+    })?;
+    if !is_valid_config(&content) {
+        return Err(anyhow::anyhow!(
+            "Primary config is invalid; refusing to mutate external v2rayN config: {}",
+            config_path.display()
+        ));
+    }
+    Ok(content)
+}
+
+fn replace_config_if_unchanged(
+    config_path: &Path,
+    original_content: &str,
+    replacement: &[u8],
+) -> Result<()> {
+    let current_content = fs::read_to_string(config_path).with_context(|| {
+        format!(
+            "Failed to re-read config before guarded update: {}",
+            config_path.display()
+        )
+    })?;
+    if current_content != original_content {
+        return Err(anyhow::anyhow!(
+            "v2rayN config changed while the widget was preparing an update; refusing to overwrite concurrent changes"
+        ));
+    }
+
+    file_store::replace_with_backup(config_path, replacement)
+}
+
+fn is_valid_config(content: &str) -> bool {
+    serde_json::from_str::<Value>(content).is_ok_and(|value| value.is_object())
+}
+
+fn config_backup_path(path: &Path) -> PathBuf {
+    let mut value = path.as_os_str().to_os_string();
+    value.push(".bak");
+    PathBuf::from(value)
 }
 
 fn read_profiles_from_db(base_path: &Path) -> Result<Vec<ProfileSummary>> {
@@ -638,13 +718,13 @@ mod tests {
         let _ = fs::remove_dir_all(base_path);
     }
     #[test]
-    fn read_config_recovers_a_valid_backup_when_primary_json_is_corrupt() {
+    fn read_config_uses_valid_backup_without_overwriting_corrupt_primary() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
         let base_path = std::env::temp_dir().join(format!(
-            "v2rayn-widget-config-backup-recovery-test-{unique}"
+            "v2rayn-widget-config-backup-observation-test-{unique}"
         ));
         let config_dir = base_path.join("guiConfigs");
         fs::create_dir_all(&config_dir).expect("create config dir");
@@ -664,16 +744,74 @@ mod tests {
         )
         .expect("write valid backup");
 
-        let snapshot = read_config(&base_path).expect("recover config");
+        let snapshot = read_config(&base_path).expect("read backup snapshot");
         assert_eq!(snapshot.enable_tun, Some(true));
         assert_eq!(
             snapshot.active_profile_name.as_deref(),
             Some("First profile")
         );
-        assert!(serde_json::from_str::<Value>(
-            &fs::read_to_string(&config_path).expect("read restored config")
+        assert_eq!(
+            fs::read_to_string(&config_path).expect("read untouched primary"),
+            "{broken"
+        );
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn config_mutation_rejects_corrupt_primary_even_with_valid_backup() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!(
+            "v2rayn-widget-config-corrupt-mutation-test-{unique}"
+        ));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        fs::write(&config_path, "{broken").expect("write corrupt primary");
+        fs::write(
+            config_dir.join("guiNConfig.json.bak"),
+            serde_json::json!({ "TunModeItem": { "EnableTun": true } }).to_string(),
         )
-        .is_ok());
+        .expect("write valid backup");
+
+        assert!(toggle_tun_mode(&base_path).is_err());
+        assert_eq!(
+            fs::read_to_string(&config_path).expect("read untouched primary"),
+            "{broken"
+        );
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn guarded_update_rejects_concurrent_external_change() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!(
+            "v2rayn-widget-config-concurrent-update-test-{unique}"
+        ));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        let original = r#"{"TunModeItem":{"EnableTun":false}}"#;
+        fs::write(&config_path, original).expect("write original config");
+        fs::write(
+            &config_path,
+            r#"{"TunModeItem":{"EnableTun":true},"externalChange":true}"#,
+        )
+        .expect("write concurrent change");
+
+        assert!(replace_config_if_unchanged(&config_path, original, b"{}").is_err());
+        assert!(fs::read_to_string(&config_path)
+            .expect("read retained external change")
+            .contains("externalChange"));
 
         let _ = fs::remove_dir_all(base_path);
     }

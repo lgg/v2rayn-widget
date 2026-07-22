@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use anyhow::{anyhow, Result};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
 #[derive(Debug, Clone, Default)]
@@ -79,14 +80,14 @@ pub fn v2rayn_base_path_from_running_process() -> Option<PathBuf> {
     candidates.into_iter().next().map(|(_, path)| path)
 }
 
-pub fn terminate_v2rayn_at_path(base_path: &Path) -> bool {
+pub fn terminate_v2rayn_at_path(base_path: &Path) -> Result<bool> {
     let mut system = System::new_all();
     system.refresh_processes(ProcessesToUpdate::All, true);
 
     let expected = normalize_path(base_path);
-    let mut killed = false;
+    let mut matched = false;
 
-    for process in system.processes().values() {
+    for (pid, process) in system.processes() {
         let process_name = process.name().to_string_lossy().to_lowercase();
         if !is_v2rayn_process_name(&process_name) {
             continue;
@@ -100,12 +101,17 @@ pub fn terminate_v2rayn_at_path(base_path: &Path) -> bool {
         };
 
         if normalize_path(parent) == expected {
-            let _ = process.kill();
-            killed = true;
+            matched = true;
+            if !process.kill() {
+                return Err(anyhow!(
+                    "Failed to request termination for matched v2rayN process {}",
+                    pid.as_u32()
+                ));
+            }
         }
     }
 
-    killed
+    Ok(matched)
 }
 
 fn is_v2rayn_process_name(name: &str) -> bool {

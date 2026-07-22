@@ -4,7 +4,6 @@ use crate::models::debug::PrivilegeDiagnostics;
 mod windows_impl {
     use anyhow::{anyhow, Context, Result};
     use std::{ffi::OsStr, os::windows::ffi::OsStrExt};
-    use sysinfo::{ProcessesToUpdate, System};
     use windows::{
         core::{w, PCWSTR},
         Win32::{
@@ -19,7 +18,9 @@ mod windows_impl {
 
     use crate::models::debug::PrivilegeDiagnostics;
 
-    pub fn collect_v2rayn_privilege_diagnostics() -> Result<PrivilegeDiagnostics> {
+    pub fn collect_v2rayn_privilege_diagnostics(
+        v2rayn_pid: Option<u32>,
+    ) -> Result<PrivilegeDiagnostics> {
         let widget_is_admin = current_process_is_elevated()?;
 
         let mut diagnostics = PrivilegeDiagnostics {
@@ -27,7 +28,7 @@ mod windows_impl {
             ..PrivilegeDiagnostics::default()
         };
 
-        if let Some(pid) = find_v2rayn_pid() {
+        if let Some(pid) = v2rayn_pid {
             diagnostics.v2rayn_pid = Some(pid);
 
             match process_is_elevated(pid) {
@@ -88,20 +89,6 @@ mod windows_impl {
         Ok(())
     }
 
-    fn find_v2rayn_pid() -> Option<u32> {
-        let mut system = System::new_all();
-        system.refresh_processes(ProcessesToUpdate::All, true);
-
-        for (pid, process) in system.processes() {
-            let name = process.name().to_string_lossy().to_lowercase();
-            if name == "v2rayn.exe" || name == "v2rayn" {
-                return Some(pid.as_u32());
-            }
-        }
-
-        None
-    }
-
     unsafe fn token_is_elevated_for_process(process: HANDLE) -> Result<bool> {
         let mut token = HANDLE::default();
         OpenProcessToken(process, TOKEN_QUERY, &mut token).context("OpenProcessToken failed")?;
@@ -129,12 +116,16 @@ mod windows_impl {
 }
 
 #[cfg(target_os = "windows")]
-pub fn collect_v2rayn_privilege_diagnostics() -> anyhow::Result<PrivilegeDiagnostics> {
-    windows_impl::collect_v2rayn_privilege_diagnostics()
+pub fn collect_v2rayn_privilege_diagnostics(
+    v2rayn_pid: Option<u32>,
+) -> anyhow::Result<PrivilegeDiagnostics> {
+    windows_impl::collect_v2rayn_privilege_diagnostics(v2rayn_pid)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn collect_v2rayn_privilege_diagnostics() -> anyhow::Result<PrivilegeDiagnostics> {
+pub fn collect_v2rayn_privilege_diagnostics(
+    _v2rayn_pid: Option<u32>,
+) -> anyhow::Result<PrivilegeDiagnostics> {
     Ok(PrivilegeDiagnostics::default())
 }
 

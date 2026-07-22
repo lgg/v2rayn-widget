@@ -37,6 +37,10 @@
 - [x] Documentation and audit report match the verified implementation.
 - [ ] PR is squash-merged into `main`.
 
+## Final verification remediation
+
+- Canonical endpoint expectations and release-only warning cleanup are being verified after the first full packaging run exposed two stale test assertions.
+
 ## Report
 
 - `project-tracking/reports/0018-full-project-screen-audit-report.md`

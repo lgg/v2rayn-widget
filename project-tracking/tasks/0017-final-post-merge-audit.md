@@ -34,7 +34,8 @@
 - activated existing installations instead of spawning duplicates;
 - restricted TUN/Reload UI candidates to explicit actions;
 - required exact, unambiguous profile names;
-- added focused regression coverage for all deterministic findings.
+- added focused regression coverage for all deterministic findings;
+- removed a dead reload wrapper and resolved the final strict-Clippy findings surfaced by the complete gate.
 
 ## Acceptance Criteria
 

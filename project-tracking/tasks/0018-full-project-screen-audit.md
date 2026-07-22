@@ -39,7 +39,7 @@
 
 ## Final verification remediation
 
-- The first complete packaging run exposed two stale canonical-URL assertions and two release-only warnings; exact fixes are now being applied before the final clean gate.
+- Canonical endpoint tests, release-only warnings and Rust 1.97 strict Clippy findings have been corrected; the permanent final gate is running on the exact product head.
 
 ## Report
 

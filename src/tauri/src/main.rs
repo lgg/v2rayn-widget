@@ -341,9 +341,28 @@ mod tests {
 
     #[test]
     fn initial_window_resizability_matches_tauri_configuration() {
-        assert!(window_is_resizable("main"));
-        assert!(window_is_resizable("debug"));
-        assert!(!window_is_resizable("settings"));
-        assert!(!window_is_resizable("happ-setup"));
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("valid Tauri config");
+        let windows = config
+            .get("app")
+            .and_then(|value| value.get("windows"))
+            .and_then(serde_json::Value::as_array)
+            .expect("Tauri windows array");
+
+        for window in windows {
+            let label = window
+                .get("label")
+                .and_then(serde_json::Value::as_str)
+                .expect("window label");
+            let configured = window
+                .get("resizable")
+                .and_then(serde_json::Value::as_bool)
+                .expect("window resizable flag");
+            assert_eq!(
+                window_is_resizable(label),
+                configured,
+                "runtime resizability drifted from Tauri config for {label}"
+            );
+        }
     }
 }

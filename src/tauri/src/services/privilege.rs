@@ -30,20 +30,9 @@ mod windows_impl {
 
         if let Some(pid) = v2rayn_pid {
             diagnostics.v2rayn_pid = Some(pid);
-
-            match process_is_elevated(pid) {
-                Ok(target_is_admin) => {
-                    diagnostics.v2rayn_is_admin = Some(target_is_admin);
-                    diagnostics.uipi_mismatch = target_is_admin && !widget_is_admin;
-                }
-                Err(error) => {
-                    // If v2rayN token cannot be read from non-admin widget, treat as potential UIPI mismatch.
-                    if !widget_is_admin {
-                        diagnostics.uipi_mismatch = true;
-                    }
-                    tracing::warn!(?error, pid, "could not read v2rayN token elevation");
-                }
-            }
+            let target_is_admin = process_is_elevated(pid)?;
+            diagnostics.v2rayn_is_admin = Some(target_is_admin);
+            diagnostics.uipi_mismatch = target_is_admin && !widget_is_admin;
         }
 
         Ok(diagnostics)

@@ -49,7 +49,7 @@ mod windows_impl {
 
     #[derive(Default)]
     struct WindowSearch {
-        target_pid: u32,
+        target_pids: Vec<u32>,
         best: Option<(HWND, i32)>,
     }
 
@@ -57,10 +57,8 @@ mod windows_impl {
     struct ChildScan {
         titles: Vec<String>,
         tun_candidates: Vec<String>,
-        first_tun_hwnd: Option<HWND>,
         preferred_tun_hwnd: Option<HWND>,
         preferred_tun_title: Option<String>,
-        first_tun_title: Option<String>,
     }
 
     #[derive(Default)]
@@ -116,7 +114,7 @@ mod windows_impl {
     }
 
     pub fn click_enable_tun_via_ui(target_pid: Option<u32>) -> Result<String> {
-        let hwnd = find_v2rayn_window(target_pid)
+        let hwnd = find_v2rayn_window_for_pid(target_pid)
             .ok_or_else(|| anyhow!("v2rayN window not found for the selected process"))?;
         let was_minimized = bring_target_window_to_front(hwnd);
 
@@ -132,11 +130,11 @@ mod windows_impl {
             }
 
             let child_scan = scan_child_controls(hwnd);
-            if let Some(target) = child_scan.preferred_tun_hwnd.or(child_scan.first_tun_hwnd) {
+            if let Some(target) = child_scan.preferred_tun_hwnd {
                 unsafe {
                     let _ = SendMessageW(target, BM_CLICK, Some(WPARAM(0)), Some(LPARAM(0)));
                 }
-                return Ok("Sent BM_CLICK to Win32 child TUN candidate".to_owned());
+                return Ok("Sent BM_CLICK to an explicit Win32 Enable TUN control".to_owned());
             }
 
             Err(anyhow!(
@@ -149,7 +147,7 @@ mod windows_impl {
     }
 
     pub fn click_reload_via_ui(target_pid: Option<u32>) -> Result<String> {
-        let hwnd = find_v2rayn_window(target_pid)
+        let hwnd = find_v2rayn_window_for_pid(target_pid)
             .ok_or_else(|| anyhow!("v2rayN window not found for the selected process"))?;
         let was_minimized = bring_target_window_to_front(hwnd);
 
@@ -179,7 +177,7 @@ mod windows_impl {
             return Err(anyhow!("Profile name is empty"));
         }
 
-        let hwnd = find_v2rayn_window(target_pid)
+        let hwnd = find_v2rayn_window_for_pid(target_pid)
             .ok_or_else(|| anyhow!("v2rayN window not found for the selected process"))?;
         let was_minimized = bring_target_window_to_front(hwnd);
 
@@ -210,7 +208,7 @@ mod windows_impl {
     }
 
     pub fn debug_probe(target_pid: Option<u32>) -> Result<UiDebugReport> {
-        let hwnd = find_v2rayn_window(target_pid);
+        let hwnd = find_v2rayn_window_for_pid(target_pid);
 
         let Some(window) = hwnd else {
             return Ok(UiDebugReport {
@@ -284,14 +282,12 @@ mod windows_impl {
                 .as_ref()
                 .and_then(|scan| scan.best_tun.as_ref())
                 .is_some()
-                || child_scan.preferred_tun_hwnd.is_some()
-                || child_scan.first_tun_hwnd.is_some(),
+                || child_scan.preferred_tun_hwnd.is_some(),
             tun_control_title: uia_scan
                 .as_ref()
                 .and_then(|scan| scan.best_tun.as_ref())
                 .map(|candidate| candidate.label.clone())
-                .or(child_scan.preferred_tun_title)
-                .or(child_scan.first_tun_title),
+                .or(child_scan.preferred_tun_title),
             reload_control_found: uia_scan
                 .as_ref()
                 .and_then(|scan| scan.best_reload.as_ref())
@@ -388,9 +384,8 @@ mod windows_impl {
                 });
             }
 
-            let haystack = build_haystack(&name, &automation_id, &class_name);
-
-            let tun_score = score_tun_candidate(&haystack, control_type_id);
+            let tun_score =
+                score_tun_candidate(name.as_deref(), automation_id.as_deref(), control_type_id);
             if tun_score > 0 {
                 let label = format_candidate_label(
                     name.clone(),
@@ -416,7 +411,8 @@ mod windows_impl {
                 }
             }
 
-            let reload_score = score_reload_candidate(&haystack, control_type_id);
+            let reload_score =
+                score_reload_candidate(name.as_deref(), automation_id.as_deref(), control_type_id);
             if reload_score > 0 {
                 let label = format_candidate_label(
                     name,
@@ -479,9 +475,8 @@ mod windows_impl {
                 .map_err(|error| anyhow!("Length() failed: {error}"))?
         };
 
-        let target_lower = target_profile_name.trim().to_lowercase();
-        let target_tokens = tokenize_profile_name(&target_lower);
-        let mut best: Option<UiActionCandidate> = None;
+        let target_lower = normalize_profile_label(target_profile_name);
+        let mut candidates: Vec<UiActionCandidate> = Vec::new();
         let mut profile_candidates: Vec<String> = Vec::new();
         let mut window_rect_value = RECT::default();
         let window_rect = unsafe {
@@ -519,11 +514,9 @@ mod windows_impl {
                 .unwrap_or_else(|| "Unknown".to_owned());
             let bounds = unsafe { element.CurrentBoundingRectangle() }.ok();
 
-            let haystack = build_haystack(&name, &automation_id, &class_name);
             let score = score_profile_candidate(
-                &haystack,
+                name.as_deref(),
                 &target_lower,
-                &target_tokens,
                 control_type_id,
                 class_name.as_deref(),
                 bounds,
@@ -541,34 +534,34 @@ mod windows_impl {
                 profile_candidates.push(label.clone());
             }
 
-            match &best {
-                Some(current) if current.score >= score => {}
-                _ => {
-                    best = Some(UiActionCandidate {
-                        element,
-                        label,
-                        score,
-                    });
-                }
-            }
+            candidates.push(UiActionCandidate {
+                element,
+                label,
+                score,
+            });
         }
 
-        best.ok_or_else(|| {
-            if profile_candidates.is_empty() {
-                anyhow!(
-                    "No matching UI row found for profile '{target_profile_name}'. Probe UI tree in Debug Tools."
-                )
-            } else {
-                anyhow!(
-                    "Profile '{target_profile_name}' was not confidently matched in UI tree. Top candidates: {}",
+        candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.score));
+        let Some(best) = candidates.first().cloned() else {
+            return Err(anyhow!(
+                "No exact UI row match found for profile '{target_profile_name}'. Probe UI tree in Debug Tools."
+            ));
+        };
+
+        if let Some(second) = candidates.get(1) {
+            if second.score + 80 >= best.score {
+                return Err(anyhow!(
+                    "Profile '{target_profile_name}' matched multiple UI elements ambiguously. Top candidates: {}",
                     profile_candidates
                         .into_iter()
                         .take(6)
                         .collect::<Vec<_>>()
                         .join(" || ")
-                )
+                ));
             }
-        })
+        }
+
+        Ok(best)
     }
 
     fn select_element(element: &IUIAutomationElement) -> Result<&'static str> {
@@ -769,103 +762,116 @@ mod windows_impl {
         }
     }
 
-    fn build_haystack(
-        name: &Option<String>,
-        automation_id: &Option<String>,
-        class_name: &Option<String>,
-    ) -> String {
-        format!(
-            "{} {} {}",
-            name.as_deref().unwrap_or_default().to_lowercase(),
-            automation_id.as_deref().unwrap_or_default().to_lowercase(),
-            class_name.as_deref().unwrap_or_default().to_lowercase()
+    fn score_tun_candidate(
+        name: Option<&str>,
+        automation_id: Option<&str>,
+        control_type_id: Option<i32>,
+    ) -> i32 {
+        if !matches_clickable_control(control_type_id) {
+            return 0;
+        }
+
+        let explicit_name = name.is_some_and(is_explicit_native_tun_label);
+        let explicit_id = automation_id.is_some_and(is_explicit_tun_automation_id);
+        if !explicit_name && !explicit_id {
+            return 0;
+        }
+
+        400 + if explicit_name { 160 } else { 0 } + if explicit_id { 100 } else { 0 }
+    }
+
+    fn is_explicit_tun_automation_id(value: &str) -> bool {
+        matches!(
+            compact_action_text(value).as_str(),
+            "enabletun" | "enabletunmode" | "enabletuntoggle" | "tuntoggle" | "tunswitch"
         )
     }
 
-    fn score_tun_candidate(haystack: &str, control_type_id: Option<i32>) -> i32 {
-        if !haystack.contains("tun") {
-            return 0;
-        }
+    fn is_explicit_native_tun_label(value: &str) -> bool {
+        let normalized = normalize_action_label(value);
+        let compact = compact_action_text(&normalized);
 
-        let mut score = 30;
-
-        if haystack.contains("enable tun") {
-            score += 240;
-        }
-        if haystack.contains("enabletun")
-            || haystack.contains("tunmode")
-            || haystack.contains("tun mode")
-        {
-            score += 180;
-        }
-        if haystack.contains("switch") || haystack.contains("toggle") {
-            score += 80;
-        }
-
-        if matches_clickable_control(control_type_id) {
-            score += 60;
-        }
-
-        score
+        matches!(
+            normalized.as_str(),
+            "enable tun" | "enable tun mode" | "включить tun" | "включить режим tun"
+        ) || matches!(
+            compact.as_str(),
+            "enabletun" | "enabletunmode" | "включитьtun"
+        )
     }
 
-    fn score_reload_candidate(haystack: &str, control_type_id: Option<i32>) -> i32 {
-        let has_reload_token = haystack.contains("reload")
-            || haystack.contains("перезаг")
-            || haystack.contains("重载")
-            || haystack.contains("重新加载");
-
-        if !has_reload_token {
+    fn score_reload_candidate(
+        name: Option<&str>,
+        automation_id: Option<&str>,
+        control_type_id: Option<i32>,
+    ) -> i32 {
+        if !matches_clickable_control(control_type_id) {
             return 0;
         }
 
-        let mut score = 120;
-
-        if haystack.contains("reload") {
-            score += 120;
+        let explicit_name = name.is_some_and(is_explicit_reload_label);
+        let explicit_id = automation_id.is_some_and(is_explicit_reload_automation_id);
+        if !explicit_name && !explicit_id {
+            return 0;
         }
 
-        if matches_clickable_control(control_type_id) {
-            score += 50;
-        }
+        300 + if explicit_name { 140 } else { 0 } + if explicit_id { 80 } else { 0 }
+    }
 
-        score
+    fn is_explicit_reload_label(value: &str) -> bool {
+        matches!(
+            normalize_action_label(value).as_str(),
+            "reload" | "перезагрузить" | "重载" | "重新加载"
+        )
+    }
+
+    fn is_explicit_reload_automation_id(value: &str) -> bool {
+        matches!(
+            compact_action_text(value).as_str(),
+            "reload" | "btnreload" | "reloadbutton"
+        )
+    }
+
+    fn normalize_action_label(value: &str) -> String {
+        value
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    }
+
+    fn compact_action_text(value: &str) -> String {
+        value
+            .chars()
+            .filter(|character| character.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
     }
 
     fn score_profile_candidate(
-        haystack: &str,
+        candidate_name: Option<&str>,
         target_lower: &str,
-        target_tokens: &[String],
         control_type_id: Option<i32>,
         class_name: Option<&str>,
         bounds: Option<RECT>,
         window_rect: Option<RECT>,
     ) -> i32 {
-        if target_lower.is_empty() {
+        let Some(candidate_name) = candidate_name else {
+            return 0;
+        };
+        if target_lower.is_empty() || !profile_name_exactly_matches(candidate_name, target_lower) {
             return 0;
         }
 
-        let mut score = 0;
+        let mut score = 600;
         let class_lower = class_name.unwrap_or_default().to_lowercase();
-
-        if haystack == target_lower {
-            score += 600;
-        }
-
-        if haystack.contains(target_lower) {
-            score += 420;
-        }
-
-        for token in target_tokens {
-            if token.len() >= 2 && haystack.contains(token) {
-                score += 45;
-            }
-        }
 
         if matches_profile_row_control(control_type_id) {
             score += 180;
         } else if matches_clickable_control(control_type_id) {
             score += 60;
+        } else {
+            return 0;
         }
 
         if class_lower.contains("datagrid") {
@@ -914,22 +920,30 @@ mod windows_impl {
             }
         }
 
-        if target_tokens.len() > 1 {
-            let token_hits = target_tokens
-                .iter()
-                .filter(|token| token.len() >= 2 && haystack.contains(token.as_str()))
-                .count();
-
-            if token_hits + 1 < target_tokens.len() {
-                score -= 120;
-            }
-        }
-
-        if score < 120 {
+        if score < 300 {
             return 0;
         }
 
         score
+    }
+
+    fn normalize_profile_label(value: &str) -> String {
+        value
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    }
+
+    fn profile_name_exactly_matches(candidate_name: &str, target_normalized: &str) -> bool {
+        if target_normalized.is_empty() {
+            return false;
+        }
+
+        normalize_profile_label(candidate_name) == target_normalized
+            || candidate_name
+                .split(['\n', '\r', '\t'])
+                .any(|segment| normalize_profile_label(segment) == target_normalized)
     }
 
     fn bounds_suffix(bounds: Option<RECT>) -> String {
@@ -958,14 +972,6 @@ mod windows_impl {
                 (screen_x, screen_y)
             }
         }
-    }
-
-    fn tokenize_profile_name(value: &str) -> Vec<String> {
-        value
-            .split(|ch: char| !ch.is_alphanumeric())
-            .filter(|chunk| !chunk.is_empty())
-            .map(|chunk| chunk.to_lowercase())
-            .collect()
     }
 
     fn matches_profile_row_control(control_type_id: Option<i32>) -> bool {
@@ -1085,20 +1091,50 @@ mod windows_impl {
         }
     }
 
-    fn find_v2rayn_window(target_pid: Option<u32>) -> Option<HWND> {
+    pub fn find_v2rayn_window_pid(target_pids: &[u32]) -> Option<u32> {
+        find_v2rayn_window(target_pids).and_then(get_window_pid)
+    }
+
+    pub fn activate_v2rayn_window(target_pids: &[u32]) -> Result<u32> {
+        let hwnd = find_v2rayn_window(target_pids)
+            .ok_or_else(|| anyhow!("v2rayN window not found for the configured installation"))?;
+        let pid = get_window_pid(hwnd)
+            .ok_or_else(|| anyhow!("v2rayN window process id is unavailable"))?;
+
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = SetForegroundWindow(hwnd);
+        }
+
+        Ok(pid)
+    }
+
+    fn find_v2rayn_window_for_pid(target_pid: Option<u32>) -> Option<HWND> {
         let target_pid = target_pid?;
+        find_v2rayn_window(&[target_pid])
+    }
+
+    fn find_v2rayn_window(target_pids: &[u32]) -> Option<HWND> {
+        if target_pids.is_empty() {
+            return None;
+        }
+
         let exact = unsafe { FindWindowW(None, windows::core::w!("v2rayN")).ok() };
         if let Some(hwnd) = exact {
             if !hwnd.is_invalid() {
                 let title = get_window_title(hwnd).to_lowercase();
-                if !title.contains("widget") && get_window_pid(hwnd) == Some(target_pid) {
-                    return Some(hwnd);
+                if !title.contains("widget") {
+                    if let Some(pid) = get_window_pid(hwnd) {
+                        if target_pids.contains(&pid) {
+                            return Some(hwnd);
+                        }
+                    }
                 }
             }
         }
 
         let mut state = WindowSearch {
-            target_pid,
+            target_pids: target_pids.to_vec(),
             best: None,
         };
 
@@ -1124,7 +1160,10 @@ mod windows_impl {
         }
 
         let search = &mut *(lparam.0 as *mut WindowSearch);
-        if get_window_pid(hwnd) != Some(search.target_pid) {
+        let Some(pid) = get_window_pid(hwnd) else {
+            return BOOL(1);
+        };
+        if !search.target_pids.contains(&pid) {
             return BOOL(1);
         }
 
@@ -1175,14 +1214,9 @@ mod windows_impl {
 
             let lower = normalized.to_lowercase();
             if lower.contains("tun") {
-                if scan.first_tun_hwnd.is_none() {
-                    scan.first_tun_hwnd = Some(hwnd);
-                    scan.first_tun_title = Some(normalized.clone());
-                }
-
                 scan.tun_candidates.push(normalized.clone());
 
-                if lower.contains("enable") {
+                if is_explicit_native_tun_label(&normalized) {
                     scan.preferred_tun_hwnd = Some(hwnd);
                     scan.preferred_tun_title = Some(normalized);
                 }
@@ -1218,6 +1252,134 @@ mod windows_impl {
             Some(pid)
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn generic_tun_text_is_not_an_action_candidate() {
+            assert_eq!(
+                score_tun_candidate(
+                    Some("TUN settings panel"),
+                    None,
+                    Some(UIA_ButtonControlTypeId.0),
+                ),
+                0
+            );
+            assert_eq!(
+                score_tun_candidate(
+                    Some("Advanced TUN routing"),
+                    None,
+                    Some(UIA_CheckBoxControlTypeId.0),
+                ),
+                0
+            );
+        }
+
+        #[test]
+        fn explicit_enable_tun_control_is_actionable() {
+            assert!(
+                score_tun_candidate(Some("Enable Tun"), None, Some(UIA_CheckBoxControlTypeId.0),)
+                    >= 400
+            );
+            assert!(
+                score_tun_candidate(None, Some("EnableTun"), Some(UIA_ButtonControlTypeId.0),)
+                    >= 400
+            );
+        }
+
+        #[test]
+        fn non_clickable_tun_text_is_rejected() {
+            assert_eq!(score_tun_candidate(Some("Enable Tun"), None, None), 0);
+            assert_eq!(
+                score_tun_candidate(Some("Enable Tun"), None, Some(UIA_PaneControlTypeId.0),),
+                0
+            );
+        }
+
+        #[test]
+        fn reload_candidate_rejects_broad_or_subscription_labels() {
+            assert_eq!(
+                score_reload_candidate(
+                    Some("Reload subscriptions"),
+                    None,
+                    Some(UIA_ButtonControlTypeId.0),
+                ),
+                0
+            );
+            assert!(
+                score_reload_candidate(Some("Reload"), None, Some(UIA_ButtonControlTypeId.0),) > 0
+            );
+            assert!(
+                score_reload_candidate(None, Some("btnReload"), Some(UIA_ButtonControlTypeId.0),)
+                    > 0
+            );
+        }
+
+        #[test]
+        fn profile_candidate_requires_an_exact_name() {
+            let bounds = RECT {
+                left: 10,
+                top: 50,
+                right: 250,
+                bottom: 80,
+            };
+            let window = RECT {
+                left: 0,
+                top: 0,
+                right: 500,
+                bottom: 600,
+            };
+
+            assert!(
+                score_profile_candidate(
+                    Some("US"),
+                    "us",
+                    Some(UIA_DataItemControlTypeId.0),
+                    Some("DataGridRow"),
+                    Some(bounds),
+                    Some(window),
+                ) > 0
+            );
+            assert_eq!(
+                score_profile_candidate(
+                    Some("RUSSIAN"),
+                    "us",
+                    Some(UIA_DataItemControlTypeId.0),
+                    Some("DataGridRow"),
+                    Some(bounds),
+                    Some(window),
+                ),
+                0
+            );
+            assert_eq!(
+                score_profile_candidate(
+                    Some("US backup"),
+                    "us",
+                    Some(UIA_DataItemControlTypeId.0),
+                    Some("DataGridRow"),
+                    Some(bounds),
+                    Some(window),
+                ),
+                0
+            );
+        }
+
+        #[test]
+        fn profile_name_can_match_an_exact_accessibility_line() {
+            assert!(profile_name_exactly_matches("US\nConnected", "us"));
+            assert!(!profile_name_exactly_matches("RUSSIAN\nConnected", "us"));
+        }
+
+        #[test]
+        fn native_fallback_requires_an_explicit_label() {
+            assert!(is_explicit_native_tun_label("Enable Tun"));
+            assert!(is_explicit_native_tun_label("  Enable   Tun Mode  "));
+            assert!(!is_explicit_native_tun_label("TUN settings"));
+            assert!(!is_explicit_native_tun_label("Advanced TUN routing"));
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -1227,16 +1389,6 @@ pub fn toggle_tun_via_ui(target_pid: Option<u32>) -> Result<()> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn toggle_tun_via_ui(_target_pid: Option<u32>) -> Result<()> {
-    Err(anyhow!("UI automation is only available on Windows"))
-}
-
-#[cfg(target_os = "windows")]
-pub fn click_reload_via_ui(target_pid: Option<u32>) -> Result<String> {
-    windows_impl::click_reload_via_ui(target_pid)
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn click_reload_via_ui(_target_pid: Option<u32>) -> Result<String> {
     Err(anyhow!("UI automation is only available on Windows"))
 }
 
@@ -1262,6 +1414,26 @@ pub fn debug_probe(_target_pid: Option<u32>) -> Result<UiDebugReport> {
         note: "UI automation diagnostics are only available on Windows".to_owned(),
         ..UiDebugReport::default()
     })
+}
+
+#[cfg(target_os = "windows")]
+pub fn find_v2rayn_window_pid(target_pids: &[u32]) -> Option<u32> {
+    windows_impl::find_v2rayn_window_pid(target_pids)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn find_v2rayn_window_pid(_target_pids: &[u32]) -> Option<u32> {
+    None
+}
+
+#[cfg(target_os = "windows")]
+pub fn activate_v2rayn_window(target_pids: &[u32]) -> Result<u32> {
+    windows_impl::activate_v2rayn_window(target_pids)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn activate_v2rayn_window(_target_pids: &[u32]) -> Result<u32> {
+    Err(anyhow!("UI automation is only available on Windows"))
 }
 
 #[cfg(target_os = "windows")]

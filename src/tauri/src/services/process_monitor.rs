@@ -7,6 +7,7 @@ use sysinfo::{Pid, ProcessesToUpdate, System};
 pub struct ProcessSnapshot {
     pub v2rayn_running: bool,
     pub v2rayn_pid: Option<u32>,
+    pub v2rayn_pids: Vec<u32>,
     pub core_processes: Vec<String>,
 }
 
@@ -44,6 +45,7 @@ pub fn read_process_snapshot_for_base_path(base_path: Option<&Path>) -> ProcessS
 
     matching_pids.sort_unstable();
     snapshot.v2rayn_pid = matching_pids.first().copied();
+    snapshot.v2rayn_pids = matching_pids;
     snapshot.v2rayn_running = snapshot.v2rayn_pid.is_some();
     snapshot.core_processes.sort();
     snapshot.core_processes.dedup();
@@ -86,6 +88,7 @@ pub fn terminate_v2rayn_at_path(base_path: &Path) -> Result<bool> {
 
     let expected = normalize_path(base_path);
     let mut matched = false;
+    let mut failed_pids = Vec::new();
 
     for (pid, process) in system.processes() {
         let process_name = process.name().to_string_lossy().to_lowercase();
@@ -103,12 +106,21 @@ pub fn terminate_v2rayn_at_path(base_path: &Path) -> Result<bool> {
         if normalize_path(parent) == expected {
             matched = true;
             if !process.kill() {
-                return Err(anyhow!(
-                    "Failed to request termination for matched v2rayN process {}",
-                    pid.as_u32()
-                ));
+                failed_pids.push(pid.as_u32());
             }
         }
+    }
+
+    if !failed_pids.is_empty() {
+        failed_pids.sort_unstable();
+        return Err(anyhow!(
+            "Failed to request termination for matched v2rayN process(es): {}",
+            failed_pids
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
 
     Ok(matched)

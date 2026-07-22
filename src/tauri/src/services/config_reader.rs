@@ -27,10 +27,33 @@ pub struct ConfigSnapshot {
 
 pub fn read_config(base_path: &Path) -> Result<ConfigSnapshot> {
     let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
-
     let content = read_valid_config_string_for_observation(&config_path)?;
+    parse_config_snapshot(base_path, &config_path, &content)
+}
 
-    let json: Value = serde_json::from_str(&content)
+pub fn read_primary_config(base_path: &Path) -> Result<ConfigSnapshot> {
+    let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
+    let content = fs::read_to_string(&config_path).with_context(|| {
+        format!(
+            "Failed to read primary v2rayN config: {}",
+            config_path.display()
+        )
+    })?;
+    if !is_valid_config(&content) {
+        return Err(anyhow::anyhow!(
+            "Primary v2rayN config is invalid: {}",
+            config_path.display()
+        ));
+    }
+    parse_config_snapshot(base_path, &config_path, &content)
+}
+
+fn parse_config_snapshot(
+    base_path: &Path,
+    config_path: &Path,
+    content: &str,
+) -> Result<ConfigSnapshot> {
+    let json: Value = serde_json::from_str(content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
 
     let enable_tun = extract_enable_tun(&json);
@@ -111,6 +134,14 @@ pub fn set_active_profile(base_path: &Path, profile_id: &str) -> Result<()> {
 }
 
 pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
+    update_tun_mode(base_path, None)
+}
+
+pub fn set_tun_mode(base_path: &Path, enabled: bool) -> Result<bool> {
+    update_tun_mode(base_path, Some(enabled))
+}
+
+fn update_tun_mode(base_path: &Path, desired: Option<bool>) -> Result<bool> {
     let config_path = base_path.join("guiConfigs").join("guiNConfig.json");
 
     let _write_guard = CONFIG_WRITE_LOCK
@@ -121,16 +152,28 @@ pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
     let mut json: Value = serde_json::from_str(&content)
         .with_context(|| format!("Failed to parse config JSON: {}", config_path.display()))?;
 
-    let current = extract_enable_tun(&json).unwrap_or(false);
-    let next = !current;
+    let current = extract_enable_tun(&json).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Could not locate an existing boolean EnableTun field; refusing to invent or overwrite v2rayN TUN settings"
+        )
+    })?;
+    let next = desired.unwrap_or(!current);
+    if next == current {
+        return Ok(next);
+    }
 
     let mut changed = false;
 
     if let Some(root) = json.as_object_mut() {
         if let Some(tun_item) = root.get_mut("TunModeItem") {
             if let Some(tun_map) = tun_item.as_object_mut() {
-                tun_map.insert("EnableTun".to_owned(), Value::Bool(next));
-                changed = true;
+                for key in ["EnableTun", "enableTun"] {
+                    if tun_map.get(key).is_some_and(Value::is_boolean) {
+                        tun_map.insert(key.to_owned(), Value::Bool(next));
+                        changed = true;
+                        break;
+                    }
+                }
             }
         }
     }
@@ -141,25 +184,9 @@ pub fn toggle_tun_mode(base_path: &Path) -> Result<bool> {
     }
 
     if !changed {
-        if let Some(root) = json.as_object_mut() {
-            root.insert(
-                "TunModeItem".to_owned(),
-                serde_json::json!({
-                    "EnableTun": next,
-                    "AutoRoute": true,
-                    "StrictRoute": true,
-                    "Stack": "gvisor",
-                    "Mtu": 9000,
-                    "EnableExInbound": false,
-                    "EnableIPv6Address": false
-                }),
-            );
-            changed = true;
-        }
-    }
-
-    if !changed {
-        return Err(anyhow::anyhow!("Could not toggle EnableTun in config"));
+        return Err(anyhow::anyhow!(
+            "Could not locate an existing boolean EnableTun field; refusing to invent or overwrite v2rayN TUN settings"
+        ));
     }
 
     let serialized = serde_json::to_string_pretty(&json)
@@ -212,10 +239,9 @@ fn read_valid_config_string_for_observation(config_path: &Path) -> Result<String
 }
 
 fn read_primary_config_string_for_update(config_path: &Path) -> Result<String> {
-    file_store::recover_backup_if_missing(config_path)?;
     let content = fs::read_to_string(config_path).with_context(|| {
         format!(
-            "Failed to read config for update: {}",
+            "Failed to read primary config for update; refusing to restore or mutate a backup: {}",
             config_path.display()
         )
     })?;
@@ -293,7 +319,7 @@ fn set_first_existing_string_key(value: &mut Value, keys: &[&str], new_value: &s
     };
 
     for key in keys {
-        if map.contains_key(*key) {
+        if map.get(*key).is_some_and(Value::is_string) {
             map.insert((*key).to_owned(), Value::String(new_value.to_owned()));
             return true;
         }
@@ -318,7 +344,7 @@ fn set_first_existing_bool_key(value: &mut Value, keys: &[&str], new_value: bool
     };
 
     for key in keys {
-        if map.contains_key(*key) {
+        if map.get(*key).is_some_and(Value::is_boolean) {
             map.insert((*key).to_owned(), Value::Bool(new_value));
             return true;
         }
@@ -338,7 +364,7 @@ fn set_first_existing_bool_key(value: &mut Value, keys: &[&str], new_value: bool
 }
 
 fn extract_enable_tun(json: &Value) -> Option<bool> {
-    if let Some(Value::Object(map)) = find_value_by_key(json, "TunModeItem") {
+    if let Some(Value::Object(map)) = find_value_by_key_outside_profiles(json, "TunModeItem") {
         if let Some(Value::Bool(flag)) = map.get("EnableTun") {
             return Some(*flag);
         }
@@ -348,6 +374,28 @@ fn extract_enable_tun(json: &Value) -> Option<bool> {
     }
 
     find_bool_by_keys(json, &["EnableTun", "enableTun", "tunEnabled"])
+}
+
+fn find_value_by_key_outside_profiles<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
+    let Value::Object(map) = value else {
+        return None;
+    };
+
+    if let Some(found) = map.get(key) {
+        return Some(found);
+    }
+
+    for (child_key, child) in map {
+        if is_profile_collection_key(child_key) || !child.is_object() {
+            continue;
+        }
+
+        if let Some(found) = find_value_by_key_outside_profiles(child, key) {
+            return Some(found);
+        }
+    }
+
+    None
 }
 
 fn find_bool_by_keys(value: &Value, keys: &[&str]) -> Option<bool> {
@@ -718,6 +766,49 @@ mod tests {
         let _ = fs::remove_dir_all(base_path);
     }
     #[test]
+    fn enable_tun_ignores_profile_record_tun_settings() {
+        let json = serde_json::json!({
+            "ProfileItem": [
+                {
+                    "IndexId": "profile-one",
+                    "TunModeItem": { "EnableTun": true }
+                }
+            ]
+        });
+
+        assert_eq!(extract_enable_tun(&json), None);
+    }
+
+    #[test]
+    fn primary_config_read_never_falls_back_to_backup() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!(
+            "v2rayn-widget-primary-config-strict-read-test-{unique}"
+        ));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        fs::write(&config_path, "{broken").expect("write corrupt primary");
+        fs::write(
+            config_dir.join("guiNConfig.json.bak"),
+            serde_json::json!({ "TunModeItem": { "EnableTun": true } }).to_string(),
+        )
+        .expect("write valid backup");
+
+        assert!(read_primary_config(&base_path).is_err());
+        assert_eq!(
+            fs::read_to_string(&config_path).expect("read untouched primary"),
+            "{broken"
+        );
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
     fn read_config_uses_valid_backup_without_overwriting_corrupt_primary() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -788,6 +879,34 @@ mod tests {
     }
 
     #[test]
+    fn config_mutation_rejects_missing_primary_even_with_valid_backup() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!(
+            "v2rayn-widget-config-missing-primary-mutation-test-{unique}"
+        ));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        let backup_path = config_dir.join("guiNConfig.json.bak");
+        let backup_content =
+            serde_json::json!({ "TunModeItem": { "EnableTun": true } }).to_string();
+        fs::write(&backup_path, &backup_content).expect("write valid backup");
+
+        assert!(toggle_tun_mode(&base_path).is_err());
+        assert!(!config_path.exists());
+        assert_eq!(
+            fs::read_to_string(&backup_path).expect("read untouched backup"),
+            backup_content
+        );
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
     fn guarded_update_rejects_concurrent_external_change() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -812,6 +931,127 @@ mod tests {
         assert!(fs::read_to_string(&config_path)
             .expect("read retained external change")
             .contains("externalChange"));
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn toggle_rejects_non_boolean_tun_fields_without_retyping_them() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!(
+            "v2rayn-widget-config-non-boolean-tun-test-{unique}"
+        ));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        let original = serde_json::json!({
+            "TunModeItem": { "EnableTun": "false", "Mtu": 1500 }
+        })
+        .to_string();
+        fs::write(&config_path, &original).expect("write config");
+
+        assert!(toggle_tun_mode(&base_path).is_err());
+        assert_eq!(
+            fs::read_to_string(&config_path).expect("read untouched config"),
+            original
+        );
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn explicit_tun_set_is_idempotent_after_a_late_ui_update() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path =
+            std::env::temp_dir().join(format!("v2rayn-widget-config-explicit-tun-test-{unique}"));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        let already_enabled =
+            serde_json::json!({ "TunModeItem": { "EnableTun": true } }).to_string();
+        fs::write(&config_path, &already_enabled).expect("write config");
+
+        assert!(set_tun_mode(&base_path, true).expect("set desired state"));
+        assert_eq!(
+            fs::read_to_string(&config_path).expect("read unchanged config"),
+            already_enabled
+        );
+        assert!(!config_dir.join("guiNConfig.json.bak").exists());
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn toggle_supports_existing_lowercase_boolean_field() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path =
+            std::env::temp_dir().join(format!("v2rayn-widget-config-lowercase-tun-test-{unique}"));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        fs::write(
+            &config_path,
+            serde_json::json!({ "TunModeItem": { "enableTun": false } }).to_string(),
+        )
+        .expect("write config");
+
+        assert!(toggle_tun_mode(&base_path).expect("toggle lowercase field"));
+        let updated: Value =
+            serde_json::from_str(&fs::read_to_string(&config_path).expect("read updated config"))
+                .expect("parse updated config");
+        assert_eq!(
+            updated
+                .get("TunModeItem")
+                .and_then(|value| value.get("enableTun"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(updated
+            .get("TunModeItem")
+            .and_then(|value| value.get("EnableTun"))
+            .is_none());
+
+        let _ = fs::remove_dir_all(base_path);
+    }
+
+    #[test]
+    fn toggle_rejects_unknown_schema_without_inventing_tun_settings() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base_path = std::env::temp_dir().join(format!(
+            "v2rayn-widget-config-unknown-tun-schema-test-{unique}"
+        ));
+        let config_dir = base_path.join("guiConfigs");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let config_path = config_dir.join("guiNConfig.json");
+        let original = serde_json::json!({
+            "unrelated": {
+                "value": true
+            }
+        })
+        .to_string();
+        fs::write(&config_path, &original).expect("write config");
+
+        assert!(toggle_tun_mode(&base_path).is_err());
+        assert_eq!(
+            fs::read_to_string(&config_path).expect("read untouched config"),
+            original
+        );
 
         let _ = fs::remove_dir_all(base_path);
     }

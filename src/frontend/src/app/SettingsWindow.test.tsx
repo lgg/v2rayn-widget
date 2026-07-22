@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings } from "@/lib/types";
 import "@/lib/i18n";
@@ -124,7 +124,9 @@ describe("SettingsWindow", () => {
     await screen.findByRole("heading", { name: "Settings" });
 
     fireEvent.click(screen.getByLabelText("Autostart with Windows"));
-    closeHandler?.();
+    await act(async () => {
+      closeHandler?.();
+    });
 
     expect(await screen.findByText("Unsaved settings")).not.toBeNull();
     expect(apiMocks.closeWindow).not.toHaveBeenCalled();
@@ -151,6 +153,7 @@ describe("SettingsWindow", () => {
       expect(apiMocks.closeWindow).toHaveBeenCalledWith("settings");
     });
   });
+
   it("keeps current adapter-owned fields while preserving an unrelated dirty draft", () => {
     const dirtyDraft: AppSettings = {
       ...baseSettings,

@@ -39,7 +39,7 @@
 
 ## Final verification remediation
 
-- Canonical endpoint expectations and release-only warning cleanup are being verified after the first full packaging run exposed two stale test assertions.
+- The first complete packaging run exposed two stale canonical-URL assertions and two release-only warnings; exact fixes are now being applied before the final clean gate.
 
 ## Report
 

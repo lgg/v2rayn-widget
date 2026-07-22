@@ -541,7 +541,7 @@ mod windows_impl {
             });
         }
 
-        candidates.sort_by(|left, right| right.score.cmp(&left.score));
+        candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.score));
         let Some(best) = candidates.first().cloned() else {
             return Err(anyhow!(
                 "No exact UI row match found for profile '{target_profile_name}'. Probe UI tree in Debug Tools."
@@ -942,7 +942,7 @@ mod windows_impl {
 
         normalize_profile_label(candidate_name) == target_normalized
             || candidate_name
-                .split(|character| matches!(character, '\n' | '\r' | '\t'))
+                .split(['\n', '\r', '\t'])
                 .any(|segment| normalize_profile_label(segment) == target_normalized)
     }
 
@@ -1389,16 +1389,6 @@ pub fn toggle_tun_via_ui(target_pid: Option<u32>) -> Result<()> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn toggle_tun_via_ui(_target_pid: Option<u32>) -> Result<()> {
-    Err(anyhow!("UI automation is only available on Windows"))
-}
-
-#[cfg(target_os = "windows")]
-pub fn click_reload_via_ui(target_pid: Option<u32>) -> Result<String> {
-    windows_impl::click_reload_via_ui(target_pid)
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn click_reload_via_ui(_target_pid: Option<u32>) -> Result<String> {
     Err(anyhow!("UI automation is only available on Windows"))
 }
 

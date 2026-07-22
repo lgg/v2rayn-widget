@@ -39,7 +39,7 @@
 
 ## Final verification remediation
 
-- Canonical endpoint tests, release-only warnings and Rust 1.97 strict Clippy findings have been corrected; the permanent final gate is running on the exact product head.
+- Canonical endpoint tests and release-only warnings are corrected. Release Quality run #224 then passed 84 Rust tests, locked check, portable release and NSIS packaging, and exposed one final behavior-preserving `manual_inspect` strict-Clippy correction before the permanent exact-head gate.
 
 ## Report
 

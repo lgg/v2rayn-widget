@@ -50,7 +50,7 @@ Added `.github/workflows/release-assets.yml` with only trusted triggers:
 
 The workflow has no PR, push or `pull_request_target` trigger.
 
-It builds on `windows-latest` and:
+The read-only Windows build job:
 
 1. checks out the exact release tag or explicit manual ref;
 2. verifies Cargo and Tauri versions match;
@@ -60,10 +60,25 @@ It builds on `windows-latest` and:
 6. builds the locked portable executable;
 7. builds the locked NSIS installer;
 8. stages portable EXE, portable ZIP, installer and SHA-256 checksums;
-9. uploads all files as a 30-day Actions artifact;
-10. uploads or replaces the same files on the matching GitHub Release.
+9. uploads all files as a 30-day Actions artifact.
+
+A separate Linux publishing job:
+
+1. receives only the verified Actions artifact;
+2. has the workflow's only `contents: write` permission;
+3. does not check out or execute repository code;
+4. requires exactly the four expected distribution files;
+5. rejects any extra artifact file;
+6. verifies `SHA256SUMS.txt` before publishing;
+7. uploads or replaces the allowlisted files on the matching GitHub Release.
 
 When `release_tag` is supplied manually it also becomes the build ref, preventing assets built from another branch from being attached to the release.
+
+### Security findings fixed during review
+
+The first implementation draft gave the Windows build job `contents: write`. That would have exposed a write-capable token while executing checked-out release-tag code. The workflow was corrected before merge by separating read-only build and write-enabled publication.
+
+The second review found that a publisher which uploaded every file from the artifact would accept unexpected files. The publisher now uses an exact four-file allowlist, rejects extras and verifies checksums before upload.
 
 ### Permanent workflow contract test
 
@@ -76,7 +91,10 @@ The dependency-free test protects:
 - draft and fork guards on both heavy jobs;
 - PR-number concurrency;
 - exact release workflow events;
-- release-only write permission and Windows runner;
+- read-only build and isolated write-enabled publisher;
+- absence of checkout in the publisher;
+- verified artifact handoff;
+- exact release asset allowlist and extra-file rejection;
 - portable, NSIS, Actions artifact, checksum and GitHub Release upload contracts.
 
 No existing test covered workflow configuration, so a new regression test was necessary.

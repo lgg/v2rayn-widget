@@ -30,6 +30,7 @@ jobs:
     outputs:
       artifact_name: ${{ steps.metadata.outputs.artifact_name }}
       release_tag: ${{ steps.metadata.outputs.release_tag }}
+      version: ${{ steps.metadata.outputs.version }}
     env:
       BUILD_REF: ${{ github.event.release.tag_name || inputs.release_tag || inputs.ref }}
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
@@ -184,6 +185,7 @@ jobs:
       contents: write
     env:
       RELEASE_TAG: ${{ needs.build-windows.outputs.release_tag }}
+      VERSION: ${{ needs.build-windows.outputs.version }}
 
     steps:
       - name: Download verified release distribution
@@ -192,21 +194,37 @@ jobs:
           name: ${{ needs.build-windows.outputs.artifact_name }}
           path: dist/release
 
-      - name: Attach files to GitHub Release
+      - name: Verify and attach files to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
 
-          found=0
-          while IFS= read -r -d '' asset; do
-            found=1
-            gh release upload "$RELEASE_TAG" "$asset" --repo "$GITHUB_REPOSITORY" --clobber
-          done < <(find dist/release -maxdepth 1 -type f -print0)
+          readonly distribution_dir="dist/release"
+          readonly portable_exe="v2rayn-widget-${VERSION}-windows-x64-portable.exe"
+          readonly portable_zip="v2rayn-widget-${VERSION}-windows-x64-portable.zip"
+          readonly installer_exe="v2rayn-widget-${VERSION}-windows-x64-setup.exe"
+          readonly checksum_file="SHA256SUMS.txt"
+          readonly expected_assets=("$portable_exe" "$portable_zip" "$installer_exe" "$checksum_file")
 
-          if [[ "$found" -ne 1 ]]; then
-            echo "No release assets were downloaded" >&2
+          for asset in "${expected_assets[@]}"; do
+            if [[ ! -f "$distribution_dir/$asset" ]]; then
+              echo "Missing expected release asset: $asset" >&2
+              exit 1
+            fi
+          done
+
+          actual_count="$(find "$distribution_dir" -maxdepth 1 -type f | wc -l | tr -d ' ')"
+          if [[ "$actual_count" != "${#expected_assets[@]}" ]]; then
+            echo "Unexpected files found in release distribution" >&2
+            find "$distribution_dir" -maxdepth 1 -type f -print >&2
             exit 1
           fi
+
+          (cd "$distribution_dir" && sha256sum --check "$checksum_file")
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+
+          for asset in "${expected_assets[@]}"; do
+            gh release upload "$RELEASE_TAG" "$distribution_dir/$asset" --repo "$GITHUB_REPOSITORY" --clobber
+          done

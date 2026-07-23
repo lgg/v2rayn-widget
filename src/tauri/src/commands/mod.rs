@@ -913,12 +913,17 @@ pub async fn refresh_status_from_settings(
 }
 
 fn merge_with_previous(mut next: DashboardStatus, previous: &DashboardStatus) -> DashboardStatus {
-    if next.external_ip.is_none() {
-        next.external_ip = previous.external_ip.clone();
-    }
+    if next.connection_state == ConnectionState::Disconnected {
+        next.external_ip = None;
+        next.latency_ms = None;
+    } else {
+        if next.external_ip.is_none() {
+            next.external_ip = previous.external_ip.clone();
+        }
 
-    if next.latency_ms.is_none() {
-        next.latency_ms = previous.latency_ms;
+        if next.latency_ms.is_none() {
+            next.latency_ms = previous.latency_ms;
+        }
     }
 
     if next.active_profile_name.is_none() {
@@ -1448,6 +1453,48 @@ mod tests {
         assert!(normalize_diagnostics_url("file:///C:/temp/check.html").is_none());
         assert!(normalize_diagnostics_url("javascript:alert(1)").is_none());
     }
+    #[test]
+    fn disconnected_v2rayn_status_drops_stale_network_measurements() {
+        let previous = DashboardStatus {
+            external_ip: Some("1.1.1.1".to_owned()),
+            latency_ms: Some(20),
+            connection_state: ConnectionState::Connected,
+            status: ConnectionState::Connected,
+            ..DashboardStatus::default()
+        };
+        let next = DashboardStatus {
+            connection_state: ConnectionState::Disconnected,
+            status: ConnectionState::Disconnected,
+            ..DashboardStatus::default()
+        };
+
+        let merged = merge_with_previous(next, &previous);
+
+        assert!(merged.external_ip.is_none());
+        assert!(merged.latency_ms.is_none());
+    }
+
+    #[test]
+    fn partial_active_v2rayn_refresh_keeps_last_network_measurements() {
+        let previous = DashboardStatus {
+            external_ip: Some("1.1.1.1".to_owned()),
+            latency_ms: Some(20),
+            connection_state: ConnectionState::Connected,
+            status: ConnectionState::Connected,
+            ..DashboardStatus::default()
+        };
+        let next = DashboardStatus {
+            connection_state: ConnectionState::Connecting,
+            status: ConnectionState::Connecting,
+            ..DashboardStatus::default()
+        };
+
+        let merged = merge_with_previous(next, &previous);
+
+        assert_eq!(merged.external_ip.as_deref(), Some("1.1.1.1"));
+        assert_eq!(merged.latency_ms, Some(20));
+    }
+
     #[test]
     fn v2rayn_command_uses_selected_installation_as_working_directory() {
         let base_path = PathBuf::from("selected-v2rayn-installation");

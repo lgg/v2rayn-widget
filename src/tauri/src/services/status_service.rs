@@ -17,7 +17,8 @@ pub struct StatusInputs {
 }
 
 pub fn resolve_status(inputs: StatusInputs) -> DashboardStatus {
-    let tun_enabled = inputs.config.enable_tun.unwrap_or(false);
+    let configured_tun = inputs.config.enable_tun;
+    let tun_enabled = configured_tun.unwrap_or(false);
     let last_error = inputs
         .logs
         .as_ref()
@@ -50,25 +51,27 @@ pub fn resolve_status(inputs: StatusInputs) -> DashboardStatus {
         true
     };
 
-    let connection_state = if !tun_enabled || !inputs.process.v2rayn_running {
+    let explicit_health_error = inputs.require_connectivity_check
+        && inputs.health.connectivity_checked
+        && !inputs.health.health_ok;
+
+    let connection_state = if !inputs.process.v2rayn_running || configured_tun == Some(false) {
         ConnectionState::Disconnected
+    } else if startup_error || last_error.is_some() || explicit_health_error {
+        ConnectionState::Error
+    } else if configured_tun.is_none() {
+        // A running process without a readable boolean EnableTun value is not proof
+        // of either an active or inactive tunnel. Fail closed instead of presenting a
+        // misleading Disconnected state for an unknown/new v2rayN schema.
+        ConnectionState::Unknown
     } else if connectivity_ok && external_ip_ok {
         ConnectionState::Connected
-    } else if startup_error
-        || last_error.is_some()
-        || (inputs.require_connectivity_check
-            && inputs.health.connectivity_checked
-            && !inputs.health.health_ok)
-    {
-        ConnectionState::Error
     } else {
         ConnectionState::Connecting
     };
 
-    let status = connection_state;
-
     DashboardStatus {
-        status,
+        status: connection_state,
         tun_enabled,
         connection_state,
         active_profile_name: inputs.config.active_profile_name,
@@ -165,5 +168,30 @@ mod tests {
 
         let resolved = resolve_status(inputs);
         assert_eq!(resolved.connection_state, ConnectionState::Connected);
+    }
+
+    #[test]
+    fn unknown_when_running_config_does_not_expose_boolean_tun_state() {
+        let mut inputs = base_inputs();
+        inputs.config.enable_tun = None;
+
+        let resolved = resolve_status(inputs);
+
+        assert_eq!(resolved.connection_state, ConnectionState::Unknown);
+        assert_eq!(resolved.status, ConnectionState::Unknown);
+        assert!(!resolved.tun_enabled);
+    }
+
+    #[test]
+    fn absent_process_is_disconnected_even_when_tun_schema_is_unknown() {
+        let mut inputs = base_inputs();
+        inputs.config.enable_tun = None;
+        inputs.process.v2rayn_running = false;
+        inputs.process.v2rayn_pid = None;
+        inputs.process.v2rayn_pids.clear();
+
+        let resolved = resolve_status(inputs);
+
+        assert_eq!(resolved.connection_state, ConnectionState::Disconnected);
     }
 }

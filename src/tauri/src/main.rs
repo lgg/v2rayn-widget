@@ -19,7 +19,7 @@ use crate::{
     models::{settings::WindowPosition, status::DashboardStatus},
     services::privilege,
     state::app_state::AppState,
-    utils::{logger, settings_store, window_visuals},
+    utils::{logger, settings_store, window_position, window_visuals},
 };
 
 fn configure_webview2_user_data_dir() {
@@ -250,11 +250,15 @@ fn main() {
                     }
 
                     if label == "main" {
-                        if let Some(bounds) = settings.window_position.clone() {
-                            if let Err(error) = window
-                                .set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y))
-                            {
-                                warn!(?error, "failed to restore main window position");
+                        if let Some(bounds) = settings.window_position.as_ref() {
+                            match window_position::restore_or_center(&window, bounds) {
+                                Ok(true) => {}
+                                Ok(false) => warn!(
+                                    x = bounds.x,
+                                    y = bounds.y,
+                                    "saved main window position is outside current monitors; centered window"
+                                ),
+                                Err(error) => warn!(%error, "failed to restore or center main window"),
                             }
                         }
                     }

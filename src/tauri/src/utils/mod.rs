@@ -5,4 +5,5 @@ pub mod locale;
 pub mod logger;
 pub mod settings_normalization;
 pub mod settings_store;
+pub mod window_position;
 pub mod window_visuals;

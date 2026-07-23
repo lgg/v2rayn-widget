@@ -129,6 +129,9 @@ def verify_release_workflow() -> None:
     require_text(publish_block, "contents: write", "release upload permission")
     require_text(publish_block, "actions/download-artifact@v4", "verified artifact handoff")
     require_text(publish_block, "gh release upload", "GitHub Release assets")
+    require_text(publish_block, "sha256sum --check", "release checksum verification")
+    require_text(publish_block, "expected_assets", "release asset allowlist")
+    require_text(publish_block, "actual_count", "release extra-file rejection")
     reject_text(publish_block, "actions/checkout", "release publisher isolation")
     if text.count("contents: write") != 1:
         fail("Only the isolated release publisher may receive contents: write")

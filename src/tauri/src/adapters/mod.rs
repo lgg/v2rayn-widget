@@ -9,7 +9,7 @@ use crate::{
         client::{ClientDescriptor, ClientDiagnostics, ProxyClientId, TransportMode},
         profile::ProfileSummary,
         settings::AppSettings,
-        status::DashboardStatus,
+        status::{ConnectionState, DashboardStatus},
     },
     services::process_monitor,
     state::app_state::AppState,
@@ -223,6 +223,14 @@ pub fn descriptor(client_id: ProxyClientId, settings: &AppSettings) -> ClientDes
 }
 
 fn merge_with_previous(mut next: DashboardStatus, previous: &DashboardStatus) -> DashboardStatus {
+    if next.connection_state == ConnectionState::Disconnected {
+        // IP and latency describe the previously active route. Keeping them after a
+        // confirmed disconnect makes stale values look current, so clear them.
+        next.external_ip = None;
+        next.latency_ms = None;
+        return next;
+    }
+
     if next.external_ip.is_none() {
         next.external_ip = previous.external_ip.clone();
     }
@@ -283,5 +291,47 @@ mod tests {
             enabled.capabilities.toggle_connection,
             CapabilityState::Experimental
         );
+    }
+
+    #[test]
+    fn disconnected_client_does_not_keep_stale_network_measurements() {
+        let previous = DashboardStatus {
+            external_ip: Some("1.1.1.1".to_owned()),
+            latency_ms: Some(20),
+            connection_state: ConnectionState::Connected,
+            status: ConnectionState::Connected,
+            ..DashboardStatus::default()
+        };
+        let next = DashboardStatus {
+            connection_state: ConnectionState::Disconnected,
+            status: ConnectionState::Disconnected,
+            ..DashboardStatus::default()
+        };
+
+        let merged = merge_with_previous(next, &previous);
+
+        assert!(merged.external_ip.is_none());
+        assert!(merged.latency_ms.is_none());
+    }
+
+    #[test]
+    fn active_client_keeps_last_measurements_when_a_partial_probe_omits_them() {
+        let previous = DashboardStatus {
+            external_ip: Some("1.1.1.1".to_owned()),
+            latency_ms: Some(20),
+            connection_state: ConnectionState::Connected,
+            status: ConnectionState::Connected,
+            ..DashboardStatus::default()
+        };
+        let next = DashboardStatus {
+            connection_state: ConnectionState::Connecting,
+            status: ConnectionState::Connecting,
+            ..DashboardStatus::default()
+        };
+
+        let merged = merge_with_previous(next, &previous);
+
+        assert_eq!(merged.external_ip.as_deref(), Some("1.1.1.1"));
+        assert_eq!(merged.latency_ms, Some(20));
     }
 }

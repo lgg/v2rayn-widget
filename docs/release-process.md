@@ -17,7 +17,9 @@ For a published release the workflow:
 7. creates stable distribution filenames and a portable ZIP;
 8. creates `SHA256SUMS.txt` for all distributable files;
 9. uploads the complete directory as a GitHub Actions artifact;
-10. attaches every generated file to the published GitHub Release.
+10. transfers that verified artifact to an isolated publishing job;
+11. checks the exact file allowlist and SHA-256 manifest;
+12. attaches every generated file to the published GitHub Release.
 
 ## Generated files
 
@@ -55,5 +57,7 @@ When `release_tag` is supplied, it takes precedence over `ref`, preventing a dif
 
 - The workflow has no `push`, `pull_request` or `pull_request_target` trigger.
 - Release attachment is available only for trusted release/manual events.
-- Repository contents are read-only by default; only the Windows release job receives `contents: write` for asset upload.
+- The Windows build job has read-only repository permissions while it executes checked-out project code.
+- Only the isolated Linux publishing job receives `contents: write`; it does not check out or execute repository code.
+- The publishing job accepts exactly four expected files, rejects extras and verifies `SHA256SUMS.txt` before upload.
 - Runs are grouped by release tag or manual ref with `cancel-in-progress: true`.

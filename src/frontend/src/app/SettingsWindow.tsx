@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Bug, Check, FolderCheck, Globe, Languages, MoonStar, Shield, SlidersHorizontal, Sun, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -17,7 +18,6 @@ import { SerializedTaskQueue } from "@/lib/serialized-task-queue";
 import { bindTauriListener } from "@/lib/tauri-listener";
 import type { AppSettings, LocaleInfo, UiSettingsPatch } from "@/lib/types";
 
-const APP_VERSION = "1.0.0";
 const GITHUB_URL = "https://github.com/lgg/v2rayn-widget";
 
 const DEFAULT_CONNECTIVITY_ENDPOINTS = [
@@ -118,6 +118,7 @@ export function SettingsWindow(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [locales, setLocales] = useState<LocaleInfo[]>([]);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const [pathValidation, setPathValidation] = useState<string>("");
   const [connectivityEndpointsText, setConnectivityEndpointsText] = useState<string>("");
   const [ipEndpointsText, setIpEndpointsText] = useState<string>("");
@@ -139,12 +140,17 @@ export function SettingsWindow(): JSX.Element {
 
     const load = async (): Promise<void> => {
       try {
-        const [nextSettings, nextLocales] = await Promise.all([getSettings(), getAvailableLocales()]);
+        const [nextSettings, nextLocales, version] = await Promise.all([
+          getSettings(),
+          getAvailableLocales(),
+          getVersion().catch(() => null)
+        ]);
         if (!active) {
           return;
         }
         setSettings(nextSettings);
         setLocales(nextLocales);
+        setAppVersion(version);
         setConnectivityEndpointsText(linesToText(nextSettings.connectivity_endpoints));
         setIpEndpointsText(linesToText(nextSettings.ip_endpoints));
         applyTheme(nextSettings.theme);
@@ -773,7 +779,7 @@ export function SettingsWindow(): JSX.Element {
           <section className="rounded-xl border bg-white/70 p-3 text-xs text-muted dark:bg-slate-900/70">
             <p className="font-medium text-foreground">{t("settings.about")}</p>
             <p className="mt-1">
-              {t("settings.version")}: {APP_VERSION}
+              {t("settings.version")}: {appVersion ?? "—"}
             </p>
             <p className="mt-1">
               {t("settings.github")}: {" "}

@@ -4,6 +4,7 @@ import type { AppSettings } from "@/lib/types";
 import "@/lib/i18n";
 
 const eventMocks = vi.hoisted(() => ({ listen: vi.fn() }));
+const appMocks = vi.hoisted(() => ({ getVersion: vi.fn() }));
 const apiMocks = vi.hoisted(() => ({
   applyUiSettings: vi.fn(),
   closeWindow: vi.fn(),
@@ -18,6 +19,7 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => apiMocks);
 
+vi.mock("@tauri-apps/api/app", () => appMocks);
 vi.mock("@tauri-apps/api/event", () => eventMocks);
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -62,6 +64,7 @@ describe("SettingsWindow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     eventMocks.listen.mockResolvedValue(() => undefined);
+    appMocks.getVersion.mockResolvedValue("1.2.3");
     apiMocks.getSettings.mockResolvedValue(baseSettings);
     apiMocks.getAvailableLocales.mockResolvedValue([
       { code: "en", label: "English", native_label: "English" }
@@ -69,6 +72,15 @@ describe("SettingsWindow", () => {
     apiMocks.updateSettings.mockImplementation(async (settings: AppSettings) => settings);
     apiMocks.applyUiSettings.mockImplementation(async (patch: Partial<AppSettings>) => ({ ...baseSettings, ...patch }));
     apiMocks.closeWindow.mockResolvedValue(undefined);
+  });
+
+  it("shows the runtime application version instead of a hardcoded release", async () => {
+    render(<SettingsWindow />);
+
+    await screen.findByRole("heading", { name: "Settings" });
+
+    expect(await screen.findByText(/Version:\s*1\.2\.3/)).not.toBeNull();
+    expect(appMocks.getVersion).toHaveBeenCalledTimes(1);
   });
 
   it("saves draft-only application settings", async () => {

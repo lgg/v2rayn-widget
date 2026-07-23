@@ -74,17 +74,25 @@ pub fn restore_or_center<R: Runtime>(
             .map_err(|error| format!("Could not restore saved window position: {error}"))?;
         Ok(true)
     } else {
-        window
-            .center()
-            .map_err(|error| format!("Could not center window after invalid saved position: {error}"))?;
+        window.center().map_err(|error| {
+            format!("Could not center window after invalid saved position: {error}")
+        })?;
         Ok(false)
     }
 }
 
-fn intersection_length(first_start: i64, first_size: i64, second_start: i64, second_size: i64) -> i64 {
+fn intersection_length(
+    first_start: i64,
+    first_size: i64,
+    second_start: i64,
+    second_size: i64,
+) -> i64 {
     let first_end = first_start.saturating_add(first_size.max(0));
     let second_end = second_start.saturating_add(second_size.max(0));
-    first_end.min(second_end).saturating_sub(first_start.max(second_start)).max(0)
+    first_end
+        .min(second_end)
+        .saturating_sub(first_start.max(second_start))
+        .max(0)
 }
 
 #[cfg(test)]

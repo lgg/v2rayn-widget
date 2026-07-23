@@ -2,19 +2,27 @@ name: Release Quality
 
 on:
   pull_request:
-  push:
     branches:
       - main
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-quality-${{ github.workflow }}-${{ github.ref }}
+  group: release-quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   frontend:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -102,6 +110,10 @@ jobs:
         run: exit 1
 
   rust-windows:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository)
     needs: frontend
     runs-on: windows-latest
     timeout-minutes: 90

@@ -30,6 +30,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify workflow contracts
+        run: python3 scripts/test_workflow_contracts.py
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:

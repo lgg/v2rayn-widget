@@ -107,20 +107,31 @@ def verify_release_workflow() -> None:
     if release_types != ["published"]:
         fail(f"Release assets must run only for release.published, got {release_types}")
 
+    build_block = "\n".join(block(lines, "build-windows", 2))
+    publish_block = "\n".join(block(lines, "publish-release", 2))
+
     reject_text(text, "pull_request_target:", "Release assets")
     reject_text("\n".join(on_block), "pull_request:", "Release asset events")
     reject_text("\n".join(on_block), "push:", "Release asset events")
     require_text(text, "runs-on: windows-latest", "Windows distribution build")
-    require_text(text, "contents: write", "Release upload permission")
     require_text(text, "github.event.release.tag_name || inputs.release_tag || inputs.ref", "exact release ref")
     require_text(text, "cargo build --release --locked", "portable build")
     require_text(text, "--bundles nsis", "installer build")
     require_text(text, "actions/upload-artifact@v4", "Actions distribution artifact")
     require_text(text, "SHA256SUMS.txt", "release checksums")
-    require_text(text, "gh release upload", "GitHub Release assets")
     require_text(text, "release_tag:", "manual release upload input")
     require_text(text, "ref:", "manual build ref input")
     require_text(text, "cancel-in-progress: true", "release concurrency")
+
+    reject_text(build_block, "contents: write", "release build permissions")
+    require_text(build_block, "actions/checkout@v4", "release build checkout")
+    require_text(publish_block, "needs: build-windows", "release publishing dependency")
+    require_text(publish_block, "contents: write", "release upload permission")
+    require_text(publish_block, "actions/download-artifact@v4", "verified artifact handoff")
+    require_text(publish_block, "gh release upload", "GitHub Release assets")
+    reject_text(publish_block, "actions/checkout", "release publisher isolation")
+    if text.count("contents: write") != 1:
+        fail("Only the isolated release publisher may receive contents: write")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and repository-controlled review complete; a permanent exact-head Release Quality run remains required before merge. Only a fully green run for the latest branch head may authorize merge.
+Complete. The exact implementation head passed the permanent Windows release-quality gate and PR #19 was squash-merged into `main` as commit `758eaf27ed1784235ac48ea4351fcb0bfe8220c7`.
 
 ## Context
 
@@ -85,27 +85,26 @@ Close every newly confirmed repository-controlled gap between the documented pro
 - [x] EN/RU catalogs remain in exact parity and contain nonblank values.
 - [x] v2rayN/Happ capability declarations remain truthful and unchanged where no new stable contract exists.
 - [x] README, architecture, roadmap and report reflect the final implementation and CI policy.
-- [ ] Frontend audit/tests/build pass on the exact PR head.
-- [ ] Rust fmt, tests, both strict Clippy configurations, locked check and portable build pass on the exact PR head.
-- [ ] Artifacts, diagnostics and cleanup complete successfully.
+- [x] Frontend audit/tests/build pass on the exact PR head.
+- [x] Rust fmt, tests, both strict Clippy configurations, locked check and portable build pass on the exact PR head.
+- [x] Artifacts, diagnostics and cleanup complete successfully.
 - [x] Temporary/noncompliant workflow files are absent from the final diff.
-- [ ] PR is squash-merged into `main` and final evidence is recorded.
+- [x] PR is squash-merged into `main` and final evidence is recorded.
 
-## Verification state
+## Final verification evidence
 
-The permanent Windows workflow is serialized on the dedicated `[self-hosted, v2rayn-widget-ci]` runner. Every branch update creates a new exact-head run; earlier successful or running heads cannot authorize merge after the branch moves.
+Exact implementation head `524e044ac6e864e351bcf035f237b322890d0d68` passed Release Quality #360 (`30117873904`) on the dedicated `[self-hosted, v2rayn-widget-ci]` Windows runner.
 
-No frontend or Rust success is claimed until the latest exact head completes the complete gate. Static review and permanent regression additions do not replace Windows execution evidence.
+- frontend dependency audit, complete tests and production build: success;
+- full Rust formatting: success;
+- Rust unit/integration tests: 119 passed, 0 failed;
+- strict all-targets Clippy: success;
+- strict release/no-default-features Clippy: success;
+- locked Rust build: success;
+- portable release smoke artifact, diagnostics and cleanup: success;
+- aggregate failure gates: clean.
 
-## Verification plan
-
-1. Review the complete branch diff against baseline `1333c415f216f83d15c45da43f23a23d22df2907`.
-2. Run permanent frontend component/contracts, npm audit and production build.
-3. Run complete Rust formatting, unit/integration tests, strict all-targets Clippy, strict release/no-default-features Clippy and locked check.
-4. Produce and upload the locked portable release smoke artifact and diagnostics.
-5. Inspect diagnostic artifacts and aggregate failure gates rather than relying only on continue-on-error step presentation.
-6. Squash-merge only the exact green head.
-7. Re-run the permanent gate for the final evidence-only tracking PR if one is needed.
+PR #19 was then squash-merged into `main` as `758eaf27ed1784235ac48ea4351fcb0bfe8220c7`. This evidence-only update changes no product implementation.
 
 ## Questions and decisions
 
@@ -134,4 +133,5 @@ No frontend or Rust success is claimed until the latest exact head completes the
 - Task/report 0028 - Product Surface Completeness Audit.
 - PR #17 - completed product-surface fixes.
 - PR #18 - completed 0028 evidence.
+- PR #19 - completed 0029 implementation and audit fixes.
 - `project-tracking/reports/0029-close-and-small-work-area-hardening-report.md`

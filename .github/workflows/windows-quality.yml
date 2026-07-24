@@ -41,20 +41,15 @@ jobs:
             throw "Release Quality must run on the self-hosted v2rayn-widget-ci runner"
           }
 
-      - name: Set up Python for workflow contract tests
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Verify workflow contracts
-        shell: pwsh
-        run: python scripts/test_workflow_contracts.py
-
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22.17.1
           package-manager-cache: false
+
+      - name: Verify workflow contracts
+        shell: pwsh
+        run: node scripts/test-workflow-contracts.mjs
 
       - name: Install frontend dependencies
         id: frontend_install

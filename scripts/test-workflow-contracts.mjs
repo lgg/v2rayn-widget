@@ -6,6 +6,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const QUALITY_WORKFLOW = resolve(ROOT, ".github/workflows/windows-quality.yml");
 const RELEASE_WORKFLOW = resolve(ROOT, ".github/workflows/release-assets.yml");
 const SELF_HOSTED_RUNNER = "runs-on: [self-hosted, v2rayn-widget-ci]";
+const PROJECT_RUST_BOOTSTRAP = "scripts/rust-env.ps1";
 
 function fail(message) {
   throw new Error(message);
@@ -122,6 +123,10 @@ function verifyQualityWorkflow() {
   rejectText(text, "runs-on: ubuntu-latest", "Release Quality runner assignment");
   rejectText(text, "runs-on: windows-latest", "Release Quality runner assignment");
   rejectText(text, "actions/setup-python", "Release Quality unnecessary toolchains");
+  rejectText(text, "dtolnay/rust-toolchain", "self-hosted Rust bootstrap");
+  requireText(text, PROJECT_RUST_BOOTSTRAP, "project Rust bootstrap");
+  requireText(text, "-UseGlobalHomes", "persistent Rust toolchain reuse");
+  requireText(text, "Bootstrap project Rust toolchain", "Rust bootstrap step");
   requireText(text, "runner.environment", "self-hosted runtime assertion");
   requireText(text, "Cleanup frontend workspace", "self-hosted workspace cleanup");
   requireText(text, "Cleanup Rust and installer workspace", "self-hosted workspace cleanup");
@@ -151,6 +156,9 @@ function verifyReleaseWorkflow() {
   rejectText(onBlock.join("\n"), "push:", "Release asset events");
   requireText(buildBlock, SELF_HOSTED_RUNNER, "Windows distribution build");
   rejectText(buildBlock, "runs-on: windows-latest", "Windows distribution build");
+  rejectText(buildBlock, "dtolnay/rust-toolchain", "self-hosted release Rust bootstrap");
+  requireText(buildBlock, PROJECT_RUST_BOOTSTRAP, "project release Rust bootstrap");
+  requireText(buildBlock, "-UseGlobalHomes", "persistent release Rust toolchain reuse");
   requireText(buildBlock, "runner.environment", "self-hosted release runtime assertion");
   requireText(buildBlock, "Cleanup Windows release workspace", "self-hosted release cleanup");
   requireText(publishBlock, "runs-on: ubuntu-latest", "isolated release publisher");
@@ -181,4 +189,4 @@ function verifyReleaseWorkflow() {
 
 verifyQualityWorkflow();
 verifyReleaseWorkflow();
-console.log("Workflow trigger, runner, security, cleanup, and distribution contracts are valid.");
+console.log("Workflow trigger, runner, toolchain, security, cleanup, and distribution contracts are valid.");

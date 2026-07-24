@@ -175,15 +175,16 @@ export async function relaunchWidgetAsAdmin(): Promise<void> {
   return invoke("relaunch_widget_as_admin");
 }
 
-export async function closeWindow(label: string): Promise<void> {
+export async function closeWindow(label: string): Promise<boolean> {
   try {
     await invoke("close_window", { label });
+    return true;
   } catch (cause) {
-    // Never reject into a component-level direct-hide fallback. The Rust command
-    // intentionally leaves the auxiliary surface visible when Main restoration
-    // fails; preserving that invariant is safer than making the application
-    // disappear. A global accessible banner reports the failure instead.
+    // The Rust command intentionally leaves the auxiliary surface visible when
+    // Main restoration fails. Report that failure without rejecting into any
+    // unsafe direct-hide fallback, and let callers retain unsaved draft state.
     reportWindowCloseFailure(label, cause);
+    return false;
   }
 }
 

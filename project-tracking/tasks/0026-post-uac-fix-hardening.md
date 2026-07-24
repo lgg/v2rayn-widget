@@ -2,11 +2,11 @@
 
 ## Status
 
-In progress.
+Implementation and installer packaging audit complete. Final exact-head quality gate and squash merge remain.
 
 ## Context
 
-PR #13 removed explicit CI provisioning after UAC prompts appeared on the dedicated Windows runner. A follow-up audit is required to verify that the validation-only boundary matches the real behavior of the pinned Tauri toolchain and that persistent-runner credentials, caches and compiler setup fail closed.
+PR #13 removed explicit CI provisioning after UAC prompts appeared on the dedicated Windows runner. A follow-up audit was required to verify that the validation-only boundary matches the real behavior of the pinned Tauri toolchain and that persistent-runner credentials, caches and compiler setup fail closed.
 
 ## Confirmed defects
 
@@ -19,12 +19,15 @@ PR #13 removed explicit CI provisioning after UAC prompts appeared on the dedica
 7. Workflow contracts did not inspect the prerequisite script, exact Tauri/NSIS policy, installer configuration, checkout credential handling or action pinning.
 8. Official actions were referenced by movable major-version tags rather than immutable commit SHAs.
 9. Installer selection used newest-file ordering instead of requiring exactly one output.
+10. Initial follow-up checks treated any WebView2 setup filename in the universal NSIS template as an active payload instead of validating the rendered compile-time definitions.
 
 ## Requirements
 
 - Mirror the exact required-file and plugin-hash checks used by the pinned Tauri CLI.
 - Reject incomplete or modified NSIS caches before bundling and verify the cache fingerprint remains unchanged afterward.
+- Build against an isolated temporary copy of the validated NSIS cache so the persistent source remains read-only.
 - Explicitly use current-user NSIS installation and skip WebView2 installation.
+- Inspect the generated `installer.nsi` for current-user execution and disabled rendered WebView2 definitions.
 - Pin official GitHub Actions to full commit SHAs.
 - Disable checkout credential persistence.
 - Validate the locked Tauri CLI, Rust host, MSVC linker and Windows resource compiler.
@@ -38,12 +41,14 @@ PR #13 removed explicit CI provisioning after UAC prompts appeared on the dedica
 - [x] Exact Tauri NSIS cache policy is centralized and validated.
 - [x] Arbitrary PATH/recursive `makensis.exe` discovery is removed.
 - [x] Installer configuration explicitly avoids elevation and WebView2 installation.
+- [x] Trusted packaging uses an isolated immutable NSIS cache copy.
+- [x] Generated NSIS script is verified as current-user with WebView2 installation disabled.
 - [x] Checkout credentials are not persisted.
 - [x] Official actions are pinned to immutable SHAs.
 - [x] Rust/MSVC initialization fails closed.
 - [x] Temporary npm caches are cleaned.
 - [x] Installer and distribution output counts are deterministic.
 - [x] Contract tests cover the new boundary.
+- [x] Release packaging path was executed successfully in Audit Release Packaging run #10 (`30069117962`) on SHA `7e1efaf97a343300e702f4d0bb8ee2516a7afb0a`.
 - [ ] Full quality run passes on the final exact head SHA.
-- [ ] Release packaging path is reviewed and documented.
 - [ ] PR is squash-merged into `main`.

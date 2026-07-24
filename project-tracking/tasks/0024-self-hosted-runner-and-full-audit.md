@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | In progress |
+| Status | Completed |
 | Priority | P1 |
 | Type | CI reliability / full-project audit |
 | Baseline | `main@5b281bdafd0c15d749ab23726db219b9d0e98dac` |
@@ -52,32 +52,34 @@ A persistent runner additionally requires stricter workspace and tool configurat
 - [x] PR `synchronize` starts validation for each new revision; concurrency cancels obsolete runs.
 - [x] Runtime steps confirm the self-hosted environment and log runner identity.
 - [x] Workflow contract tests reject hosted quality/Windows-build assignment and redundant Python setup.
+- [x] Self-hosted Windows jobs use the project Rust/MSVC bootstrap instead of the incompatible generic setup action.
 - [x] npm registry/cache configuration is process-scoped.
-- [x] large generated workspaces are cleaned after artifact upload.
-- [ ] Final workflow contracts, dependency audit, frontend tests and production build pass.
-- [ ] Final Rust formatting, tests, strict Clippy variants and locked check pass.
-- [ ] Final portable and NSIS smoke artifacts are produced on the self-hosted runner.
-- [ ] Documentation and public-data review pass.
-- [ ] PR is squash-merged into `main`.
+- [x] Large generated workspaces are cleaned after artifact upload.
+- [x] Final workflow contracts, dependency audit, frontend tests and production build pass.
+- [x] Final Rust formatting, tests, strict Clippy variants and locked check pass.
+- [x] Final portable and NSIS smoke artifacts are produced on the self-hosted runner.
+- [x] Documentation and public-data review pass.
+- [x] PR is squash-merged into `main`.
 
-## Verification plan
+## Verification completed
 
-1. Open a PR and confirm a job is accepted by the custom runner label.
-2. Confirm the runtime self-hosted assertion and runner identity output.
-3. Push a later revision and verify a `synchronize` run supersedes the prior run.
-4. Run workflow contract tests before dependency installation.
-5. Run the complete permanent frontend and Rust/Windows quality gate.
-6. Review final diff, documentation, permissions, artifacts and retained diagnostics.
-7. Squash-merge only the exact green PR revision.
+1. Opened PR #12 and confirmed jobs were accepted by the custom runner labels.
+2. Confirmed runtime self-hosted assertions, Windows X64 environment and actual runner name `v2rayn-widget-runner-1213`.
+3. Pushed later revisions and confirmed `synchronize` runs replaced obsolete revisions through concurrency cancellation.
+4. Ran Node-based workflow contracts before dependency installation.
+5. Ran the complete permanent frontend and Rust/Windows quality gate.
+6. Produced and uploaded both portable and NSIS smoke artifacts.
+7. Reviewed the final diff, documentation, permissions, artifacts and retained diagnostics.
+8. Squash-merged only the exact green PR revision.
 
 ## Risks and mitigations
 
-- **Persistent global state:** use process-scoped npm variables and cleanup generated directories.
-- **Stale PR validation:** restore `synchronize` and retain PR-number concurrency with cancellation.
-- **Wrong runner:** require both `self-hosted` and `v2rayn-widget-ci`, then assert `runner.environment` at runtime.
-- **Single-runner contention:** keep frontend and Rust jobs sequential and cancel obsolete runs.
-- **Publisher trust boundary:** keep the only write-enabled job hosted, isolated from checked-out repository code.
-- **External client UI drift:** preserve explicit experimental capability labels and fail-closed UI Automation.
+- **Persistent global state:** process-scoped npm variables, runner-temporary npm caches, reusable user-level Cargo/Rustup homes and generated-directory cleanup.
+- **Stale PR validation:** `synchronize` plus PR-number concurrency and cancellation.
+- **Wrong runner:** both required labels plus runtime self-hosted assertion and identity logging.
+- **Single-runner contention:** sequential frontend/Rust jobs and cancellation of obsolete revisions.
+- **Publisher trust boundary:** only the hosted checkout-free publisher receives `contents: write`.
+- **External client UI drift:** explicit experimental capability labels and fail-closed UI Automation/config behavior.
 
 ## Related work
 

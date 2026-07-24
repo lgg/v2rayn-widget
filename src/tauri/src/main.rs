@@ -342,17 +342,9 @@ fn main() {
                 "debug" => {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        let app_handle = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            if let Err(error) = commands::close_window(
-                                "debug".to_owned(),
-                                app_handle,
-                            )
-                            .await
-                            {
-                                warn!(?error, "failed to safely close debug window");
-                            }
-                        });
+                        if let Err(error) = window.emit("debug-close-requested", ()) {
+                            warn!(?error, "failed to forward native Debug close request; leaving the window visible");
+                        }
                     }
                 }
                 _ => {}

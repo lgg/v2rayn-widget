@@ -85,6 +85,9 @@ pub fn fit_window_to_current_work_area<R: Runtime>(
     let size = window
         .outer_size()
         .map_err(|error| format!("Could not read window size: {error}"))?;
+    let inner_size = window
+        .inner_size()
+        .map_err(|error| format!("Could not read window client size: {error}"))?;
     let fitted = fit_rect_to_work_area(
         ScreenRect {
             x: position.x,
@@ -103,8 +106,13 @@ pub fn fit_window_to_current_work_area<R: Runtime>(
     let size_changed = fitted.width != size.width || fitted.height != size.height;
     let position_changed = fitted.x != position.x || fitted.y != position.y;
     if size_changed {
+        let (target_inner_width, target_inner_height) = inner_size_for_outer_target(
+            (size.width, size.height),
+            (inner_size.width, inner_size.height),
+            (fitted.width, fitted.height),
+        );
         window
-            .set_size(PhysicalSize::new(fitted.width, fitted.height))
+            .set_size(PhysicalSize::new(target_inner_width, target_inner_height))
             .map_err(|error| format!("Could not fit window size to work area: {error}"))?;
     }
     if position_changed {
@@ -149,6 +157,19 @@ pub fn restore_or_center<R: Runtime>(
         fit_window_to_current_work_area(window)?;
         Ok(false)
     }
+}
+
+fn inner_size_for_outer_target(
+    current_outer: (u32, u32),
+    current_inner: (u32, u32),
+    target_outer: (u32, u32),
+) -> (u32, u32) {
+    let frame_width = current_outer.0.saturating_sub(current_inner.0);
+    let frame_height = current_outer.1.saturating_sub(current_inner.1);
+    (
+        target_outer.0.saturating_sub(frame_width).max(1),
+        target_outer.1.saturating_sub(frame_height).max(1),
+    )
 }
 
 fn clamp_axis(position: i32, size: u32, area_start: i32, area_size: u32) -> i32 {
@@ -243,6 +264,14 @@ mod tests {
             ScreenRect { x: 0, y: 0, width: 1366, height: 700 },
         );
         assert_eq!(fitted, ScreenRect { x: 866, y: 0, width: 500, height: 700 });
+    }
+
+    #[test]
+    fn converts_an_outer_target_to_the_matching_decorated_inner_size() {
+        assert_eq!(
+            inner_size_for_outer_target((1100, 780), (1084, 741), (900, 700)),
+            (884, 661),
+        );
     }
 
     #[test]

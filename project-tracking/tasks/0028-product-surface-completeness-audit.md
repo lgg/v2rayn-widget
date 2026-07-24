@@ -2,11 +2,11 @@
 
 ## Status
 
-Implementation and deterministic product verification complete; final clean exact-head Release Quality and merge pending.
+Completed and squash-merged through PR #17.
 
 ## Context
 
-The release and installer boundary was completed through tasks 0026-0027. This task independently audits every product claim, user-facing screen and declared adapter capability against the current frontend and Rust/Tauri implementation.
+The release and installer boundary was completed through tasks 0026-0027. This task independently audited every product claim, user-facing screen and declared adapter capability against the frontend and Rust/Tauri implementation.
 
 ## Scope
 
@@ -50,18 +50,31 @@ The release and installer boundary was completed through tasks 0026-0027. This t
 - [x] English and Russian catalogs have exact key parity and no blank values.
 - [x] Remote Diagnostics is excluded from the default Tauri IPC capability by a permanent contract test.
 - [x] README and historical tracking records match the implemented capability boundary.
-- [x] Frontend contracts, npm audit, tests and production build passed in implementation and finalized-tracking runs.
-- [x] Rust unit/integration tests, locked check and portable release build completed successfully before final hygiene correction.
+- [x] Frontend contracts, npm audit, tests and production build pass.
+- [x] Rust fmt, unit/integration tests, both strict Clippy configurations, locked check and portable release build pass.
 - [x] Hidden strict Clippy and rustfmt failures were recovered from uploaded diagnostics and corrected rather than ignored.
 - [x] Temporary patch workflows were removed from the branch.
-- [ ] One clean exact-head Release Quality passes fmt, tests, both strict Clippy configurations, locked check, portable build, artifacts and cleanup.
-- [ ] PR #17 is squash-merged into `main`.
+- [x] One clean exact-head Release Quality completed fmt, tests, both strict Clippy configurations, locked check, portable build, artifacts and cleanup.
+- [x] PR #17 was squash-merged into `main`.
+
+## Final verification evidence
+
+Release Quality #336 (`30105332510`) completed successfully on exact PR head `e6dc07a384e1705f17008430392b3c6f49bc55f6`.
+
+Both jobs passed completely:
+
+- `frontend`: workflow contracts, locked dependency restore, Tauri/NSIS prerequisite validation, npm audit, complete tests, production build, artifacts and cleanup;
+- `rust-windows`: Rust/MSVC prerequisite validation, rustfmt, complete tests, strict all-targets Clippy, strict release/no-default-features Clippy, locked Cargo check, portable release build, artifacts, diagnostics and cleanup.
+
+PR #17 was squash-merged into `main` as commit `1b848318a92f2e3b0456d53d7e40c1343964ff56`.
 
 ## Verification history
 
 Release Quality #329 (`30102240110`) first encountered an infrastructure interruption during portable linking. The dedicated runner disappeared without a normal log or diagnostics artifact.
 
 Release Quality #331 (`30104073460`) later completed the portable build and uploaded the executable and Rust diagnostics. Its aggregate failure correctly revealed an unused import and rustfmt diff hidden behind continue-on-error steps. Both repository defects were then fixed.
+
+Release Quality #336 (`30105332510`) was the final clean exact-head acceptance run and completed successfully.
 
 ## Residual boundaries
 

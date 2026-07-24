@@ -342,9 +342,17 @@ fn main() {
                 "debug" => {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        if let Err(error) = window.hide() {
-                            warn!(?error, "failed to hide debug window");
-                        }
+                        let app_handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(error) = commands::close_window(
+                                "debug".to_owned(),
+                                app_handle,
+                            )
+                            .await
+                            {
+                                warn!(?error, "failed to safely close debug window");
+                            }
+                        });
                     }
                 }
                 _ => {}

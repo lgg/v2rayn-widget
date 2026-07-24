@@ -598,6 +598,7 @@ pub async fn open_diagnostics_window(
         window.navigate(url).map_err(|error| error.to_string())?;
         window.show().map_err(|error| error.to_string())?;
         window.unminimize().map_err(|error| error.to_string())?;
+        window_position::fit_window_to_current_work_area(&window)?;
         window.set_focus().map_err(|error| error.to_string())?;
         return Ok(());
     }

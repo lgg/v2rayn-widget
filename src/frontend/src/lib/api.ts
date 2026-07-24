@@ -13,7 +13,10 @@ import type {
   UiDebugReport,
   UiSettingsPatch
 } from "@/lib/types";
-import { reportWindowCloseFailure } from "@/lib/window-close-feedback";
+import {
+  clearWindowCloseFailure,
+  reportWindowCloseFailure,
+} from "@/lib/window-close-feedback";
 
 export async function getClientCatalog(): Promise<ClientDescriptor[]> {
   return invoke<ClientDescriptor[]>("get_client_catalog");
@@ -176,6 +179,7 @@ export async function relaunchWidgetAsAdmin(): Promise<void> {
 }
 
 export async function closeWindow(label: string): Promise<boolean> {
+  clearWindowCloseFailure(label);
   try {
     await invoke("close_window", { label });
     return true;

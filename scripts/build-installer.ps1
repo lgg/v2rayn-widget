@@ -1,44 +1,107 @@
 $ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
 
 function Invoke-CheckedCommand {
     param(
         [Parameter(Mandatory = $true)]
-        [scriptblock]$Command
+        [scriptblock]$Command,
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
     )
 
     & $Command
-    if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code $LASTEXITCODE"
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "$FailureMessage Exit code: $exitCode."
     }
 }
 
+if (-not $env:TEMP -or -not $env:LOCALAPPDATA) {
+    throw "TEMP and LOCALAPPDATA must be available for isolated installer tooling."
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$sourceFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-source.sha256.$PID"
+$beforeFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-before.sha256.$PID"
+$afterFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-after.sha256.$PID"
+$originalLocalAppData = $env:LOCALAPPDATA
+$sourceNsis = Join-Path $originalLocalAppData "tauri\NSIS"
+$isolatedLocalAppData = Join-Path $env:TEMP "v2rayn-widget-tauri-localappdata-$PID"
+$isolatedTauriRoot = Join-Path $isolatedLocalAppData "tauri"
 
-Set-Location (Join-Path $repoRoot "src\frontend")
-Invoke-CheckedCommand { npm ci --no-audit --no-fund }
-Invoke-CheckedCommand { npm audit --audit-level=high }
-Invoke-CheckedCommand { npm test }
+try {
+    & (Join-Path $PSScriptRoot "assert-ci-prerequisites.ps1") -RequireNode -RequireNsis -WriteNsisFingerprint $sourceFingerprint
 
-. (Join-Path $PSScriptRoot "rust-env.ps1")
+    Remove-Item -LiteralPath $isolatedLocalAppData -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $isolatedTauriRoot | Out-Null
+    Copy-Item -LiteralPath $sourceNsis -Destination $isolatedTauriRoot -Recurse -Force
+    $env:LOCALAPPDATA = $isolatedLocalAppData
 
-$tauriCli = Join-Path (Join-Path $repoRoot "src\frontend") "node_modules\.bin\tauri.cmd"
-if (-not (Test-Path $tauriCli)) {
-    throw "Tauri CLI not found. Run npm ci in src\frontend."
+    & (Join-Path $PSScriptRoot "assert-ci-prerequisites.ps1") -RequireNsis -WriteNsisFingerprint $beforeFingerprint
+    if ((Get-Content -LiteralPath $sourceFingerprint -Raw) -ne (Get-Content -LiteralPath $beforeFingerprint -Raw)) {
+        throw "The isolated NSIS cache copy does not match the validated source cache."
+    }
+
+    Set-Location (Join-Path $repoRoot "src\frontend")
+    Invoke-CheckedCommand -FailureMessage "Frontend dependency restore failed." -Command {
+        npm ci --ignore-scripts --no-audit --no-fund
+    }
+    Invoke-CheckedCommand -FailureMessage "Frontend dependency audit failed." -Command {
+        npm audit --audit-level=high
+    }
+    Invoke-CheckedCommand -FailureMessage "Frontend tests failed." -Command {
+        npm test
+    }
+
+    & (Join-Path $PSScriptRoot "assert-ci-prerequisites.ps1") -RequireTauriCli
+    . (Join-Path $PSScriptRoot "rust-env.ps1")
+
+    $tauriCli = Join-Path (Join-Path $repoRoot "src\frontend") "node_modules\.bin\tauri.cmd"
+    $toolchainCargo = Join-Path $env:RUSTUP_HOME "toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe"
+
+    Set-Location (Join-Path $repoRoot "src\tauri")
+    Invoke-CheckedCommand -FailureMessage "Tauri NSIS build failed." -Command {
+        & $tauriCli build --runner $toolchainCargo --bundles nsis --config "tauri.installer.conf.json" --ci -- --locked
+    }
+
+    & (Join-Path $PSScriptRoot "assert-ci-prerequisites.ps1") -RequireNsis -WriteNsisFingerprint $afterFingerprint
+    if ((Get-Content -LiteralPath $beforeFingerprint -Raw) -ne (Get-Content -LiteralPath $afterFingerprint -Raw)) {
+        throw "The isolated Tauri NSIS cache changed during packaging. Provision bundler tools manually; the build script will not download or repair them."
+    }
+
+    $installerScripts = @(Get-ChildItem "target\release" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
+    if ($installerScripts.Count -ne 1) {
+        throw "Expected exactly one generated installer.nsi, found $($installerScripts.Count)."
+    }
+    $installerScriptText = Get-Content -LiteralPath $installerScripts[0].FullName -Raw
+    if ($installerScriptText -notmatch '(?mi)^\s*RequestExecutionLevel\s+user\s*$') {
+        throw "Generated NSIS script is not explicitly current-user only."
+    }
+
+    $disabledWebViewDefinitions = @(
+        '!define INSTALLWEBVIEW2MODE ""',
+        '!define WEBVIEW2BOOTSTRAPPERPATH ""',
+        '!define WEBVIEW2INSTALLERPATH ""',
+        '!define MINIMUMWEBVIEW2VERSION ""'
+    )
+    foreach ($definition in $disabledWebViewDefinitions) {
+        if ($installerScriptText -notmatch "(?m)^\s*$([regex]::Escape($definition))\s*$") {
+            throw "Generated NSIS script does not keep WebView2 installation disabled: $definition"
+        }
+    }
+
+    $bundleDir = Join-Path (Get-Location).Path "target\release\bundle\nsis"
+    $installers = @(Get-ChildItem -LiteralPath $bundleDir -Filter "*.exe" -File -ErrorAction SilentlyContinue)
+    if ($installers.Count -ne 1) {
+        throw "Expected exactly one NSIS installer in $bundleDir, found $($installers.Count)."
+    }
+
+    Write-Output "INSTALLER_EXE=$($installers[0].FullName)"
 }
-
-$toolchainCargo = Join-Path $env:RUSTUP_HOME "toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe"
-
-Set-Location (Join-Path $repoRoot "src\tauri")
-Invoke-CheckedCommand { & $tauriCli build --runner $toolchainCargo --bundles nsis --config "tauri.installer.conf.json" --ci -- --locked }
-
-$bundleDir = Join-Path (Get-Location).Path "target\release\bundle\nsis"
-if (-not (Test-Path $bundleDir)) {
-    throw "Installer output folder not found: $bundleDir"
+finally {
+    $env:LOCALAPPDATA = $originalLocalAppData
+    Remove-Item -LiteralPath $isolatedLocalAppData -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $sourceFingerprint -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $beforeFingerprint -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $afterFingerprint -Force -ErrorAction SilentlyContinue
 }
-
-$installer = Get-ChildItem -Path $bundleDir -Filter "*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $installer) {
-    throw "NSIS installer not found in $bundleDir"
-}
-
-Write-Output "INSTALLER_EXE=$($installer.FullName)"

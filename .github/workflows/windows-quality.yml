@@ -29,7 +29,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Confirm self-hosted runner assignment
         shell: pwsh
@@ -47,7 +49,18 @@ jobs:
 
       - name: Verify workflow contracts
         shell: pwsh
-        run: node scripts/test-workflow-contracts.mjs
+        run: |
+          $workflowLog = Join-Path $env:GITHUB_WORKSPACE "workflow-contract-output.txt"
+          $installerLog = Join-Path $env:GITHUB_WORKSPACE "installer-contract-output.txt"
+
+          node scripts/test-workflow-contracts.mjs 2>&1 | Tee-Object -FilePath $workflowLog
+          $workflowExitCode = $LASTEXITCODE
+          node scripts/test-installer-toolchain-contracts.mjs 2>&1 | Tee-Object -FilePath $installerLog
+          $installerExitCode = $LASTEXITCODE
+
+          if ($workflowExitCode -ne 0 -or $installerExitCode -ne 0) {
+            exit 1
+          }
 
       - name: Restore frontend dependencies locally
         id: frontend_install
@@ -59,6 +72,13 @@ jobs:
           $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-cache"
           npm ci --ignore-scripts --no-audit --no-fund 2>&1 | Tee-Object -FilePath frontend-install-output.txt
           exit $LASTEXITCODE
+
+      - name: Verify locked Tauri CLI and immutable NSIS cache
+        if: steps.frontend_install.outcome == 'success'
+        id: release_prerequisites
+        continue-on-error: true
+        shell: pwsh
+        run: ./scripts/assert-ci-prerequisites.ps1 -RequireTauriCli -RequireNsis
 
       - name: Audit frontend dependencies
         if: steps.frontend_install.outcome == 'success'
@@ -94,7 +114,7 @@ jobs:
 
       - name: Upload frontend distribution
         if: steps.frontend_build.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: frontend-dist
           path: src/frontend/dist
@@ -103,10 +123,12 @@ jobs:
 
       - name: Upload frontend diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: frontend-diagnostics
           path: |
+            workflow-contract-output.txt
+            installer-contract-output.txt
             src/frontend/frontend-install-output.txt
             src/frontend/frontend-audit-output.txt
             src/frontend/frontend-test-output.txt
@@ -116,16 +138,19 @@ jobs:
           retention-days: 1
 
       - name: Fail when frontend checks failed
-        if: steps.frontend_install.outcome == 'failure' || steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
+        if: steps.frontend_install.outcome == 'failure' || steps.release_prerequisites.outcome == 'failure' || steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
         shell: pwsh
         run: exit 1
 
-      - name: Cleanup frontend workspace
+      - name: Cleanup frontend workspace and cache
         if: always()
         shell: pwsh
         run: |
+          Remove-Item "workflow-contract-output.txt" -Force -ErrorAction SilentlyContinue
+          Remove-Item "installer-contract-output.txt" -Force -ErrorAction SilentlyContinue
           Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "npm-cache") -Recurse -Force -ErrorAction SilentlyContinue
 
   rust-windows:
     if: >-
@@ -138,7 +163,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Confirm self-hosted runner assignment
         shell: pwsh
@@ -151,7 +178,7 @@ jobs:
           }
 
       - name: Download frontend distribution
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: frontend-dist
           path: src/frontend/dist
@@ -226,7 +253,7 @@ jobs:
 
       - name: Upload portable release smoke artifact
         if: steps.rust_release.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: portable-release-smoke
           path: src/tauri/target/release/v2rayn-widget.exe
@@ -235,7 +262,7 @@ jobs:
 
       - name: Upload Rust diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rust-diagnostics
           path: |

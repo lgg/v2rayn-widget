@@ -134,6 +134,9 @@ Planning and decisions:
 - `project-tracking/tasks/0025-disable-ci-system-installation.md`
 - `project-tracking/decisions/0025-validation-only-self-hosted-ci.md`
 - `project-tracking/reports/0025-disable-ci-system-installation-report.md`
+- `project-tracking/tasks/0026-post-uac-fix-hardening.md`
+- `project-tracking/decisions/0026-validation-only-release-toolchain.md`
+- `project-tracking/reports/0026-post-uac-fix-hardening-report.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 
@@ -179,14 +182,15 @@ npm run build
 
 The permanent `Release Quality` workflow runs both jobs on the dedicated Windows self-hosted runner selected by `[self-hosted, v2rayn-widget-ci]`. It validates every non-draft same-repository PR revision on `opened`, `reopened`, `ready_for_review` and `synchronize`; PR-number concurrency cancels obsolete runs.
 
-CI is validation-only. Node.js, npm, the stable x64 MSVC Rust toolchain, rustfmt, Clippy and Visual Studio C++ Build Tools must already exist on the runner. Workflow jobs never install or update system toolchains, request elevation, invoke package-manager installers or run generated setup executables. Missing prerequisites fail immediately with a manual-provisioning message.
+CI is validation-only. Node.js, npm, the stable x64 MSVC Rust toolchain, rustfmt, Clippy, the Visual Studio C++ toolchain and the exact Tauri NSIS cache must already exist on the runner. Workflow jobs never install or update system toolchains, request elevation, invoke package-manager installers or run generated setup executables. Missing or mismatched prerequisites fail immediately with a manual-provisioning message.
 
-Frontend dependencies are restored only into the checkout with `npm ci --ignore-scripts`, process-scoped registry/cache settings and cleanup after artifact upload. The PR quality gate does not package NSIS installers.
+Frontend dependencies are restored only into the checkout with `npm ci --ignore-scripts`, process-scoped registry/cache settings and cleanup after artifact upload. Official Actions are pinned to immutable commit SHAs, and checkout credentials are not persisted in the repository. The PR quality gate does not package NSIS installers; it only validates that the locked Tauri CLI and exact NSIS cache are ready for a later trusted release build.
 
 The Release Quality workflow additionally:
 
-- verifies workflow runner, trigger, no-provisioning, permission and cleanup contracts;
+- verifies workflow runner, trigger, no-provisioning, credential, action-pinning and cleanup contracts;
 - rejects high-severity frontend dependency advisories;
+- validates the locked Tauri CLI and exact `%LOCALAPPDATA%\tauri\NSIS` cache without mutating it;
 - transfers the exact built frontend into the Tauri job;
 - checks formatting for the complete Rust workspace;
 - runs the Rust regression suite;
@@ -195,7 +199,7 @@ The Release Quality workflow additionally:
 - executes `cargo check --locked`;
 - performs a locked release build and verifies that the portable Windows executable is produced.
 
-The trusted `Build Release Assets` workflow also uses `v2rayn-widget-ci`, but only with pre-provisioned Node/Rust/MSVC/NSIS tools. The generated installer is packaged and uploaded; it is never executed by CI. The only write-enabled release-publishing job remains on an isolated hosted Linux runner, does not check out project code, and uploads only checksum-verified allowlisted assets. See `docs/release-process.md`.
+The trusted `Build Release Assets` workflow also uses `v2rayn-widget-ci`. It validates the exact Tauri NSIS 3.11 cache, fingerprints it before and after bundling, and fails if the cache changes. The NSIS installer is explicitly current-user only and skips WebView2 installation, so it does not request Administrator access or execute a dependency installer; WebView2 must already exist on the target Windows system. The generated installer is packaged and uploaded but never executed by CI. The only write-enabled release-publishing job remains on an isolated hosted Linux runner, does not check out project code, and uploads only checksum-verified allowlisted assets. See `docs/release-process.md`.
 
 ## Build portable executable
 
@@ -211,7 +215,9 @@ Output: `dist/portable/v2rayn-widget.exe` or a timestamped file when the target 
 ./scripts/build-installer.ps1
 ```
 
-Output: `src/tauri/target/release/bundle/nsis/*.exe`.
+The script requires the locked Tauri CLI and complete exact Tauri NSIS cache to be provisioned beforehand. It fingerprints the cache before and after packaging and fails if Tauri downloads, repairs or mutates bundler tooling.
+
+Output: exactly one file under `src/tauri/target/release/bundle/nsis/*.exe`.
 
 ## v2rayN folder expectations
 

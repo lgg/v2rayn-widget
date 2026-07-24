@@ -37,9 +37,10 @@ jobs:
 
     steps:
       - name: Checkout exact release ref
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ env.BUILD_REF }}
+          persist-credentials: false
 
       - name: Confirm self-hosted runner assignment
         shell: pwsh
@@ -107,6 +108,10 @@ jobs:
           npm audit --audit-level=high
           exit $LASTEXITCODE
 
+      - name: Verify locked Tauri CLI
+        shell: pwsh
+        run: ./scripts/assert-ci-prerequisites.ps1 -RequireTauriCli
+
       - name: Build frontend distribution
         working-directory: src/frontend
         shell: pwsh
@@ -125,17 +130,63 @@ jobs:
             throw "Portable release executable was not produced"
           }
 
-      - name: Build NSIS installer with pre-provisioned compiler
+      - name: Build and inspect NSIS installer without tool provisioning
         working-directory: src/tauri
         shell: pwsh
         run: |
-          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireRust -RequireNsis
+          $sourceFingerprint = Join-Path $env:RUNNER_TEMP "nsis-source.sha256"
+          $beforeFingerprint = Join-Path $env:RUNNER_TEMP "nsis-before.sha256"
+          $afterFingerprint = Join-Path $env:RUNNER_TEMP "nsis-after.sha256"
+          $sourceNsis = Join-Path $env:LOCALAPPDATA "tauri\NSIS"
+          $isolatedLocalAppData = Join-Path $env:RUNNER_TEMP "tauri-release-localappdata"
+          $isolatedTauriRoot = Join-Path $isolatedLocalAppData "tauri"
+
+          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireRust -RequireTauriCli -RequireNsis -WriteNsisFingerprint $sourceFingerprint
+
+          Remove-Item -LiteralPath $isolatedLocalAppData -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $isolatedTauriRoot | Out-Null
+          Copy-Item -LiteralPath $sourceNsis -Destination $isolatedTauriRoot -Recurse -Force
+          $env:LOCALAPPDATA = $isolatedLocalAppData
+
+          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireNsis -WriteNsisFingerprint $beforeFingerprint
+          if ((Get-Content -LiteralPath $sourceFingerprint -Raw) -ne (Get-Content -LiteralPath $beforeFingerprint -Raw)) {
+            throw "The isolated NSIS cache copy does not match the validated source cache."
+          }
+
+          $env:CARGO_NET_OFFLINE = "true"
           $tauriCli = (Resolve-Path "../frontend/node_modules/.bin/tauri.cmd").Path
           & $tauriCli build --bundles nsis --config "tauri.installer.conf.json" --ci -- --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $installers = @(Get-ChildItem "target/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue)
-          if ($installers.Count -eq 0) {
-            throw "NSIS installer was not produced"
+
+          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireNsis -WriteNsisFingerprint $afterFingerprint
+          if ((Get-Content -LiteralPath $beforeFingerprint -Raw) -ne (Get-Content -LiteralPath $afterFingerprint -Raw)) {
+            throw "The isolated Tauri NSIS cache changed during packaging. Release jobs must not download, repair or mutate bundler tools."
+          }
+
+          $installerScripts = @(Get-ChildItem "target/release" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
+          if ($installerScripts.Count -ne 1) {
+            throw "Expected exactly one generated installer.nsi, found $($installerScripts.Count)."
+          }
+          $installerScriptText = Get-Content -LiteralPath $installerScripts[0].FullName -Raw
+          if ($installerScriptText -notmatch '(?mi)^\s*RequestExecutionLevel\s+user\s*$') {
+            throw "Generated NSIS script is not explicitly current-user only."
+          }
+
+          $disabledWebViewDefinitions = @(
+            '!define INSTALLWEBVIEW2MODE ""',
+            '!define WEBVIEW2BOOTSTRAPPERPATH ""',
+            '!define WEBVIEW2INSTALLERPATH ""',
+            '!define MINIMUMWEBVIEW2VERSION ""'
+          )
+          foreach ($definition in $disabledWebViewDefinitions) {
+            if ($installerScriptText -notmatch "(?m)^\s*$([regex]::Escape($definition))\s*$") {
+              throw "Generated NSIS script does not keep WebView2 installation disabled: $definition"
+            }
+          }
+
+          $installers = @(Get-ChildItem "target/release/bundle/nsis/*.exe" -File -ErrorAction SilentlyContinue)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one NSIS installer, found $($installers.Count)."
           }
 
       - name: Stage distribution files and checksums
@@ -156,14 +207,12 @@ jobs:
           $portableZip = Join-Path $distributionDir "v2rayn-widget-$version-windows-x64-portable.zip"
           Compress-Archive -Path $portableTarget -DestinationPath $portableZip -CompressionLevel Optimal -Force
 
-          $installerSource = Get-ChildItem (Join-Path $env:GITHUB_WORKSPACE "src/tauri/target/release/bundle/nsis/*.exe") |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-          if (-not $installerSource) {
-            throw "NSIS installer could not be selected for staging"
+          $installers = @(Get-ChildItem (Join-Path $env:GITHUB_WORKSPACE "src/tauri/target/release/bundle/nsis/*.exe") -File -ErrorAction SilentlyContinue)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one NSIS installer for staging, found $($installers.Count)."
           }
           $installerTarget = Join-Path $distributionDir "v2rayn-widget-$version-windows-x64-setup.exe"
-          Copy-Item $installerSource.FullName $installerTarget -Force
+          Copy-Item $installers[0].FullName $installerTarget -Force
 
           $checksumLines = Get-ChildItem $distributionDir -File |
             Sort-Object Name |
@@ -173,17 +222,21 @@ jobs:
             }
           $checksumLines | Set-Content (Join-Path $distributionDir "SHA256SUMS.txt") -Encoding ascii
 
-          Get-ChildItem $distributionDir -File | Select-Object Name, Length
+          $distributionFiles = @(Get-ChildItem $distributionDir -File)
+          if ($distributionFiles.Count -ne 4) {
+            throw "Expected exactly four release distribution files, found $($distributionFiles.Count)."
+          }
+          $distributionFiles | Select-Object Name, Length
 
       - name: Upload release distribution artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.metadata.outputs.artifact_name }}
           path: dist/release/*
           if-no-files-found: error
           retention-days: 30
 
-      - name: Cleanup Windows release workspace
+      - name: Cleanup Windows release workspace and caches
         if: always()
         shell: pwsh
         run: |
@@ -191,6 +244,11 @@ jobs:
           Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "dist/release" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "npm-release-cache") -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "tauri-release-localappdata") -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "nsis-source.sha256") -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "nsis-before.sha256") -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "nsis-after.sha256") -Force -ErrorAction SilentlyContinue
 
   publish-release:
     if: needs.build-windows.outputs.release_tag != ''
@@ -205,7 +263,7 @@ jobs:
 
     steps:
       - name: Download verified release distribution
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ${{ needs.build-windows.outputs.artifact_name }}
           path: dist/release

@@ -8,6 +8,7 @@ on:
       - opened
       - reopened
       - ready_for_review
+      - synchronize
   workflow_dispatch:
 
 permissions:
@@ -23,15 +24,31 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, v2rayn-widget-ci]
     timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Confirm self-hosted runner assignment
+        shell: pwsh
+        run: |
+          Write-Host "Runner name: ${{ runner.name }}"
+          Write-Host "Runner OS: ${{ runner.os }}"
+          Write-Host "Runner architecture: ${{ runner.arch }}"
+          if ("${{ runner.environment }}" -ne "self-hosted") {
+            throw "Release Quality must run on the self-hosted v2rayn-widget-ci runner"
+          }
+
+      - name: Set up Python for workflow contract tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Verify workflow contracts
-        run: python3 scripts/test_workflow_contracts.py
+        shell: pwsh
+        run: python scripts/test_workflow_contracts.py
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -43,47 +60,50 @@ jobs:
         id: frontend_install
         continue-on-error: true
         working-directory: src/frontend
-        shell: bash
+        shell: pwsh
         run: |
-          set -o pipefail
-          {
-            node --version
-            npm --version
-            npm config set registry "https://registry.npmjs.org/" --global
-            npm config set cache "$RUNNER_TEMP/npm-cache" --global
-            npm cache clean --force
-            npm ci --no-audit --no-fund
-          } 2>&1 | tee frontend-install-output.txt
+          $env:NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+          $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-cache"
+          node --version 2>&1 | Tee-Object -FilePath frontend-install-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --version 2>&1 | Tee-Object -FilePath frontend-install-output.txt -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm cache clean --force 2>&1 | Tee-Object -FilePath frontend-install-output.txt -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm ci --no-audit --no-fund 2>&1 | Tee-Object -FilePath frontend-install-output.txt -Append
+          exit $LASTEXITCODE
 
       - name: Audit frontend dependencies
         if: steps.frontend_install.outcome == 'success'
         id: frontend_audit
         continue-on-error: true
         working-directory: src/frontend
-        shell: bash
+        shell: pwsh
         run: |
-          set -o pipefail
-          npm audit --audit-level=high 2>&1 | tee frontend-audit-output.txt
+          $env:NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+          $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-cache"
+          npm audit --audit-level=high 2>&1 | Tee-Object -FilePath frontend-audit-output.txt
+          exit $LASTEXITCODE
 
       - name: Run frontend tests
         if: steps.frontend_install.outcome == 'success'
         id: frontend_tests
         continue-on-error: true
         working-directory: src/frontend
-        shell: bash
+        shell: pwsh
         run: |
-          set -o pipefail
-          npm test 2>&1 | tee frontend-test-output.txt
+          npm test 2>&1 | Tee-Object -FilePath frontend-test-output.txt
+          exit $LASTEXITCODE
 
       - name: Build frontend
         if: steps.frontend_install.outcome == 'success'
         id: frontend_build
         continue-on-error: true
         working-directory: src/frontend
-        shell: bash
+        shell: pwsh
         run: |
-          set -o pipefail
-          npm run build 2>&1 | tee frontend-build-output.txt
+          npm run build 2>&1 | Tee-Object -FilePath frontend-build-output.txt
+          exit $LASTEXITCODE
 
       - name: Upload frontend distribution
         if: steps.frontend_build.outcome == 'success'
@@ -110,7 +130,15 @@ jobs:
 
       - name: Fail when frontend checks failed
         if: steps.frontend_install.outcome == 'failure' || steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
+        shell: pwsh
         run: exit 1
+
+      - name: Cleanup frontend workspace
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
 
   rust-windows:
     if: >-
@@ -118,12 +146,22 @@ jobs:
       (github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository)
     needs: frontend
-    runs-on: windows-latest
+    runs-on: [self-hosted, v2rayn-widget-ci]
     timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Confirm self-hosted runner assignment
+        shell: pwsh
+        run: |
+          Write-Host "Runner name: ${{ runner.name }}"
+          Write-Host "Runner OS: ${{ runner.os }}"
+          Write-Host "Runner architecture: ${{ runner.arch }}"
+          if ("${{ runner.environment }}" -ne "self-hosted") {
+            throw "Release Quality must run on the self-hosted v2rayn-widget-ci runner"
+          }
 
       - name: Download frontend distribution
         uses: actions/download-artifact@v4
@@ -221,12 +259,12 @@ jobs:
         working-directory: src/frontend
         shell: pwsh
         run: |
-          npm config set registry "https://registry.npmjs.org/" --global
-          npm config set cache "$env:RUNNER_TEMP\npm-installer-cache" --global
-          npm cache clean --force
-          npm ci --no-audit --no-fund 2>&1 | Tee-Object -FilePath installer-dependencies-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          $env:NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+          $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-installer-cache"
+          npm cache clean --force 2>&1 | Tee-Object -FilePath installer-dependencies-output.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm ci --no-audit --no-fund 2>&1 | Tee-Object -FilePath installer-dependencies-output.txt -Append
+          exit $LASTEXITCODE
 
       - name: Build NSIS installer smoke artifact
         if: steps.installer_dependencies.outcome == 'success'
@@ -276,3 +314,11 @@ jobs:
         if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_release_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure' || steps.rust_release.outcome == 'failure' || steps.installer_dependencies.outcome == 'failure' || steps.installer_release.outcome == 'failure'
         shell: pwsh
         run: exit 1
+
+      - name: Cleanup Rust and installer workspace
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue

@@ -15,9 +15,7 @@ fn frontend_invoke_commands(source: &str) -> Vec<String> {
     source
         .lines()
         .filter_map(|line| {
-            let invoke = line
-                .find("invoke(")
-                .or_else(|| line.find("invoke<"))?;
+            let invoke = line.find("invoke(").or_else(|| line.find("invoke<"))?;
             let after_invoke = &line[invoke..];
             let quote_start = after_invoke.find('"')? + 1;
             let after_start = &after_invoke[quote_start..];
@@ -115,7 +113,10 @@ fn auxiliary_react_surfaces_never_hide_their_native_window_directly() {
             "Settings",
             include_str!("../../frontend/src/app/SettingsWindow.tsx"),
         ),
-        ("Debug", include_str!("../../frontend/src/app/DebugWindow.tsx")),
+        (
+            "Debug",
+            include_str!("../../frontend/src/app/DebugWindow.tsx"),
+        ),
         (
             "Happ Setup",
             include_str!("../../frontend/src/app/HappSetupWindow.tsx"),
@@ -170,12 +171,8 @@ fn preferred_window_geometry_matches_native_declarations() {
     assert!(geometry.contains("MAIN_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (360, 270)"));
     assert!(geometry.contains("DEBUG_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (460, 420)"));
     assert!(geometry.contains("DIAGNOSTICS_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (760, 520)"));
-    assert!(geometry.contains(
-        "SETTINGS_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (430, 760)"
-    ));
-    assert!(geometry.contains(
-        "HAPP_SETUP_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (500, 720)"
-    ));
+    assert!(geometry.contains("SETTINGS_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (430, 760)"));
+    assert!(geometry.contains("HAPP_SETUP_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (500, 720)"));
     assert!(geometry.contains(".to_physical(scale_factor)"));
 
     let commands = include_str!("../src/commands/mod.rs");

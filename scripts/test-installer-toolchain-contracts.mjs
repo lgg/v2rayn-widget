@@ -123,6 +123,7 @@ requireAll(
     'git rev-list -n 1 "refs/tags/$env:RELEASE_TAG"',
     "Checked-out commit $headCommit does not match release tag commit $tagCommit",
     'find "$distribution_dir" -mindepth 1 -printf \'%P\\n\'',
+    "actual_count=\"${#actual_entries[@]}\"",
     "Release distribution does not match the exact recursive allowlist",
     "declare -A manifest_seen=()",
     "Checksum manifest must contain exactly",
@@ -133,7 +134,7 @@ requireAll(
   ],
   "release ref and publisher integrity",
 );
-rejectAll(releaseText, ["actual_count=", "for asset in \"${expected_assets[@]}\"; do\n            gh release upload"], "legacy publisher validation");
+rejectAll(releaseText, ["for asset in \"${expected_assets[@]}\"; do\n            gh release upload"], "legacy publisher upload loop");
 
 const config = JSON.parse(read(installerConfig));
 if (config.bundle?.windows?.nsis?.installMode !== "currentUser") {

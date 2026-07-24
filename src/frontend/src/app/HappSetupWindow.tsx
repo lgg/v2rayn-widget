@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AlertTriangle, CheckCircle2, FolderSearch, RefreshCcw, Save, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -32,18 +31,8 @@ function transportLabel(value: TransportMode, translate: (key: string) => string
   return translate(`transport.${value}`);
 }
 
-const happSetupWindow = getCurrentWindow();
-
-async function closeHappSetupWindow(): Promise<void> {
-  try {
-    await closeWindow("happ-setup");
-  } catch {
-    try {
-      await happSetupWindow.hide();
-    } catch {
-      // The native close handler remains available if both command paths fail.
-    }
-  }
+async function closeHappSetupWindow(): Promise<boolean> {
+  return closeWindow("happ-setup");
 }
 
 function candidateKey(value: string | null | undefined): string {
@@ -51,7 +40,7 @@ function candidateKey(value: string | null | undefined): string {
 }
 
 export function HappSetupWindow(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const translate = (key: string): string => t(key);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,7 +70,11 @@ export function HappSetupWindow(): JSX.Element {
       })
       .catch((cause) => {
         if (active) {
-          setError(backendMessage(cause, t("happSetup.loadFailed"), translate));
+          setError(backendMessage(
+            cause,
+            i18n.t("happSetup.loadFailed"),
+            (key) => i18n.t(key),
+          ));
         }
       })
       .finally(() => {
@@ -93,7 +86,7 @@ export function HappSetupWindow(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [t, loadAttempt]);
+  }, [i18n, loadAttempt]);
 
   const dirty = settings !== null
     && (candidateKey(path) !== candidateKey(settings.happ_path)
@@ -227,8 +220,9 @@ export function HappSetupWindow(): JSX.Element {
   };
 
   const discardAndClose = async (): Promise<void> => {
-    setConfirmDiscardOpen(false);
-    await closeHappSetupWindow();
+    if (await closeHappSetupWindow()) {
+      setConfirmDiscardOpen(false);
+    }
   };
 
   if (loading) {

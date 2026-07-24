@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Bug, Check, FolderCheck, Globe, Languages, MoonStar, Shield, SlidersHorizontal, Sun, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -29,14 +28,8 @@ const DEFAULT_CONNECTIVITY_ENDPOINTS = [
 const DEFAULT_IP_ENDPOINTS = ["https://api.ipify.org/?format=json", "https://ifconfig.me/ip", "https://icanhazip.com/"];
 const DEFAULT_DIAGNOSTICS_URL = "https://ipleak.net/";
 
-const settingsWindow = getCurrentWindow();
-
-async function closeSettingsWindow(): Promise<void> {
-  try {
-    await closeWindow("settings");
-  } catch {
-    await settingsWindow.hide();
-  }
+async function closeSettingsWindow(): Promise<boolean> {
+  return closeWindow("settings");
 }
 
 function parseLines(value: string): string[] {
@@ -307,9 +300,10 @@ export function SettingsWindow(): JSX.Element {
   };
 
   const discardAndClose = async (): Promise<void> => {
-    setConfirmDiscardOpen(false);
-    updateDraftDirty(false);
-    await closeSettingsWindow();
+    if (await closeSettingsWindow()) {
+      setConfirmDiscardOpen(false);
+      updateDraftDirty(false);
+    }
   };
 
   if (loading) {

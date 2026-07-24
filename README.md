@@ -108,7 +108,7 @@ Legacy v2rayN commands remain registered during staged migration so existing deb
 
 Network diagnostics reject non-public literal and DNS-resolved targets, disable redirects and ambient proxy settings, and pin hostname requests to the exact public socket addresses that were validated before the request. Settings normalization bounds endpoint lists, polling and opacity values before persistence.
 
-All four local windows expose explicit loading/error/retry or no-result behavior. Settings and Happ Setup protect unsaved draft-only changes on both custom and native close requests. Auxiliary close requests restore Main before hiding the source window, and every local/diagnostics window is fitted to the active monitor work area when shown or resized. Async Tauri listeners are disposed even if registration finishes after React unmounts. Endpoint lists and loaded settings are normalized and bounded before use.
+All four local windows expose explicit loading/error/retry or no-result behavior. Settings and Happ Setup protect unsaved draft-only changes on both custom and native close requests. Settings, Debug and Happ Setup close requests are routed through the backend rule that restores Main before hiding the source; if that cannot be proven, the source remains visible and a localized accessible alert explains the failure. Diagnostics opens without hiding Main and can therefore use its normal native close lifecycle. Local and Diagnostics windows are fitted to the active monitor work area when shown or resized by application commands. Native minimum sizes are temporarily capped when a small/RDP work area cannot contain them and restored before final size/position clamping when space returns. Async Tauri listeners are disposed even if registration finishes after React unmounts. Endpoint lists and loaded settings are normalized and bounded before use.
 
 ## Contributor workflow
 
@@ -137,6 +137,8 @@ Planning and decisions:
 - `project-tracking/tasks/0026-post-uac-fix-hardening.md`
 - `project-tracking/decisions/0026-validation-only-release-toolchain.md`
 - `project-tracking/reports/0026-post-uac-fix-hardening-report.md`
+- `project-tracking/tasks/0029-close-and-small-work-area-hardening.md`
+- `project-tracking/reports/0029-close-and-small-work-area-hardening-report.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 

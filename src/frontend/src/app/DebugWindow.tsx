@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTranslation } from "react-i18next";
 import {
   closeWindow,
@@ -14,20 +13,11 @@ import {
   runUiDebugProbe,
   toggleTunViaUi
 } from "@/lib/api";
+import { bindTauriListener } from "@/lib/tauri-listener";
 import type { DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
 
-const debugWindow = getCurrentWindow();
-
 async function closeDebugWindow(): Promise<void> {
-  try {
-    await closeWindow("debug");
-  } catch {
-    try {
-      await debugWindow.hide();
-    } catch {
-      // The native close handler remains available if both command paths fail.
-    }
-  }
+  await closeWindow("debug");
 }
 
 function formatSnapshot(snapshot: DebugRuntimeSnapshot): string {
@@ -118,6 +108,14 @@ export function DebugWindow(): JSX.Element {
       { captureSnapshot: true, probeOperation: true }
     ).finally(() => setInitialProbePending(false));
   }, []);
+
+  useEffect(
+    () =>
+      bindTauriListener("debug-close-requested", () => {
+        void closeDebugWindow();
+      }),
+    [],
+  );
 
   return (
     <main data-tauri-drag-region className="drag-region h-full p-0">

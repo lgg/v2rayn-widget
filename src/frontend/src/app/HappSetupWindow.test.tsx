@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings, ClientDiagnostics } from "@/lib/types";
-import "@/lib/i18n";
+import i18n from "@/lib/i18n";
 
 const eventMocks = vi.hoisted(() => ({ listen: vi.fn() }));
-const windowMocks = vi.hoisted(() => ({ hide: vi.fn() }));
 const apiMocks = vi.hoisted(() => ({
   closeWindow: vi.fn(),
   detectHappPath: vi.fn(),
@@ -18,9 +17,6 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => apiMocks);
 vi.mock("@tauri-apps/api/event", () => eventMocks);
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ hide: windowMocks.hide })
-}));
 
 import { HappSetupWindow } from "@/app/HappSetupWindow";
 
@@ -71,10 +67,11 @@ const diagnostics: ClientDiagnostics = {
 };
 
 describe("HappSetupWindow", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    await i18n.changeLanguage("en");
     eventMocks.listen.mockResolvedValue(() => undefined);
-    apiMocks.closeWindow.mockResolvedValue(undefined);
+    apiMocks.closeWindow.mockResolvedValue(true);
     apiMocks.getSettings.mockResolvedValue(settings);
     apiMocks.validateHappPath.mockResolvedValue({
       is_valid: true,
@@ -86,6 +83,10 @@ describe("HappSetupWindow", () => {
       ...payload
     }));
     apiMocks.probeHappCandidate.mockResolvedValue(diagnostics);
+  });
+
+  afterEach(async () => {
+    await i18n.changeLanguage("en");
   });
 
   it("probes and persists explicit experimental control consent for the current candidate", async () => {
@@ -149,6 +150,36 @@ describe("HappSetupWindow", () => {
     });
     expect(await screen.findByText("Unsaved settings")).toBeTruthy();
     expect(apiMocks.closeWindow).not.toHaveBeenCalled();
+  });
+
+  it("retains the setup draft and confirmation when safe discard close fails", async () => {
+    apiMocks.closeWindow.mockResolvedValueOnce(false);
+    render(<HappSetupWindow />);
+    await screen.findByRole("heading", { name: "Happ adapter setup" });
+
+    const pathInput = screen.getByLabelText("Executable path") as HTMLInputElement;
+    fireEvent.change(pathInput, { target: { value: "C:\\Draft\\Happ.exe" } });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard changes" }));
+
+    await waitFor(() => expect(apiMocks.closeWindow).toHaveBeenCalledWith("happ-setup"));
+    expect(screen.getByText("Unsaved settings")).toBeTruthy();
+    expect(pathInput.value).toBe("C:\\Draft\\Happ.exe");
+  });
+
+  it("preserves an unsaved setup draft when the application language changes", async () => {
+    render(<HappSetupWindow />);
+    await screen.findByRole("heading", { name: "Happ adapter setup" });
+
+    const pathInput = screen.getByLabelText("Executable path") as HTMLInputElement;
+    fireEvent.change(pathInput, { target: { value: "C:\\Draft\\Happ.exe" } });
+
+    await act(async () => {
+      await i18n.changeLanguage("ru");
+    });
+
+    await waitFor(() => expect(pathInput.value).toBe("C:\\Draft\\Happ.exe"));
+    expect(apiMocks.getSettings).toHaveBeenCalledTimes(1);
   });
 
   it("leaves loading and shows an error when settings cannot load", async () => {

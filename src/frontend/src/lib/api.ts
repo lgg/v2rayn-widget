@@ -13,6 +13,10 @@ import type {
   UiDebugReport,
   UiSettingsPatch
 } from "@/lib/types";
+import {
+  clearWindowCloseFailure,
+  reportWindowCloseFailure,
+} from "@/lib/window-close-feedback";
 
 export async function getClientCatalog(): Promise<ClientDescriptor[]> {
   return invoke<ClientDescriptor[]>("get_client_catalog");
@@ -174,8 +178,18 @@ export async function relaunchWidgetAsAdmin(): Promise<void> {
   return invoke("relaunch_widget_as_admin");
 }
 
-export async function closeWindow(label: string): Promise<void> {
-  return invoke("close_window", { label });
+export async function closeWindow(label: string): Promise<boolean> {
+  clearWindowCloseFailure(label);
+  try {
+    await invoke("close_window", { label });
+    return true;
+  } catch (cause) {
+    // The Rust command intentionally leaves the auxiliary surface visible when
+    // Main restoration fails. Report that failure without rejecting into any
+    // unsafe direct-hide fallback, and let callers retain unsaved draft state.
+    reportWindowCloseFailure(label, cause);
+    return false;
+  }
 }
 
 export async function detectV2RayNPath(): Promise<string | null> {

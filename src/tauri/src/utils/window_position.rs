@@ -1,9 +1,14 @@
-use tauri::{PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
+use tauri::{LogicalSize, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
 
 use crate::models::settings::WindowPosition;
 
 const MIN_VISIBLE_WIDTH: i64 = 80;
 const MIN_VISIBLE_HEIGHT: i64 = 48;
+const MAIN_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (360, 270);
+const DEBUG_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (460, 420);
+const DIAGNOSTICS_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (760, 520);
+const SETTINGS_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (430, 760);
+const HAPP_SETUP_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (500, 720);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScreenRect {
@@ -33,21 +38,28 @@ pub fn saved_position_has_visible_drag_area(
     }
 
     let saved = ScreenRect::from(saved);
+    let required_width = i64::from(saved.width.min(MIN_VISIBLE_WIDTH as u32));
+    let required_height = i64::from(saved.height.min(MIN_VISIBLE_HEIGHT as u32));
+    let drag_area = ScreenRect {
+        height: required_height as u32,
+        ..saved
+    };
+
     monitors.iter().any(|monitor| {
         let visible_width = intersection_length(
-            i64::from(saved.x),
-            i64::from(saved.width),
+            i64::from(drag_area.x),
+            i64::from(drag_area.width),
             i64::from(monitor.x),
             i64::from(monitor.width),
         );
         let visible_height = intersection_length(
-            i64::from(saved.y),
-            i64::from(saved.height),
+            i64::from(drag_area.y),
+            i64::from(drag_area.height),
             i64::from(monitor.y),
             i64::from(monitor.height),
         );
 
-        visible_width >= MIN_VISIBLE_WIDTH && visible_height >= MIN_VISIBLE_HEIGHT
+        visible_width >= required_width && visible_height >= required_height
     })
 }
 
@@ -79,35 +91,64 @@ pub fn fit_window_to_current_work_area<R: Runtime>(
             .ok_or_else(|| "No monitor is available for window fitting".to_owned())?,
     };
     let area = monitor.work_area();
+    let work_area = ScreenRect {
+        x: area.position.x,
+        y: area.position.y,
+        width: area.size.width.max(1),
+        height: area.size.height.max(1),
+    };
     let position = window
         .outer_position()
         .map_err(|error| format!("Could not read window position: {error}"))?;
-    let size = window
+    let outer_size = window
         .outer_size()
         .map_err(|error| format!("Could not read window size: {error}"))?;
     let inner_size = window
         .inner_size()
         .map_err(|error| format!("Could not read window client size: {error}"))?;
+    let scale_factor = window
+        .scale_factor()
+        .map_err(|error| format!("Could not read window scale factor: {error}"))?;
+    let frame_size = (
+        outer_size.width.saturating_sub(inner_size.width),
+        outer_size.height.saturating_sub(inner_size.height),
+    );
+    let maximum_inner_size = (
+        work_area.width.saturating_sub(frame_size.0).max(1),
+        work_area.height.saturating_sub(frame_size.1).max(1),
+    );
+    let minimum_inner_size =
+        constrained_min_inner_size(window.label(), scale_factor, maximum_inner_size);
+    let fixed_inner_size = preferred_fixed_inner_size(window.label(), scale_factor);
+
+    if let Some((minimum_width, minimum_height)) = minimum_inner_size {
+        window
+            .set_min_size(Some(PhysicalSize::new(minimum_width, minimum_height)))
+            .map_err(|error| format!("Could not fit window minimum size to work area: {error}"))?;
+    }
+
+    let target_size = fitted_outer_size(
+        (outer_size.width, outer_size.height),
+        frame_size,
+        minimum_inner_size,
+        fixed_inner_size,
+        (work_area.width, work_area.height),
+    );
     let fitted = fit_rect_to_work_area(
         ScreenRect {
             x: position.x,
             y: position.y,
-            width: size.width,
-            height: size.height,
+            width: target_size.0,
+            height: target_size.1,
         },
-        ScreenRect {
-            x: area.position.x,
-            y: area.position.y,
-            width: area.size.width,
-            height: area.size.height,
-        },
+        work_area,
     );
 
-    let size_changed = fitted.width != size.width || fitted.height != size.height;
+    let size_changed = fitted.width != outer_size.width || fitted.height != outer_size.height;
     let position_changed = fitted.x != position.x || fitted.y != position.y;
     if size_changed {
         let (target_inner_width, target_inner_height) = inner_size_for_outer_target(
-            (size.width, size.height),
+            (outer_size.width, outer_size.height),
             (inner_size.width, inner_size.height),
             (fitted.width, fitted.height),
         );
@@ -157,6 +198,77 @@ pub fn restore_or_center<R: Runtime>(
         fit_window_to_current_work_area(window)?;
         Ok(false)
     }
+}
+
+fn logical_inner_size_to_physical(logical: (u32, u32), scale_factor: f64) -> (u32, u32) {
+    let physical: PhysicalSize<u32> =
+        LogicalSize::new(f64::from(logical.0), f64::from(logical.1)).to_physical(scale_factor);
+    (physical.width.max(1), physical.height.max(1))
+}
+
+fn preferred_min_inner_size(label: &str, scale_factor: f64) -> Option<(u32, u32)> {
+    let logical = match label {
+        "main" => Some(MAIN_MIN_INNER_LOGICAL_SIZE),
+        "debug" => Some(DEBUG_MIN_INNER_LOGICAL_SIZE),
+        "diagnostics" => Some(DIAGNOSTICS_MIN_INNER_LOGICAL_SIZE),
+        _ => None,
+    }?;
+    Some(logical_inner_size_to_physical(logical, scale_factor))
+}
+
+fn preferred_fixed_inner_size(label: &str, scale_factor: f64) -> Option<(u32, u32)> {
+    let logical = match label {
+        "settings" => Some(SETTINGS_PREFERRED_INNER_LOGICAL_SIZE),
+        "happ-setup" => Some(HAPP_SETUP_PREFERRED_INNER_LOGICAL_SIZE),
+        _ => None,
+    }?;
+    Some(logical_inner_size_to_physical(logical, scale_factor))
+}
+
+fn constrained_min_inner_size(
+    label: &str,
+    scale_factor: f64,
+    maximum_inner_size: (u32, u32),
+) -> Option<(u32, u32)> {
+    preferred_min_inner_size(label, scale_factor).map(|preferred| {
+        (
+            preferred.0.min(maximum_inner_size.0.max(1)),
+            preferred.1.min(maximum_inner_size.1.max(1)),
+        )
+    })
+}
+
+fn fitted_outer_size(
+    current_outer: (u32, u32),
+    frame_size: (u32, u32),
+    minimum_inner: Option<(u32, u32)>,
+    fixed_inner: Option<(u32, u32)>,
+    available_outer: (u32, u32),
+) -> (u32, u32) {
+    let target_outer = if let Some(fixed) = fixed_inner {
+        (
+            fixed.0.saturating_add(frame_size.0),
+            fixed.1.saturating_add(frame_size.1),
+        )
+    } else {
+        let minimum_outer = minimum_inner
+            .map(|minimum| {
+                (
+                    minimum.0.saturating_add(frame_size.0),
+                    minimum.1.saturating_add(frame_size.1),
+                )
+            })
+            .unwrap_or((1, 1));
+        (
+            current_outer.0.max(minimum_outer.0),
+            current_outer.1.max(minimum_outer.1),
+        )
+    };
+
+    (
+        target_outer.0.min(available_outer.0.max(1)),
+        target_outer.1.min(available_outer.1.max(1)),
+    )
 }
 
 fn inner_size_for_outer_target(
@@ -251,6 +363,20 @@ mod tests {
     }
 
     #[test]
+    fn rejects_visible_body_when_the_top_drag_region_is_offscreen() {
+        let monitors = [ScreenRect {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1040,
+        }];
+        assert!(!saved_position_has_visible_drag_area(
+            &position(100, -452),
+            &monitors
+        ));
+    }
+
+    #[test]
     fn supports_monitors_with_negative_desktop_coordinates() {
         let monitors = [
             ScreenRect {
@@ -321,6 +447,109 @@ mod tests {
         assert_eq!(
             inner_size_for_outer_target((1100, 780), (1084, 741), (900, 700)),
             (884, 661),
+        );
+    }
+
+    #[test]
+    fn scales_preferred_minimums_from_logical_to_physical_pixels() {
+        assert_eq!(preferred_min_inner_size("debug", 1.5), Some((690, 630)),);
+        assert_eq!(
+            preferred_min_inner_size("diagnostics", 2.0),
+            Some((1520, 1040)),
+        );
+    }
+
+    #[test]
+    fn scales_fixed_window_preferences_from_logical_to_physical_pixels() {
+        assert_eq!(
+            preferred_fixed_inner_size("settings", 1.5),
+            Some((645, 1140)),
+        );
+        assert_eq!(
+            preferred_fixed_inner_size("happ-setup", 2.0),
+            Some((1000, 1440)),
+        );
+    }
+
+    #[test]
+    fn caps_native_minimum_to_the_available_inner_work_area() {
+        assert_eq!(
+            constrained_min_inner_size("debug", 1.5, (500, 400)),
+            Some((500, 400)),
+        );
+        assert_eq!(
+            constrained_min_inner_size("diagnostics", 1.0, (700, 480)),
+            Some((700, 480)),
+        );
+    }
+
+    #[test]
+    fn restores_preferred_minimum_and_clamps_the_expanded_outer_rect() {
+        let minimum = constrained_min_inner_size("debug", 1.0, (1920, 1040));
+        assert_eq!(minimum, Some(DEBUG_MIN_INNER_LOGICAL_SIZE));
+        let target_size = fitted_outer_size((320, 240), (0, 0), minimum, None, (1920, 1040));
+        assert_eq!(target_size, DEBUG_MIN_INNER_LOGICAL_SIZE);
+        assert_eq!(
+            fit_rect_to_work_area(
+                ScreenRect {
+                    x: 1700,
+                    y: 900,
+                    width: target_size.0,
+                    height: target_size.1,
+                },
+                ScreenRect {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1040,
+                },
+            ),
+            ScreenRect {
+                x: 1460,
+                y: 620,
+                width: 460,
+                height: 420,
+            }
+        );
+    }
+
+    #[test]
+    fn includes_decorated_frame_when_restoring_a_minimum() {
+        assert_eq!(
+            fitted_outer_size(
+                (700, 480),
+                (16, 39),
+                preferred_min_inner_size("diagnostics", 1.0),
+                None,
+                (1920, 1040),
+            ),
+            (776, 559),
+        );
+    }
+
+    #[test]
+    fn restores_fixed_window_size_after_a_constrained_work_area() {
+        let preferred = preferred_fixed_inner_size("settings", 1.0);
+        assert_eq!(preferred, Some(SETTINGS_PREFERRED_INNER_LOGICAL_SIZE));
+        assert_eq!(
+            fitted_outer_size((300, 200), (0, 0), None, preferred, (1920, 1040)),
+            SETTINGS_PREFERRED_INNER_LOGICAL_SIZE,
+        );
+        assert_eq!(
+            fitted_outer_size((430, 760), (0, 0), None, preferred, (400, 600)),
+            (400, 600),
+        );
+    }
+
+    #[test]
+    fn does_not_invent_a_minimum_for_unconstrained_fixed_windows() {
+        assert_eq!(
+            constrained_min_inner_size("settings", 1.0, (300, 200)),
+            None
+        );
+        assert_eq!(
+            constrained_min_inner_size("happ-setup", 1.0, (300, 200)),
+            None
         );
     }
 

@@ -146,23 +146,39 @@ pub async fn update_happ_settings(
     }
 
     let latest = state.snapshot();
-    let mut final_settings = latest.settings;
+    let mut final_settings = latest.settings.clone();
     final_settings.happ_path = settings.happ_path;
     final_settings.happ_allow_ui_automation = settings.happ_allow_ui_automation;
 
     settings_store::save_settings(&final_settings).map_err(|error| error.to_string())?;
-    state.replace_settings_and_status_invalidating_context(
-        final_settings.clone(),
-        if final_settings.selected_client == ProxyClientId::Happ {
-            DashboardStatus::default()
-        } else {
-            latest.status
-        },
-    );
+    commit_happ_settings_update(&state, &latest.settings, final_settings.clone());
 
     emit_client_settings_events(&app, &final_settings);
 
     Ok(final_settings)
+}
+
+fn commit_happ_settings_update(
+    state: &AppState,
+    previous_settings: &AppSettings,
+    final_settings: AppSettings,
+) {
+    let active_happ_context_changed = final_settings.selected_client == ProxyClientId::Happ
+        && (previous_settings.happ_path != final_settings.happ_path
+            || previous_settings.happ_allow_ui_automation
+                != final_settings.happ_allow_ui_automation);
+
+    if active_happ_context_changed {
+        state.replace_settings_and_status_invalidating_context(
+            final_settings,
+            DashboardStatus::default(),
+        );
+    } else {
+        // Updating an inactive adapter must not invalidate an unrelated active
+        // client operation or clear its status. An unchanged active Happ save is
+        // also non-operational and should preserve the current context.
+        state.update_settings(final_settings);
+    }
 }
 
 fn emit_client_settings_events(app: &AppHandle, settings: &AppSettings) {
@@ -306,4 +322,71 @@ pub async fn select_client_item(
 pub async fn open_selected_client(state: State<'_, AppState>) -> Result<(), String> {
     let client_id = state.snapshot().settings.selected_client;
     adapters::adapter(client_id).open(state).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::status::ConnectionState;
+
+    fn connected_status() -> DashboardStatus {
+        DashboardStatus {
+            status: ConnectionState::Connected,
+            connection_state: ConnectionState::Connected,
+            tun_enabled: true,
+            ..DashboardStatus::default()
+        }
+    }
+
+    #[test]
+    fn inactive_happ_settings_preserve_active_client_context_and_status() {
+        let state = AppState::new(AppSettings::default(), connected_status());
+        let before = state.snapshot();
+        let mut updated = before.settings.clone();
+        updated.happ_path = Some("C:\\Apps\\Happ\\Happ.exe".to_owned());
+
+        commit_happ_settings_update(&state, &before.settings, updated.clone());
+
+        let after = state.snapshot();
+        assert_eq!(after.client_epoch, before.client_epoch);
+        assert_eq!(after.settings.happ_path, updated.happ_path);
+        assert_eq!(after.status.connection_state, ConnectionState::Connected);
+        assert!(after.status.tun_enabled);
+    }
+
+    #[test]
+    fn unchanged_active_happ_settings_preserve_context_and_status() {
+        let settings = AppSettings {
+            selected_client: ProxyClientId::Happ,
+            happ_allow_ui_automation: true,
+            ..AppSettings::default()
+        };
+        let state = AppState::new(settings.clone(), connected_status());
+        let before = state.snapshot();
+
+        commit_happ_settings_update(&state, &before.settings, settings);
+
+        let after = state.snapshot();
+        assert_eq!(after.client_epoch, before.client_epoch);
+        assert_eq!(after.status.connection_state, ConnectionState::Connected);
+    }
+
+    #[test]
+    fn changed_active_happ_settings_reset_status_and_invalidate_context() {
+        let settings = AppSettings {
+            selected_client: ProxyClientId::Happ,
+            ..AppSettings::default()
+        };
+        let state = AppState::new(settings, connected_status());
+        let before = state.snapshot();
+        let mut updated = before.settings.clone();
+        updated.happ_allow_ui_automation = true;
+
+        commit_happ_settings_update(&state, &before.settings, updated);
+
+        let after = state.snapshot();
+        assert_ne!(after.client_epoch, before.client_epoch);
+        assert_eq!(after.status.connection_state, ConnectionState::Unknown);
+        assert!(!after.status.tun_enabled);
+    }
 }

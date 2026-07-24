@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and repository-controlled review complete; exact-head Release Quality is queued because the dedicated self-hosted runner has not accepted the job. Merge remains blocked.
+Implementation and repository-controlled review complete; exact-head Release Quality remains queued because the dedicated self-hosted runner has not accepted the job. Merge remains blocked.
 
 ## Context
 
@@ -45,6 +45,8 @@ Close every newly confirmed repository-controlled gap between the documented pro
 7. Native Debug close failures were logged only in Rust and did not reach the user-visible error surface used by custom close.
 8. Happ Setup initial-load effect depended on the translated `t` function and could reload backend settings over an unsaved draft after a language change.
 9. `docs/architecture.md` still described an obsolete quality workflow that installed dependencies normally and built an NSIS installer, contradicting the current validation-only self-hosted policy.
+10. Fixed-size Settings and Happ Setup windows were shrunk to fit a constrained/RDP work area but had no configured-size restoration path, so they could remain permanently undersized after returning to a larger monitor.
+11. A failed-close banner remained in the hidden webview state after a later successful close and could reappear as a stale error when the auxiliary window was opened again.
 
 ## Affected parts
 
@@ -63,6 +65,7 @@ Close every newly confirmed repository-controlled gap between the documented pro
 
 - [x] Auxiliary React surfaces never hide their native window directly.
 - [x] Failed safe close leaves the source window visible and shows an accessible localized alert.
+- [x] A new close attempt clears stale failure feedback for that window before reporting its own result.
 - [x] Native Debug close uses the same frontend safe-close/feedback path as its custom close button.
 - [x] Settings keeps its dirty flag and discard confirmation after a failed close.
 - [x] Happ Setup keeps its draft and discard confirmation after a failed close.
@@ -70,6 +73,7 @@ Close every newly confirmed repository-controlled gap between the documented pro
 - [x] Main, Debug and Diagnostics native minimum sizes are capped to the current available inner work area.
 - [x] Preferred logical minima are converted using the active window DPI scale factor.
 - [x] Preferred minima are restored on larger monitors before final size and position clamping.
+- [x] Fixed Settings/Happ windows restore their configured DPI-scaled size when the work area can contain it and remain bounded when it cannot.
 - [x] Every frontend Tauri invocation has an exact, non-duplicated registered Rust handler and vice versa.
 - [x] EN/RU catalogs remain in exact parity and contain nonblank values.
 - [x] v2rayN/Happ capability declarations remain truthful and unchanged where no new stable contract exists.
@@ -82,7 +86,7 @@ Close every newly confirmed repository-controlled gap between the documented pro
 
 ## Verification state
 
-Release Quality #343 (`30111918962`) was created for the prior exact head but remained queued without starting `Set up job` because the dedicated `[self-hosted, v2rayn-widget-ci]` runner did not accept it. This tracking update creates a new exact-head run; only that latest run may authorize merge.
+Release Quality #352 (`30115459438`) was created for the prior exact head but remained queued without starting because the dedicated `[self-hosted, v2rayn-widget-ci]` runner did not accept it. This tracking update creates a new exact-head run; only the latest run may authorize merge.
 
 No frontend or Rust success is claimed from a queued job. Static review and permanent regression additions do not replace the required Windows execution gate.
 
@@ -100,6 +104,8 @@ No frontend or Rust success is claimed from a queued job. Static review and perm
 
 - No user clarification was required. Conservative behavior is to keep an auxiliary window and any draft visible whenever Main restoration or close IPC cannot be proven successful.
 - Native minimum sizes remain preferred UX constraints, but are converted from logical to physical units, dynamically lowered only when the active work area cannot contain them and restored when sufficient space returns.
+- Fixed Settings/Happ sizes are also DPI-scaled preferences: they shrink only as required by the active work area and are restored on the next application-controlled show/fitting pass.
+- Close failure feedback belongs to one attempt and one window label; a subsequent attempt clears stale state before invoking Rust.
 - Experimental and unsupported adapter capabilities are not promoted merely to make the matrix look complete.
 
 ## Risks

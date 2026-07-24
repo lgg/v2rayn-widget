@@ -2,13 +2,13 @@
 
 ## Status
 
-Implementation and repository-controlled review complete; exact-head Release Quality remains queued because the dedicated self-hosted runner has not accepted the job. Merge remains blocked.
+Implementation and repository-controlled review complete; a permanent exact-head Release Quality run remains required before merge. Only a fully green run for the latest branch head may authorize merge.
 
 ## Context
 
 Task 0028 completed a product-surface audit and merged its fixes into `main` as commit `1333c415f216f83d15c45da43f23a23d22df2907`. This task performs a second independent audit from that exact baseline instead of treating the previous report as proof.
 
-The repeated review traced every declared screen, adapter capability, frontend Tauri invocation, native close path, draft lifecycle and window-fitting claim through the current implementation.
+The repeated review traced every declared screen, adapter capability, frontend Tauri invocation, native close path, draft lifecycle, client-context transition and window-fitting claim through the current implementation.
 
 ## Objective
 
@@ -22,6 +22,7 @@ Close every newly confirmed repository-controlled gap between the documented pro
 - unsaved Settings/Happ draft preservation;
 - frontend `invoke` to Rust handler registration parity;
 - multi-monitor, high-DPI, small-screen and RDP work-area geometry;
+- adapter operation serialization and context invalidation;
 - EN/RU close-failure feedback;
 - v2rayN/Happ capability matrix re-verification;
 - README, architecture and roadmap accuracy;
@@ -47,6 +48,8 @@ Close every newly confirmed repository-controlled gap between the documented pro
 9. `docs/architecture.md` still described an obsolete quality workflow that installed dependencies normally and built an NSIS installer, contradicting the current validation-only self-hosted policy.
 10. Fixed-size Settings and Happ Setup windows were shrunk to fit a constrained/RDP work area but had no configured-size restoration path, so they could remain permanently undersized after returning to a larger monitor.
 11. A failed-close banner remained in the hidden webview state after a later successful close and could reappear as a stale error when the auxiliary window was opened again.
+12. Saved-position validation described a visible drag area but accepted any sufficiently large body intersection. Final work-area fitting still bounded the window, but the restore-versus-center decision did not reflect the frameless window's actual top drag affordance.
+13. Saving Happ settings while v2rayN was selected invalidated the active client epoch and could make an unrelated in-flight v2rayN refresh/toggle report `CLIENT_CONTEXT_CHANGED`. Re-saving unchanged active Happ settings also reset status unnecessarily.
 
 ## Affected parts
 
@@ -57,6 +60,7 @@ Close every newly confirmed repository-controlled gap between the documented pro
 - `src/frontend/src/lib/api.ts`
 - close feedback component, event helper, locales and component tests;
 - `src/tauri/src/main.rs`
+- `src/tauri/src/client_commands.rs`
 - `src/tauri/src/utils/window_position.rs`
 - `src/tauri/tests/product_surface_contracts.rs`
 - `README.md`, `docs/architecture.md`, roadmap and this task/report.
@@ -74,6 +78,9 @@ Close every newly confirmed repository-controlled gap between the documented pro
 - [x] Preferred logical minima are converted using the active window DPI scale factor.
 - [x] Preferred minima are restored on larger monitors before final size and position clamping.
 - [x] Fixed Settings/Happ windows restore their configured DPI-scaled size when the work area can contain it and remain bounded when it cannot.
+- [x] Saved-position restoration requires the actual top drag strip to remain visible; otherwise the window is centered before final fitting.
+- [x] Inactive Happ settings updates preserve the active v2rayN epoch and status.
+- [x] Unchanged active Happ settings preserve context, while real active Happ control/path changes invalidate context and clear stale status.
 - [x] Every frontend Tauri invocation has an exact, non-duplicated registered Rust handler and vice versa.
 - [x] EN/RU catalogs remain in exact parity and contain nonblank values.
 - [x] v2rayN/Happ capability declarations remain truthful and unchanged where no new stable contract exists.
@@ -86,9 +93,9 @@ Close every newly confirmed repository-controlled gap between the documented pro
 
 ## Verification state
 
-Release Quality #352 (`30115459438`) was created for the prior exact head but remained queued without starting because the dedicated `[self-hosted, v2rayn-widget-ci]` runner did not accept it. This tracking update creates a new exact-head run; only the latest run may authorize merge.
+The permanent Windows workflow is serialized on the dedicated `[self-hosted, v2rayn-widget-ci]` runner. Every branch update creates a new exact-head run; earlier successful or running heads cannot authorize merge after the branch moves.
 
-No frontend or Rust success is claimed from a queued job. Static review and permanent regression additions do not replace the required Windows execution gate.
+No frontend or Rust success is claimed until the latest exact head completes the complete gate. Static review and permanent regression additions do not replace Windows execution evidence.
 
 ## Verification plan
 
@@ -105,7 +112,9 @@ No frontend or Rust success is claimed from a queued job. Static review and perm
 - No user clarification was required. Conservative behavior is to keep an auxiliary window and any draft visible whenever Main restoration or close IPC cannot be proven successful.
 - Native minimum sizes remain preferred UX constraints, but are converted from logical to physical units, dynamically lowered only when the active work area cannot contain them and restored when sufficient space returns.
 - Fixed Settings/Happ sizes are also DPI-scaled preferences: they shrink only as required by the active work area and are restored on the next application-controlled show/fitting pass.
+- Saved-position validity is based on the actual top drag strip. Final fitting remains the second recovery layer even when a saved position is accepted.
 - Close failure feedback belongs to one attempt and one window label; a subsequent attempt clears stale state before invoking Rust.
+- Adapter epoch invalidation is reserved for actual operational-context changes. Updating an inactive adapter or re-saving identical active settings must not disturb the current route/status.
 - Experimental and unsupported adapter capabilities are not promoted merely to make the matrix look complete.
 
 ## Risks

@@ -1,5 +1,6 @@
 param(
-    [switch]$Bootstrap
+    [switch]$Bootstrap,
+    [switch]$UseGlobalHomes
 )
 
 function Invoke-CheckedCommand {
@@ -15,13 +16,22 @@ function Invoke-CheckedCommand {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$env:CARGO_HOME = Join-Path $repoRoot ".cargo-home"
-$env:RUSTUP_HOME = Join-Path $repoRoot ".rustup-home"
+$globalCargoHome = Join-Path $env:USERPROFILE ".cargo"
+$globalRustupHome = Join-Path $env:USERPROFILE ".rustup"
+
+if ($UseGlobalHomes) {
+    $env:CARGO_HOME = $globalCargoHome
+    $env:RUSTUP_HOME = $globalRustupHome
+}
+else {
+    $env:CARGO_HOME = Join-Path $repoRoot ".cargo-home"
+    $env:RUSTUP_HOME = Join-Path $repoRoot ".rustup-home"
+}
 
 New-Item -ItemType Directory -Force -Path $env:CARGO_HOME, $env:RUSTUP_HOME | Out-Null
 
 $toolchainBin = Join-Path $env:RUSTUP_HOME "toolchains\stable-x86_64-pc-windows-msvc\bin"
-$globalRustup = Join-Path $env:USERPROFILE ".cargo\bin\rustup.exe"
+$globalRustup = Join-Path $globalCargoHome "bin\rustup.exe"
 if (-not (Test-Path $globalRustup)) {
     throw "rustup.exe not found at $globalRustup"
 }
@@ -32,11 +42,13 @@ if ($Bootstrap -or -not (Test-Path (Join-Path $toolchainBin "cargo.exe"))) {
 
 $localCargoBin = Join-Path $env:CARGO_HOME "bin"
 New-Item -ItemType Directory -Force -Path $localCargoBin | Out-Null
-Copy-Item -Path $globalRustup -Destination (Join-Path $localCargoBin "rustup.exe") -Force
+if (-not $UseGlobalHomes) {
+    Copy-Item -Path $globalRustup -Destination (Join-Path $localCargoBin "rustup.exe") -Force
 
-$globalRustupInit = Join-Path $env:USERPROFILE ".cargo\bin\rustup-init.exe"
-if (Test-Path $globalRustupInit) {
-    Copy-Item -Path $globalRustupInit -Destination (Join-Path $localCargoBin "rustup-init.exe") -Force
+    $globalRustupInit = Join-Path $globalCargoHome "bin\rustup-init.exe"
+    if (Test-Path $globalRustupInit) {
+        Copy-Item -Path $globalRustupInit -Destination (Join-Path $localCargoBin "rustup-init.exe") -Force
+    }
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -75,6 +87,7 @@ foreach ($line in $envDump) {
 $env:PATH = "$localCargoBin;$toolchainBin;$env:PATH"
 $env:RUSTC = Join-Path $toolchainBin "rustc.exe"
 
-Write-Output "Rust isolated environment is ready."
+Write-Output "Rust environment is ready."
 Write-Output "CARGO_HOME=$env:CARGO_HOME"
 Write-Output "RUSTUP_HOME=$env:RUSTUP_HOME"
+Write-Output "RUST_HOME_MODE=$(if ($UseGlobalHomes) { 'global' } else { 'isolated' })"

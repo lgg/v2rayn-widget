@@ -1,0 +1,30 @@
+{
+  "node": {
+    "minimumVersion": "22.12.0"
+  },
+  "tauriCli": {
+    "version": "2.11.2"
+  },
+  "rust": {
+    "host": "x86_64-pc-windows-msvc"
+  },
+  "nsis": {
+    "version": "3.11",
+    "tauriUtilsPluginSha1": "75197FEE3C6A814FE035788D1C34EAD39349B860",
+    "requiredFiles": [
+      "makensis.exe",
+      "Bin/makensis.exe",
+      "Stubs/lzma-x86-unicode",
+      "Stubs/lzma_solid-x86-unicode",
+      "Plugins/x86-unicode/additional/nsis_tauri_utils.dll",
+      "Include/MUI2.nsh",
+      "Include/FileFunc.nsh",
+      "Include/x64.nsh",
+      "Include/nsDialogs.nsh",
+      "Include/WinMessages.nsh",
+      "Include/Win/COM.nsh",
+      "Include/Win/Propkey.nsh",
+      "Include/Win/RestartManager.nsh"
+    ]
+  }
+}

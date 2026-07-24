@@ -50,10 +50,17 @@ jobs:
       - name: Verify workflow contracts
         shell: pwsh
         run: |
-          node scripts/test-workflow-contracts.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node scripts/test-installer-toolchain-contracts.mjs
-          exit $LASTEXITCODE
+          $workflowLog = Join-Path $env:GITHUB_WORKSPACE "workflow-contract-output.txt"
+          $installerLog = Join-Path $env:GITHUB_WORKSPACE "installer-contract-output.txt"
+
+          node scripts/test-workflow-contracts.mjs 2>&1 | Tee-Object -FilePath $workflowLog
+          $workflowExitCode = $LASTEXITCODE
+          node scripts/test-installer-toolchain-contracts.mjs 2>&1 | Tee-Object -FilePath $installerLog
+          $installerExitCode = $LASTEXITCODE
+
+          if ($workflowExitCode -ne 0 -or $installerExitCode -ne 0) {
+            exit 1
+          }
 
       - name: Restore frontend dependencies locally
         id: frontend_install
@@ -120,6 +127,8 @@ jobs:
         with:
           name: frontend-diagnostics
           path: |
+            workflow-contract-output.txt
+            installer-contract-output.txt
             src/frontend/frontend-install-output.txt
             src/frontend/frontend-audit-output.txt
             src/frontend/frontend-test-output.txt
@@ -137,6 +146,8 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          Remove-Item "workflow-contract-output.txt" -Force -ErrorAction SilentlyContinue
+          Remove-Item "installer-contract-output.txt" -Force -ErrorAction SilentlyContinue
           Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item (Join-Path $env:RUNNER_TEMP "npm-cache") -Recurse -Force -ErrorAction SilentlyContinue

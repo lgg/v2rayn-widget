@@ -11,6 +11,40 @@ fn string_set(values: &Value) -> BTreeSet<String> {
         .collect()
 }
 
+fn frontend_invoke_commands(source: &str) -> BTreeSet<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let invoke = line.find("invoke")?;
+            let after_invoke = &line[invoke..];
+            let quote_start = after_invoke.find('"')? + 1;
+            let after_start = &after_invoke[quote_start..];
+            let quote_end = after_start.find('"')?;
+            Some(after_start[..quote_end].to_owned())
+        })
+        .collect()
+}
+
+fn registered_tauri_commands(source: &str) -> BTreeSet<String> {
+    let handlers = source
+        .split_once("tauri::generate_handler![")
+        .expect("Tauri handler registration")
+        .1
+        .split_once("])")
+        .expect("end of Tauri handler registration")
+        .0;
+
+    handlers
+        .lines()
+        .filter_map(|line| {
+            let candidate = line.trim().trim_end_matches(',');
+            candidate
+                .rsplit_once("::")
+                .map(|(_, command)| command.to_owned())
+        })
+        .collect()
+}
+
 #[test]
 fn tauri_config_registers_every_local_react_surface() {
     let config: Value = serde_json::from_str(include_str!("../tauri.conf.json"))
@@ -46,4 +80,38 @@ fn remote_diagnostics_webview_has_no_default_ipc_capability() {
     );
     assert!(!windows.contains("diagnostics"));
     assert!(capability.get("remote").is_none());
+}
+
+#[test]
+fn every_frontend_invoke_has_exactly_one_registered_tauri_command() {
+    let frontend = frontend_invoke_commands(include_str!("../../frontend/src/lib/api.ts"));
+    let registered = registered_tauri_commands(include_str!("../src/main.rs"));
+
+    assert_eq!(frontend, registered);
+}
+
+#[test]
+fn auxiliary_react_surfaces_never_hide_their_native_window_directly() {
+    for (name, source) in [
+        (
+            "Settings",
+            include_str!("../../frontend/src/app/SettingsWindow.tsx"),
+        ),
+        ("Debug", include_str!("../../frontend/src/app/DebugWindow.tsx")),
+        (
+            "Happ Setup",
+            include_str!("../../frontend/src/app/HappSetupWindow.tsx"),
+        ),
+    ] {
+        assert!(
+            !source.contains(".hide()"),
+            "{name} must route close through the safe Rust command"
+        );
+    }
+}
+
+#[test]
+fn native_debug_close_is_forwarded_to_the_frontend_safe_close_path() {
+    let main = include_str!("../src/main.rs");
+    assert!(main.contains("window.emit(\"debug-close-requested\", ())"));
 }

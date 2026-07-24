@@ -15,7 +15,9 @@ fn frontend_invoke_commands(source: &str) -> BTreeSet<String> {
     source
         .lines()
         .filter_map(|line| {
-            let invoke = line.find("invoke")?;
+            let invoke = line
+                .find("invoke(")
+                .or_else(|| line.find("invoke<"))?;
             let after_invoke = &line[invoke..];
             let quote_start = after_invoke.find('"')? + 1;
             let after_start = &after_invoke[quote_start..];

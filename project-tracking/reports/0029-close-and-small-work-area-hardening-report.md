@@ -21,7 +21,7 @@ The review cross-checked:
 - custom and native window-close handlers;
 - unsaved-draft state transitions;
 - every frontend Tauri `invoke` declaration against `tauri::generate_handler!` including duplicate detection;
-- configured and runtime native minimum sizes;
+- configured and runtime native minimum and fixed window sizes;
 - logical/physical units and active DPI scale factor;
 - multi-monitor work areas, negative coordinates, small/RDP screens and decorated frames;
 - EN/RU catalog parity;
@@ -119,12 +119,35 @@ Correction:
 - document `npm ci --ignore-scripts`, immutable prerequisites, complete Rust formatting, both strict Clippy modes, locked check and portable release smoke build;
 - keep installer generation isolated to the trusted release-assets workflow.
 
+### 10. Fixed windows stayed undersized after constrained sessions
+
+Settings and Happ Setup are configured as fixed-size windows. Work-area fitting correctly shrank them on a short RDP or tiny monitor, but there was no preferred-size restoration path when sufficient space later returned. Reopening could therefore preserve the constrained dimensions indefinitely.
+
+Correction:
+
+- represent the configured Settings `430×760` and Happ Setup `500×720` inner sizes as explicit logical preferences;
+- convert them to physical pixels using the active window scale factor;
+- on every application-controlled show/fitting pass, target the configured size when the work area can contain it and otherwise bound it to the available area;
+- contract-test the constants against `tauri.conf.json` so configured and runtime sizes cannot drift silently.
+
+### 11. Successful retry could leave stale close-failure feedback
+
+A failed close stored the accessible error banner in that window's React state. A later successful close did not clear it, so the hidden webview could show an obsolete failure when reopened.
+
+Correction:
+
+- dispatch a label-scoped clear event before each new close attempt;
+- remove only the matching window's previous failure state;
+- let the current attempt report a new failure if Rust rejects again;
+- add a component regression covering failed attempt followed by successful retry.
+
 ## Permanent regression coverage
 
 Frontend:
 
 - failed close returns `false` and shows a localized accessible banner;
 - successful close returns `true` without feedback;
+- a successful retry clears stale failure feedback from the previous attempt;
 - native Debug close is forwarded to the shared frontend close API;
 - failed Settings discard retains dirty state and confirmation;
 - failed Happ discard retains draft and confirmation;
@@ -137,7 +160,8 @@ Rust/source contracts:
 - large work area restores preferred minima and clamps expanded geometry;
 - preferred logical minima are converted at 150% and 200% DPI;
 - decorated frame is included in restored outer size;
-- unconstrained fixed Settings/Happ windows do not receive invented minima;
+- fixed Settings/Happ preferences are DPI-scaled, restored when space returns and bounded when constrained;
+- configured fixed sizes and resizability cannot drift from runtime geometry constants;
 - every frontend invoke matches exactly one non-duplicated registered Tauri command and vice versa;
 - auxiliary React source files contain no `.hide()`;
 - native Debug close forwarding remains registered;
@@ -166,17 +190,17 @@ Unsupported and research-required operations still fail explicitly and are not r
 
 ## Files and modules changed
 
-- frontend close API, feedback event and banner;
+- frontend close API, label-scoped feedback events and banner;
 - Settings, Debug and Happ Setup surfaces;
 - frontend entry point, EN/RU catalogs and component tests;
 - Tauri native close forwarding;
-- work-area/minimum-size/DPI geometry helper and Rust tests;
-- product surface/IPC/source drift contracts;
+- work-area/minimum/fixed-size/DPI geometry helper and Rust tests;
+- product surface/IPC/source and configuration drift contracts;
 - README, architecture, roadmap and task/report 0029.
 
 ## Verification status
 
-Release Quality #343 (`30111918962`) remained queued without starting any job step because the dedicated `[self-hosted, v2rayn-widget-ci]` runner did not accept it. This report update creates a new exact-head run; only the latest head/run may authorize merge.
+Release Quality #352 (`30115459438`) remained queued without starting because the dedicated `[self-hosted, v2rayn-widget-ci]` runner did not accept it. This report update creates a new exact-head run; only the latest head/run may authorize merge.
 
 Still pending on the final exact PR head:
 
@@ -201,7 +225,7 @@ No successful test/build claim is made from a queued job. Static review and dete
 - real v2rayN/Happ UI Automation against every released client version and language;
 - every interactive desktop, RDP and privilege/UIPI configuration.
 
-The implementation remains fail-closed for ambiguous UI Automation and now fail-visible for auxiliary close errors.
+The implementation remains fail-closed for ambiguous UI Automation and fail-visible for auxiliary close errors.
 
 ## Residual risks
 

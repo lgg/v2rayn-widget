@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete; final exact-head verification pending.
+Implementation and installer packaging audit complete; final exact-head quality verification pending.
 
 ## Scope
 
@@ -28,13 +28,26 @@ Correction:
 - fingerprint the complete cache before and after packaging;
 - removed PATH and recursive compiler discovery.
 
+### Persistent NSIS cache was exposed directly to bundling
+
+Correction:
+
+- validate the persistent source cache read-only;
+- copy it into a runner-temporary `LOCALAPPDATA` tree;
+- require source and isolated fingerprints to match before build;
+- require the isolated fingerprint to remain unchanged after build;
+- remove the isolated cache in always-running cleanup.
+
 ### Installer behavior depended on defaults
 
 Correction:
 
 - explicitly set NSIS to `currentUser` mode;
 - explicitly set WebView2 installation to `skip`;
-- the installer no longer requests machine-wide installation or launches a WebView2 dependency setup.
+- inspect the generated script for `RequestExecutionLevel user`;
+- verify the rendered WebView2 mode, bootstrapper path, offline-installer path and minimum-version definitions are all empty.
+
+The universal Tauri NSIS template still contains compile-time WebView2 branches. Filename presence alone is not treated as an active payload; the rendered definitions determine whether those branches compile.
 
 ### Persistent checkout retained credentials
 
@@ -59,36 +72,59 @@ Correction:
 - validate `cl.exe`, `link.exe` and `rc.exe`;
 - validate the exact Rust target host;
 - put concrete toolchain binaries ahead of rustup proxies;
-- avoid creating missing global Rust homes in CI.
+- avoid creating missing global Rust homes in CI;
+- validate Clippy behavior through `cargo clippy --version` rather than assuming a specific proxy filename.
 
 ### Temporary runner caches remained
 
 Correction:
 
 - frontend and release npm caches are removed during always-running cleanup;
-- release fingerprint files are removed as well.
+- release fingerprint files and temporary Tauri/NSIS trees are removed as well.
 
 ### Release output selection was ambiguous
 
 Correction:
 
-- require exactly one NSIS installer;
+- require exactly one generated `installer.nsi`;
+- require exactly one NSIS setup executable;
 - require exactly four staged distribution files;
 - retain publisher-side allowlist and checksum verification.
 
-### Contract coverage was incomplete
+### Contract coverage and diagnostics were incomplete
 
 Correction:
 
 - contracts now validate workflows, prerequisite and Rust scripts, local installer build, installer JSON, centralized policy and npm lockfile;
-- system installers, elevation, download helpers, setup actions, implicit NSIS packaging in PR quality and global npm mutation remain forbidden.
+- system installers, elevation, download helpers, setup actions, implicit NSIS packaging in PR quality and global npm mutation remain forbidden;
+- contract stdout/stderr is uploaded even when a contract fails;
+- the one-off packaging audit preserved full Tauri output, generated installer script and release tree for review.
 
 ## Verification
 
-Pending final exact-head Release Quality run on `v2rayn-widget-ci`.
+Audit Release Packaging run #10 (`30069117962`) completed successfully on the dedicated `v2rayn-widget-ci` runner at SHA `7e1efaf97a343300e702f4d0bb8ee2516a7afb0a`.
+
+The run successfully:
+
+- validated pre-provisioned Node.js, Rust/MSVC and the exact source NSIS cache;
+- restored locked frontend dependencies with lifecycle scripts disabled;
+- passed npm audit, frontend tests and frontend build;
+- validated the locked Tauri CLI;
+- copied the NSIS toolset to isolated runner-temporary storage;
+- confirmed source/copy fingerprints matched;
+- completed a full locked Tauri NSIS build with Cargo network access disabled;
+- confirmed the isolated cache fingerprint did not change;
+- verified current-user execution and disabled rendered WebView2 installation definitions;
+- produced exactly one installer and uploaded the audited installer plus generated script;
+- uploaded diagnostics and cleaned all generated workspace/cache files.
+
+The generated setup executable was never launched.
+
+A final exact-head `Release Quality` run is still required after removal of the one-off audit workflow and final documentation changes.
 
 ## Residual boundaries
 
 - The runner toolchain and exact Tauri NSIS cache must be provisioned manually before jobs run.
 - WebView2 must already exist on the target Windows system because the installer deliberately skips dependency installation.
 - Windows binaries remain unsigned until a code-signing certificate or signing service is configured.
+- The repository cannot identify which executable displayed the historical UAC dialog; it can only remove and enforce against repository-controlled provisioning and elevation paths.

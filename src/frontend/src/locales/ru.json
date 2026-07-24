@@ -17,6 +17,7 @@
   "connectionButton.off": "ВЫКЛ",
   "connectionButton.error": "ОШИБКА",
   "connectionButton.connecting": "ПОДКЛ.",
+  "connectionButton.unknown": "НЕИЗВ.",
   "actions.refresh": "обновить",
   "actions.open": "открыть v2rayN",
   "actions.openClient": "открыть приложение",

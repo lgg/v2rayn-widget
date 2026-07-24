@@ -34,7 +34,7 @@ use crate::{
         settings_normalization::{
             normalize_diagnostics_url, normalize_optional_path, normalize_settings,
         },
-        settings_store,
+        settings_store, window_position,
     },
 };
 
@@ -602,7 +602,7 @@ pub async fn open_diagnostics_window(
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(&app, "diagnostics", WebviewUrl::External(url))
+    let window = WebviewWindowBuilder::new(&app, "diagnostics", WebviewUrl::External(url))
         .title("Diagnostics")
         .inner_size(1100.0, 780.0)
         .min_inner_size(760.0, 520.0)
@@ -612,6 +612,7 @@ pub async fn open_diagnostics_window(
         .visible(true)
         .build()
         .map_err(|error| error.to_string())?;
+    window_position::fit_window_to_current_work_area(&window)?;
 
     Ok(())
 }
@@ -821,15 +822,19 @@ pub async fn close_window(label: String, app: AppHandle) -> Result<(), String> {
         .get_webview_window(&label)
         .ok_or_else(|| format!("Window not found: {label}"))?;
 
-    window.hide().map_err(|error| error.to_string())?;
-
     if label != "main" {
-        if let Some(main) = app.get_webview_window("main") {
-            main.show().map_err(|error| error.to_string())?;
-            main.unminimize().map_err(|error| error.to_string())?;
-            main.set_focus().map_err(|error| error.to_string())?;
-        }
+        let main = app
+            .get_webview_window("main")
+            .ok_or_else(|| "Window not found: main".to_owned())?;
+        main.show().map_err(|error| error.to_string())?;
+        main.unminimize().map_err(|error| error.to_string())?;
+        window_position::fit_window_to_current_work_area(&main)?;
+        main.set_focus().map_err(|error| error.to_string())?;
     }
+
+    // Hide only after the primary window is safely visible. A failed restore must
+    // leave the auxiliary surface available instead of making the app disappear.
+    window.hide().map_err(|error| error.to_string())?;
 
     info!(%label, "window hidden by command");
     Ok(())
@@ -844,7 +849,9 @@ pub async fn set_main_window_height(height: u32, app: AppHandle) -> Result<(), S
 
     window
         .set_size(LogicalSize::new(360.0, clamped as f64))
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    window_position::fit_window_to_current_work_area(&window)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1318,13 +1325,14 @@ fn emit_settings_updated(app: &AppHandle, settings: &AppSettings) {
     }
 }
 
-fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
+pub(crate) fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
     let window = app
         .get_webview_window(label)
         .ok_or_else(|| format!("Window not found: {label}"))?;
 
     window.show().map_err(|error| error.to_string())?;
     window.unminimize().map_err(|error| error.to_string())?;
+    window_position::fit_window_to_current_work_area(&window)?;
     window.set_focus().map_err(|error| error.to_string())?;
 
     Ok(())

@@ -55,6 +55,7 @@ export function HappSetupWindow(): JSX.Element {
   const translate = (key: string): string => t(key);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [path, setPath] = useState("");
   const [allowUiAutomation, setAllowUiAutomation] = useState(false);
   const [diagnostics, setDiagnostics] = useState<ClientDiagnostics | null>(null);
@@ -67,6 +68,8 @@ export function HappSetupWindow(): JSX.Element {
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(null);
     void getSettings()
       .then((loaded) => {
         if (!active) {
@@ -90,7 +93,7 @@ export function HappSetupWindow(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [t]);
+  }, [t, loadAttempt]);
 
   const dirty = settings !== null
     && (candidateKey(path) !== candidateKey(settings.happ_path)
@@ -241,7 +244,18 @@ export function HappSetupWindow(): JSX.Element {
       <main data-tauri-drag-region className="drag-region h-full p-4">
         <section className="glass flex h-full flex-col items-center justify-center gap-4 rounded-3xl border p-5 text-center">
           <p role="alert" className="text-sm text-rose-300">{error ?? t("happSetup.loadFailed")}</p>
-          <button type="button" className="no-drag rounded-lg border px-3 py-2" onClick={() => void requestClose()}>{t("common.close")}</button>
+          <div className="no-drag flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-accent px-3 py-2 font-medium text-white"
+              onClick={() => setLoadAttempt((value) => value + 1)}
+            >
+              {t("actions.retry")}
+            </button>
+            <button type="button" className="rounded-lg border px-3 py-2" onClick={() => void requestClose()}>
+              {t("common.close")}
+            </button>
+          </div>
         </section>
       </main>
     );

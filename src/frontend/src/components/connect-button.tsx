@@ -16,7 +16,11 @@ function resolveButtonText(status: StatusLevel): string {
     return "error";
   }
 
-  return "off";
+  if (status === "Disconnected") {
+    return "off";
+  }
+
+  return "unknown";
 }
 
 export function ConnectButton({

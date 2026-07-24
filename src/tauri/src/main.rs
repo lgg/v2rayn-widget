@@ -101,6 +101,9 @@ fn show_unminimize_focus<R: Runtime>(window: &WebviewWindow<R>, context: &str) {
     if let Err(error) = window.unminimize() {
         warn!(?error, %label, %context, "failed to unminimize window");
     }
+    if let Err(error) = window_position::fit_window_to_current_work_area(window) {
+        warn!(?error, %label, %context, "failed to fit window to current monitor work area");
+    }
     if let Err(error) = window.set_focus() {
         warn!(?error, %label, %context, "failed to focus window");
     }
@@ -118,6 +121,9 @@ fn restore_visible_aux_windows(app: &tauri::AppHandle, context: &str) {
                     }
                     if let Err(error) = window.unminimize() {
                         warn!(?error, %label, %context, "failed to unminimize auxiliary window");
+                    }
+                    if let Err(error) = window_position::fit_window_to_current_work_area(&window) {
+                        warn!(?error, %label, %context, "failed to fit auxiliary window to current monitor work area");
                     }
                     if let Err(error) = window.set_always_on_top(true) {
                         warn!(?error, %label, %context, "failed to raise auxiliary window");

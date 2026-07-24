@@ -43,6 +43,16 @@ jobs:
             echo '0028 audited fixes are already applied.' | tee patch-driver.log
             exit 0
           fi
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('README.md')
+          text = path.read_text(encoding='utf-8')
+          current = 'All four local windows expose explicit loading/error behavior. Settings and Happ Setup route native close requests through unsaved-draft confirmation, and asynchronous Tauri listeners are disposed safely even when registration finishes after a React surface unmounts.\n'
+          expected = 'All four local windows expose explicit loading/error behavior. Settings and Happ Setup protect unsaved draft-only changes on both custom and native close requests. Async Tauri listeners are disposed even if registration finishes after React unmounts. Endpoint lists and loaded settings are normalized and bounded before use.\n'
+          if text.count(current) != 1:
+              raise SystemExit('README audit paragraph changed unexpectedly')
+          path.write_text(text.replace(current, expected, 1), encoding='utf-8', newline='\n')
+          PY
           python scripts/apply-0028-product-audit-fixes.py 2>&1 | tee patch-driver.log
 
       - name: Upload patch diagnostics

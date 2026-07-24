@@ -1,12 +1,12 @@
-use tauri::{PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
+use tauri::{LogicalSize, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
 
 use crate::models::settings::WindowPosition;
 
 const MIN_VISIBLE_WIDTH: i64 = 80;
 const MIN_VISIBLE_HEIGHT: i64 = 48;
-const MAIN_MIN_INNER_SIZE: (u32, u32) = (360, 270);
-const DEBUG_MIN_INNER_SIZE: (u32, u32) = (460, 420);
-const DIAGNOSTICS_MIN_INNER_SIZE: (u32, u32) = (760, 520);
+const MAIN_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (360, 270);
+const DEBUG_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (460, 420);
+const DIAGNOSTICS_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (760, 520);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScreenRect {
@@ -97,6 +97,9 @@ pub fn fit_window_to_current_work_area<R: Runtime>(
     let inner_size = window
         .inner_size()
         .map_err(|error| format!("Could not read window client size: {error}"))?;
+    let scale_factor = window
+        .scale_factor()
+        .map_err(|error| format!("Could not read window scale factor: {error}"))?;
     let frame_size = (
         outer_size.width.saturating_sub(inner_size.width),
         outer_size.height.saturating_sub(inner_size.height),
@@ -105,7 +108,8 @@ pub fn fit_window_to_current_work_area<R: Runtime>(
         work_area.width.saturating_sub(frame_size.0).max(1),
         work_area.height.saturating_sub(frame_size.1).max(1),
     );
-    let minimum_inner_size = constrained_min_inner_size(window.label(), maximum_inner_size);
+    let minimum_inner_size =
+        constrained_min_inner_size(window.label(), scale_factor, maximum_inner_size);
 
     if let Some((minimum_width, minimum_height)) = minimum_inner_size {
         window
@@ -185,20 +189,27 @@ pub fn restore_or_center<R: Runtime>(
     }
 }
 
-fn preferred_min_inner_size(label: &str) -> Option<(u32, u32)> {
-    match label {
-        "main" => Some(MAIN_MIN_INNER_SIZE),
-        "debug" => Some(DEBUG_MIN_INNER_SIZE),
-        "diagnostics" => Some(DIAGNOSTICS_MIN_INNER_SIZE),
+fn preferred_min_inner_size(label: &str, scale_factor: f64) -> Option<(u32, u32)> {
+    let logical = match label {
+        "main" => Some(MAIN_MIN_INNER_LOGICAL_SIZE),
+        "debug" => Some(DEBUG_MIN_INNER_LOGICAL_SIZE),
+        "diagnostics" => Some(DIAGNOSTICS_MIN_INNER_LOGICAL_SIZE),
         _ => None,
-    }
+    }?;
+    let physical: PhysicalSize<u32> = LogicalSize::new(
+        f64::from(logical.0),
+        f64::from(logical.1),
+    )
+    .to_physical(scale_factor);
+    Some((physical.width.max(1), physical.height.max(1)))
 }
 
 fn constrained_min_inner_size(
     label: &str,
+    scale_factor: f64,
     maximum_inner_size: (u32, u32),
 ) -> Option<(u32, u32)> {
-    preferred_min_inner_size(label).map(|preferred| {
+    preferred_min_inner_size(label, scale_factor).map(|preferred| {
         (
             preferred.0.min(maximum_inner_size.0.max(1)),
             preferred.1.min(maximum_inner_size.1.max(1)),
@@ -399,23 +410,35 @@ mod tests {
     }
 
     #[test]
-    fn caps_native_minimum_to_the_available_inner_work_area() {
+    fn scales_preferred_minimums_from_logical_to_physical_pixels() {
         assert_eq!(
-            constrained_min_inner_size("debug", (320, 240)),
-            Some((320, 240)),
+            preferred_min_inner_size("debug", 1.5),
+            Some((690, 630)),
         );
         assert_eq!(
-            constrained_min_inner_size("diagnostics", (700, 480)),
+            preferred_min_inner_size("diagnostics", 2.0),
+            Some((1520, 1040)),
+        );
+    }
+
+    #[test]
+    fn caps_native_minimum_to_the_available_inner_work_area() {
+        assert_eq!(
+            constrained_min_inner_size("debug", 1.5, (500, 400)),
+            Some((500, 400)),
+        );
+        assert_eq!(
+            constrained_min_inner_size("diagnostics", 1.0, (700, 480)),
             Some((700, 480)),
         );
     }
 
     #[test]
     fn restores_preferred_minimum_and_clamps_the_expanded_outer_rect() {
-        let minimum = constrained_min_inner_size("debug", (1920, 1040));
-        assert_eq!(minimum, Some(DEBUG_MIN_INNER_SIZE));
+        let minimum = constrained_min_inner_size("debug", 1.0, (1920, 1040));
+        assert_eq!(minimum, Some(DEBUG_MIN_INNER_LOGICAL_SIZE));
         let target_size = fitted_outer_size((320, 240), (0, 0), minimum, (1920, 1040));
-        assert_eq!(target_size, DEBUG_MIN_INNER_SIZE);
+        assert_eq!(target_size, DEBUG_MIN_INNER_LOGICAL_SIZE);
         assert_eq!(
             fit_rect_to_work_area(
                 ScreenRect {
@@ -446,7 +469,7 @@ mod tests {
             fitted_outer_size(
                 (700, 480),
                 (16, 39),
-                Some(DIAGNOSTICS_MIN_INNER_SIZE),
+                preferred_min_inner_size("diagnostics", 1.0),
                 (1920, 1040),
             ),
             (776, 559),
@@ -455,9 +478,12 @@ mod tests {
 
     #[test]
     fn does_not_invent_a_minimum_for_unconstrained_fixed_windows() {
-        assert_eq!(constrained_min_inner_size("settings", (300, 200)), None);
         assert_eq!(
-            constrained_min_inner_size("happ-setup", (300, 200)),
+            constrained_min_inner_size("settings", 1.0, (300, 200)),
+            None
+        );
+        assert_eq!(
+            constrained_min_inner_size("happ-setup", 1.0, (300, 200)),
             None
         );
     }

@@ -32,8 +32,8 @@ jobs:
       release_tag: ${{ steps.metadata.outputs.release_tag }}
       version: ${{ steps.metadata.outputs.version }}
     env:
-      BUILD_REF: ${{ github.event.release.tag_name || inputs.release_tag || inputs.ref }}
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+      BUILD_REF: ${{ github.event.release.tag_name && format('refs/tags/{0}', github.event.release.tag_name) || inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || inputs.ref }}
 
     steps:
       - name: Checkout exact release ref
@@ -81,10 +81,24 @@ jobs:
             if ($env:RELEASE_TAG -notmatch '^v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$') {
               throw "Release tag '$env:RELEASE_TAG' must be a semantic version such as v1.2.3"
             }
+
             $tagVersion = $Matches[1]
             if ($tagVersion -ne $cargoVersion) {
               throw "Release tag version $tagVersion does not match application version $cargoVersion"
             }
+
+            $headCommit = (& git rev-parse HEAD).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $headCommit) {
+              throw "Could not resolve the checked-out commit"
+            }
+            $tagCommit = (& git rev-list -n 1 "refs/tags/$env:RELEASE_TAG").Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $tagCommit) {
+              throw "Could not resolve release tag refs/tags/$env:RELEASE_TAG"
+            }
+            if ($headCommit -ne $tagCommit) {
+              throw "Checked-out commit $headCommit does not match release tag commit $tagCommit"
+            }
+
             $assetLabel = $env:RELEASE_TAG
           }
           else {
@@ -281,24 +295,63 @@ jobs:
           readonly installer_exe="v2rayn-widget-${VERSION}-windows-x64-setup.exe"
           readonly checksum_file="SHA256SUMS.txt"
           readonly expected_assets=("$portable_exe" "$portable_zip" "$installer_exe" "$checksum_file")
+          readonly expected_hashed_assets=("$portable_exe" "$portable_zip" "$installer_exe")
+
+          mapfile -t expected_entries < <(printf '%s\n' "${expected_assets[@]}" | LC_ALL=C sort)
+          mapfile -t actual_entries < <(find "$distribution_dir" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+          if ! diff -u <(printf '%s\n' "${expected_entries[@]}") <(printf '%s\n' "${actual_entries[@]}"); then
+            echo "Release distribution does not match the exact recursive allowlist" >&2
+            exit 1
+          fi
 
           for asset in "${expected_assets[@]}"; do
-            if [[ ! -f "$distribution_dir/$asset" ]]; then
-              echo "Missing expected release asset: $asset" >&2
+            if [[ ! -f "$distribution_dir/$asset" || -L "$distribution_dir/$asset" ]]; then
+              echo "Expected a regular non-symlink release asset: $asset" >&2
               exit 1
             fi
           done
 
-          actual_count="$(find "$distribution_dir" -maxdepth 1 -type f | wc -l | tr -d ' ')"
-          if [[ "$actual_count" != "${#expected_assets[@]}" ]]; then
-            echo "Unexpected files found in release distribution" >&2
-            find "$distribution_dir" -maxdepth 1 -type f -print >&2
+          mapfile -t manifest_lines < "$distribution_dir/$checksum_file"
+          if [[ "${#manifest_lines[@]}" -ne "${#expected_hashed_assets[@]}" ]]; then
+            echo "Checksum manifest must contain exactly ${#expected_hashed_assets[@]} entries" >&2
             exit 1
           fi
 
-          (cd "$distribution_dir" && sha256sum --check "$checksum_file")
+          declare -A manifest_seen=()
+          for line in "${manifest_lines[@]}"; do
+            if [[ ! "$line" =~ ^([0-9a-f]{64})\ \*(.+)$ ]]; then
+              echo "Malformed checksum manifest line: $line" >&2
+              exit 1
+            fi
+
+            asset="${BASH_REMATCH[2]}"
+            case "$asset" in
+              "$portable_exe"|"$portable_zip"|"$installer_exe") ;;
+              *)
+                echo "Unexpected checksum target: $asset" >&2
+                exit 1
+                ;;
+            esac
+
+            if [[ -n "${manifest_seen[$asset]:-}" ]]; then
+              echo "Duplicate checksum target: $asset" >&2
+              exit 1
+            fi
+            manifest_seen[$asset]=1
+          done
+
+          for asset in "${expected_hashed_assets[@]}"; do
+            if [[ -z "${manifest_seen[$asset]:-}" ]]; then
+              echo "Missing checksum target: $asset" >&2
+              exit 1
+            fi
+          done
+
+          (cd "$distribution_dir" && sha256sum --check --strict "$checksum_file")
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
 
+          upload_paths=()
           for asset in "${expected_assets[@]}"; do
-            gh release upload "$RELEASE_TAG" "$distribution_dir/$asset" --repo "$GITHUB_REPOSITORY" --clobber
+            upload_paths+=("$distribution_dir/$asset")
           done
+          gh release upload "$RELEASE_TAG" "${upload_paths[@]}" --repo "$GITHUB_REPOSITORY" --clobber

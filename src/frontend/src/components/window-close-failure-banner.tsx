@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  WINDOW_CLOSE_CLEARED_EVENT,
   WINDOW_CLOSE_FAILED_EVENT,
+  type WindowCloseClearedDetail,
   type WindowCloseFailedDetail,
 } from "@/lib/window-close-feedback";
 
@@ -13,9 +15,19 @@ export function WindowCloseFailureBanner(): JSX.Element | null {
     const handleFailure = (event: Event): void => {
       setFailure((event as CustomEvent<WindowCloseFailedDetail>).detail);
     };
+    const handleClear = (event: Event): void => {
+      const detail = (event as CustomEvent<WindowCloseClearedDetail>).detail;
+      setFailure((current) =>
+        current?.label === detail.label ? null : current,
+      );
+    };
 
     window.addEventListener(WINDOW_CLOSE_FAILED_EVENT, handleFailure);
-    return () => window.removeEventListener(WINDOW_CLOSE_FAILED_EVENT, handleFailure);
+    window.addEventListener(WINDOW_CLOSE_CLEARED_EVENT, handleClear);
+    return () => {
+      window.removeEventListener(WINDOW_CLOSE_FAILED_EVENT, handleFailure);
+      window.removeEventListener(WINDOW_CLOSE_CLEARED_EVENT, handleClear);
+    };
   }, []);
 
   if (!failure) {

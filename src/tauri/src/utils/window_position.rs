@@ -4,6 +4,9 @@ use crate::models::settings::WindowPosition;
 
 const MIN_VISIBLE_WIDTH: i64 = 80;
 const MIN_VISIBLE_HEIGHT: i64 = 48;
+const MAIN_MIN_INNER_SIZE: (u32, u32) = (360, 270);
+const DEBUG_MIN_INNER_SIZE: (u32, u32) = (460, 420);
+const DIAGNOSTICS_MIN_INNER_SIZE: (u32, u32) = (760, 520);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScreenRect {
@@ -103,6 +106,19 @@ pub fn fit_window_to_current_work_area<R: Runtime>(
         },
     );
 
+    let maximum_inner_size = inner_size_for_outer_target(
+        (size.width, size.height),
+        (inner_size.width, inner_size.height),
+        (area.size.width.max(1), area.size.height.max(1)),
+    );
+    if let Some((minimum_width, minimum_height)) =
+        constrained_min_inner_size(window.label(), maximum_inner_size)
+    {
+        window
+            .set_min_size(Some(PhysicalSize::new(minimum_width, minimum_height)))
+            .map_err(|error| format!("Could not fit window minimum size to work area: {error}"))?;
+    }
+
     let size_changed = fitted.width != size.width || fitted.height != size.height;
     let position_changed = fitted.x != position.x || fitted.y != position.y;
     if size_changed {
@@ -157,6 +173,27 @@ pub fn restore_or_center<R: Runtime>(
         fit_window_to_current_work_area(window)?;
         Ok(false)
     }
+}
+
+fn preferred_min_inner_size(label: &str) -> Option<(u32, u32)> {
+    match label {
+        "main" => Some(MAIN_MIN_INNER_SIZE),
+        "debug" => Some(DEBUG_MIN_INNER_SIZE),
+        "diagnostics" => Some(DIAGNOSTICS_MIN_INNER_SIZE),
+        _ => None,
+    }
+}
+
+fn constrained_min_inner_size(
+    label: &str,
+    maximum_inner_size: (u32, u32),
+) -> Option<(u32, u32)> {
+    preferred_min_inner_size(label).map(|preferred| {
+        (
+            preferred.0.min(maximum_inner_size.0.max(1)),
+            preferred.1.min(maximum_inner_size.1.max(1)),
+        )
+    })
 }
 
 fn inner_size_for_outer_target(
@@ -321,6 +358,43 @@ mod tests {
         assert_eq!(
             inner_size_for_outer_target((1100, 780), (1084, 741), (900, 700)),
             (884, 661),
+        );
+    }
+
+    #[test]
+    fn caps_native_minimum_to_the_available_inner_work_area() {
+        assert_eq!(
+            constrained_min_inner_size("debug", (320, 240)),
+            Some((320, 240)),
+        );
+        assert_eq!(
+            constrained_min_inner_size("diagnostics", (700, 480)),
+            Some((700, 480)),
+        );
+    }
+
+    #[test]
+    fn restores_preferred_native_minimum_when_the_work_area_allows_it() {
+        assert_eq!(
+            constrained_min_inner_size("main", (1920, 1040)),
+            Some(MAIN_MIN_INNER_SIZE),
+        );
+        assert_eq!(
+            constrained_min_inner_size("debug", (1920, 1040)),
+            Some(DEBUG_MIN_INNER_SIZE),
+        );
+        assert_eq!(
+            constrained_min_inner_size("diagnostics", (1920, 1040)),
+            Some(DIAGNOSTICS_MIN_INNER_SIZE),
+        );
+    }
+
+    #[test]
+    fn does_not_invent_a_minimum_for_unconstrained_fixed_windows() {
+        assert_eq!(constrained_min_inner_size("settings", (300, 200)), None);
+        assert_eq!(
+            constrained_min_inner_size("happ-setup", (300, 200)),
+            None
         );
     }
 

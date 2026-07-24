@@ -123,6 +123,8 @@ Status refresh:
 6. state is updated;
 7. frontend renders controls based on descriptor capabilities and explicit opt-in settings.
 
+Every command string exported by `src/frontend/src/lib/api.ts` is contract-tested against the exact set registered in `tauri::generate_handler!`. A missing handler, stale compatibility registration or frontend typo fails the Rust integration suite.
+
 ## v2rayN adapter
 
 The v2rayN adapter delegates to the proven existing services while exposing them through the generic contract.
@@ -221,6 +223,8 @@ Key responsibilities:
 - dispose asynchronous Tauri event registrations safely;
 - serialize live UI-setting writes and reject stale client operations;
 - expose explicit bootstrap/load/probe failure states and draft-aware native close handling;
+- keep Settings/Happ drafts intact when close fails or the application language changes;
+- display an accessible localized global alert when an auxiliary close cannot complete safely;
 - apply visual settings and polling;
 - show transient errors and diagnostic information.
 
@@ -231,9 +235,26 @@ Key files:
 - `src/frontend/src/app/DebugWindow.tsx`
 - `src/frontend/src/app/HappSetupWindow.tsx`
 - `src/frontend/src/components/client-selector.tsx`
+- `src/frontend/src/components/window-close-failure-banner.tsx`
 - `src/frontend/src/features/dashboard-store.ts`
 - `src/frontend/src/lib/api.ts`
 - `src/frontend/src/lib/types.ts`
+
+## Window lifecycle and geometry
+
+Main is the recovery surface for Settings, Debug and Happ Setup. Auxiliary React surfaces never call native `.hide()` directly.
+
+Safe close sequence:
+
+1. frontend invokes `close_window`;
+2. Rust shows and unminimizes Main;
+3. Main is fitted to the active monitor work area and focused;
+4. only then is the auxiliary source hidden;
+5. if any restoration step fails, the source remains visible and frontend receives a `false` result plus a localized alert.
+
+Native Settings, Happ Setup and Debug title-bar close events are forwarded into their React surfaces so custom and native close paths share the same draft and failure behavior.
+
+Work-area fitting uses monitor work areas rather than full monitor bounds, supports negative desktop coordinates and accounts for decorated frame size. Main, Debug and Diagnostics preferred native minimum inner sizes are capped when a small/RDP work area cannot contain them. When the window later moves to a larger monitor, the preferred minimum is restored before final outer-size and position clamping so the restored minimum cannot push the window off-screen.
 
 ## Subscription boundary
 
@@ -248,22 +269,34 @@ A separate future model must define list, active subscription, refresh, switch, 
 
 ## Build and verification
 
-`.github/workflows/windows-quality.yml`:
+The permanent `Release Quality` workflow runs frontend and Rust jobs on the dedicated validation-only Windows runner selected by `[self-hosted, v2rayn-widget-ci]`.
 
-- installs frontend dependencies reproducibly with `npm ci`;
-- rejects high-severity dependency advisories with `npm audit --audit-level=high`;
-- runs frontend tests and the TypeScript/Vite production build;
-- transfers the exact frontend `dist` artifact to the Rust job;
-- verifies formatting for the complete Rust workspace;
-- runs Rust unit/regression tests;
-- runs strict Clippy with warnings denied;
-- runs `cargo check --locked`;
-- performs `cargo build --release --locked`;
-- verifies and uploads the produced portable executable as a one-day smoke artifact;
-- performs a clean locked Tauri/NSIS build;
-- verifies and uploads the produced Windows installer as a one-day smoke artifact;
-- preserves short-lived audit, test, build and release diagnostics.
+It does not install, update or repair system toolchains and does not build or execute an NSIS installer. Required Node.js, npm, Rust/MSVC, rustfmt, Clippy, Visual Studio C++ tools, locked Tauri CLI and exact Tauri NSIS cache must already exist. Missing or mismatched prerequisites fail closed with manual-provisioning guidance.
+
+Frontend job:
+
+- verifies workflow/runner/no-provisioning/action-pinning/credential/cleanup contracts;
+- restores dependencies into the checkout with `npm ci --ignore-scripts` and process-scoped cache/registry settings;
+- rejects high-severity advisories with `npm audit --audit-level=high`;
+- runs the complete frontend test suite and TypeScript/Vite production build;
+- uploads the exact frontend distribution and diagnostics;
+- removes generated dependencies, build output and process-scoped cache.
+
+Rust job:
+
+- consumes the exact frontend distribution artifact;
+- validates pre-provisioned Rust/MSVC prerequisites;
+- checks formatting for the complete Rust workspace;
+- runs all Rust unit and integration tests;
+- runs strict all-targets Clippy with warnings denied;
+- runs strict release/no-default-features Clippy;
+- executes `cargo check --locked`;
+- performs a locked portable release smoke build;
+- uploads the portable executable and Rust diagnostics;
+- removes generated Rust/release workspaces.
+
+The separate trusted `Build Release Assets` workflow is responsible for installer packaging. It validates and fingerprints the exact pre-provisioned NSIS cache, creates current-user assets without executing generated installers, and passes only checksum-verified allowlisted files to the isolated hosted publishing job.
 
 Network diagnostics disable redirects and ambient proxy settings, resolve each configured HTTP(S) endpoint, reject the endpoint if any answer is non-public, and pin hostname requests to the exact validated `SocketAddr` set with `reqwest::ClientBuilder::resolve_to_addrs`. This removes the second unvalidated DNS lookup that could otherwise permit DNS rebinding. Literal or resolved loopback, private, link-local, CGNAT, benchmark, documentation, multicast, reserved, NAT64, Teredo and 6to4 addresses are rejected.
 
-The Rust suite includes v2rayN resolver/config/log tests, strict-primary versus backup observation tests, schema-preserving and guarded config-update tests, serialized v2rayN/Happ operation tests, selected-process launch/window tests, settings normalization and debounced-position tests, exact fail-closed UI action/profile classifiers, network-target safety tests and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.
+The Rust suite includes v2rayN resolver/config/log tests, strict-primary versus backup observation tests, schema-preserving and guarded config-update tests, serialized v2rayN/Happ operation tests, selected-process launch/window tests, settings normalization and debounced-position tests, exact fail-closed UI action/profile classifiers, network-target safety tests, product-surface/IPC contracts, window geometry contracts and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.

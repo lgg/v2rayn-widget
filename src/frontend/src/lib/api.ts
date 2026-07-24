@@ -13,6 +13,7 @@ import type {
   UiDebugReport,
   UiSettingsPatch
 } from "@/lib/types";
+import { reportWindowCloseFailure } from "@/lib/window-close-feedback";
 
 export async function getClientCatalog(): Promise<ClientDescriptor[]> {
   return invoke<ClientDescriptor[]>("get_client_catalog");
@@ -175,7 +176,15 @@ export async function relaunchWidgetAsAdmin(): Promise<void> {
 }
 
 export async function closeWindow(label: string): Promise<void> {
-  return invoke("close_window", { label });
+  try {
+    await invoke("close_window", { label });
+  } catch (cause) {
+    // Never reject into a component-level direct-hide fallback. The Rust command
+    // intentionally leaves the auxiliary surface visible when Main restoration
+    // fails; preserving that invariant is safer than making the application
+    // disappear. A global accessible banner reports the failure instead.
+    reportWindowCloseFailure(label, cause);
+  }
 }
 
 export async function detectV2RayNPath(): Promise<string | null> {

@@ -209,6 +209,18 @@ describe("SettingsWindow", () => {
     expect(screen.queryByText("Loading...")).toBeNull();
   });
 
+  it("retries the complete initial settings load after an error", async () => {
+    apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
+    render(<SettingsWindow />);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not load settings");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).not.toBeNull();
+    expect(apiMocks.getSettings).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getAvailableLocales).toHaveBeenCalledTimes(2);
+  });
+
   it("shows a save error and keeps the window open when persistence fails", async () => {
     apiMocks.updateSettings.mockRejectedValueOnce(new Error("disk full"));
     render(<SettingsWindow />);

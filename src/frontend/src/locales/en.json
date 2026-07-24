@@ -17,6 +17,7 @@
   "connectionButton.off": "OFF",
   "connectionButton.error": "ERROR",
   "connectionButton.connecting": "CONNECTING",
+  "connectionButton.unknown": "UNKNOWN",
   "actions.refresh": "refresh",
   "actions.open": "open v2rayN",
   "actions.openClient": "open app",

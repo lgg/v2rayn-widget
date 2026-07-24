@@ -158,4 +158,15 @@ describe("HappSetupWindow", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("disk failure");
     expect(screen.queryByText("Loading...")).toBeNull();
   });
+
+  it("retries the initial settings load after an error", async () => {
+    apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
+    render(<HappSetupWindow />);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("disk failure");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "Happ adapter setup" })).toBeTruthy();
+    expect(apiMocks.getSettings).toHaveBeenCalledTimes(2);
+  });
 });

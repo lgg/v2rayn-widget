@@ -1,5 +1,9 @@
 # 0018 - Full Project and Screen Audit Report
 
+## Status
+
+Historical audit completed; its remaining final-verification bookkeeping was superseded by the verified follow-up audits 0026-0028.
+
 ## Audited baseline
 
 The audit started from the exact `main` commit produced by PR #5:

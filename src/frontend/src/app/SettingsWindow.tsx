@@ -113,6 +113,7 @@ export function mergeUiFields(prev: AppSettings, next: AppSettings): AppSettings
 export function SettingsWindow(): JSX.Element {
   const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -139,6 +140,8 @@ export function SettingsWindow(): JSX.Element {
     let active = true;
 
     const load = async (): Promise<void> => {
+      setLoading(true);
+      setLoadError(null);
       try {
         const [nextSettings, nextLocales, version] = await Promise.all([
           getSettings(),
@@ -171,7 +174,7 @@ export function SettingsWindow(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [i18n]);
+  }, [i18n, loadAttempt]);
 
   useEffect(
     () =>
@@ -322,9 +325,18 @@ export function SettingsWindow(): JSX.Element {
       <main data-tauri-drag-region className="drag-region h-full p-4">
         <section className="glass flex h-full flex-col items-center justify-center gap-4 rounded-3xl border border-white/40 p-6 text-center dark:border-slate-700/80">
           <p role="alert" className="text-sm text-rose-300">{loadError ?? t("errors.settingsLoadFailed")}</p>
-          <button type="button" className="no-drag rounded-lg border px-3 py-2" onClick={() => void closeSettingsWindow()}>
-            {t("common.close")}
-          </button>
+          <div className="no-drag flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-accent px-3 py-2 font-medium text-white"
+              onClick={() => setLoadAttempt((value) => value + 1)}
+            >
+              {t("actions.retry")}
+            </button>
+            <button type="button" className="rounded-lg border px-3 py-2" onClick={() => void closeSettingsWindow()}>
+              {t("common.close")}
+            </button>
+          </div>
         </section>
       </main>
     );

@@ -1,10 +1,14 @@
 # 0018 - Full Project and Screen Audit
 
+## Status
+
+Superseded and completed by the verified follow-up audits 0026-0028.
+
 ## Metadata
 
 | Field | Value |
 | --- | --- |
-| Status | Final Verification |
+| Status | Superseded and completed by verified follow-up audits 0026-0028 |
 | Priority | P1 |
 | Type | full-project audit / hardening |
 | Created | 2026-07-22 |

@@ -1,8 +1,9 @@
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tracing::warn;
 
 use crate::{
     adapters::{self, happ, ProxyClientAdapter, RefreshKind},
+    commands,
     models::{
         client::{ClientDescriptor, ClientDiagnostics, ProxyClientId},
         path_validation::PathValidation,
@@ -68,13 +69,7 @@ pub async fn probe_happ_candidate(
 
 #[tauri::command]
 pub async fn open_happ_setup_window(app: AppHandle) -> Result<(), String> {
-    let window = app
-        .get_webview_window("happ-setup")
-        .ok_or_else(|| "Happ setup window is not registered".to_owned())?;
-    window.show().map_err(|error| error.to_string())?;
-    window.unminimize().map_err(|error| error.to_string())?;
-    window.set_focus().map_err(|error| error.to_string())?;
-    Ok(())
+    commands::show_window(&app, "happ-setup")
 }
 
 #[tauri::command]

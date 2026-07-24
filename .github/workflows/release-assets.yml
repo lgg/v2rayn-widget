@@ -163,7 +163,7 @@ jobs:
             throw "The isolated Tauri NSIS cache changed during packaging. Release jobs must not download, repair or mutate bundler tools."
           }
 
-          $installerScripts = @(Get-ChildItem "target/release/nsis" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
+          $installerScripts = @(Get-ChildItem "target/release" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
           if ($installerScripts.Count -ne 1) {
             throw "Expected exactly one generated installer.nsi, found $($installerScripts.Count)."
           }
@@ -171,8 +171,17 @@ jobs:
           if ($installerScriptText -notmatch '(?mi)^\s*RequestExecutionLevel\s+user\s*$') {
             throw "Generated NSIS script is not explicitly current-user only."
           }
-          if ($installerScriptText -match '(?i)MicrosoftEdgeWebview2Setup\.exe|WebView2Bootstrapper\.exe') {
-            throw "Generated NSIS script contains a WebView2 installer payload."
+
+          $disabledWebViewDefinitions = @(
+            '!define INSTALLWEBVIEW2MODE ""',
+            '!define WEBVIEW2BOOTSTRAPPERPATH ""',
+            '!define WEBVIEW2INSTALLERPATH ""',
+            '!define MINIMUMWEBVIEW2VERSION ""'
+          )
+          foreach ($definition in $disabledWebViewDefinitions) {
+            if ($installerScriptText -notmatch "(?m)^\s*$([regex]::Escape($definition))\s*$") {
+              throw "Generated NSIS script does not keep WebView2 installation disabled: $definition"
+            }
           }
 
           $installers = @(Get-ChildItem "target/release/bundle/nsis/*.exe" -File -ErrorAction SilentlyContinue)

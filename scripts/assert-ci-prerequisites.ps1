@@ -57,18 +57,18 @@ function Get-NsisCacheFingerprint {
         [string]$Root
     )
 
-    $manifestLines = Get-ChildItem -LiteralPath $Root -File -Recurse |
-        Sort-Object FullName |
-        ForEach-Object {
-            $relativePath = [System.IO.Path]::GetRelativePath($Root, $_.FullName).Replace("\", "/")
-            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$relativePath|$hash"
-        }
+    $manifestLines = [System.Collections.Generic.List[string]]::new()
+    Get-ChildItem -LiteralPath $Root -File -Recurse | ForEach-Object {
+        $relativePath = [System.IO.Path]::GetRelativePath($Root, $_.FullName).Replace("\", "/")
+        $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $manifestLines.Add("$relativePath|$hash")
+    }
 
-    if (-not $manifestLines) {
+    if ($manifestLines.Count -eq 0) {
         throw "The Tauri NSIS cache is empty. Provision it manually before running validation."
     }
 
+    $manifestLines.Sort([System.StringComparer]::Ordinal)
     $manifest = $manifestLines -join "`n"
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($manifest)
     return [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()

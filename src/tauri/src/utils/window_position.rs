@@ -201,11 +201,8 @@ pub fn restore_or_center<R: Runtime>(
 }
 
 fn logical_inner_size_to_physical(logical: (u32, u32), scale_factor: f64) -> (u32, u32) {
-    let physical: PhysicalSize<u32> = LogicalSize::new(
-        f64::from(logical.0),
-        f64::from(logical.1),
-    )
-    .to_physical(scale_factor);
+    let physical: PhysicalSize<u32> =
+        LogicalSize::new(f64::from(logical.0), f64::from(logical.1)).to_physical(scale_factor);
     (physical.width.max(1), physical.height.max(1))
 }
 
@@ -455,10 +452,7 @@ mod tests {
 
     #[test]
     fn scales_preferred_minimums_from_logical_to_physical_pixels() {
-        assert_eq!(
-            preferred_min_inner_size("debug", 1.5),
-            Some((690, 630)),
-        );
+        assert_eq!(preferred_min_inner_size("debug", 1.5), Some((690, 630)),);
         assert_eq!(
             preferred_min_inner_size("diagnostics", 2.0),
             Some((1520, 1040)),
@@ -493,13 +487,7 @@ mod tests {
     fn restores_preferred_minimum_and_clamps_the_expanded_outer_rect() {
         let minimum = constrained_min_inner_size("debug", 1.0, (1920, 1040));
         assert_eq!(minimum, Some(DEBUG_MIN_INNER_LOGICAL_SIZE));
-        let target_size = fitted_outer_size(
-            (320, 240),
-            (0, 0),
-            minimum,
-            None,
-            (1920, 1040),
-        );
+        let target_size = fitted_outer_size((320, 240), (0, 0), minimum, None, (1920, 1040));
         assert_eq!(target_size, DEBUG_MIN_INNER_LOGICAL_SIZE);
         assert_eq!(
             fit_rect_to_work_area(

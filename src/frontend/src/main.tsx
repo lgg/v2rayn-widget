@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "@/styles/globals.css";
@@ -6,7 +7,14 @@ import { App } from "@/app/App";
 import { DebugWindow } from "@/app/DebugWindow";
 import { HappSetupWindow } from "@/app/HappSetupWindow";
 import { SettingsWindow } from "@/app/SettingsWindow";
+import { installDiagnosticEndpointRefreshWatcher } from "@/features/diagnostic-endpoint-refresh";
 import { resolveWindowSurface } from "@/lib/window-surface";
+
+function MainSurface(): JSX.Element {
+  useEffect(() => installDiagnosticEndpointRefreshWatcher(), []);
+
+  return <App />;
+}
 
 function Root(): JSX.Element {
   const surface = resolveWindowSurface(getCurrentWindow().label);
@@ -23,7 +31,7 @@ function Root(): JSX.Element {
     return <HappSetupWindow />;
   }
 
-  return <App />;
+  return <MainSurface />;
 }
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(<Root />);

@@ -1,0 +1,55 @@
+name: Audit 0028 Main Scroll Fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audit-0028-main-scroll-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply-main-scroll-fix:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'audit/0028-product-surface-completeness'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: audit/0028-product-surface-completeness
+          fetch-depth: 0
+          show-progress: false
+
+      - name: Apply exact main scroll fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/frontend/src/app/App.tsx')
+          text = path.read_text(encoding='utf-8')
+          old = '<main data-tauri-drag-region className="drag-region h-full overflow-hidden p-0">'
+          new = '<main data-tauri-drag-region className="drag-region h-full overflow-y-auto p-0">'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one populated main overflow match, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8', newline='\n')
+          PY
+
+      - name: Commit exact fix to PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'lgg'
+          git config user.email 'lgg@users.noreply.github.com'
+          git add src/frontend/src/app/App.tsx
+          git commit -m '0028: keep constrained main dashboard scrollable'
+          git push origin HEAD:audit/0028-product-surface-completeness

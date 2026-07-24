@@ -131,6 +131,9 @@ Planning and decisions:
 - `project-tracking/tasks/0024-self-hosted-runner-and-full-audit.md`
 - `project-tracking/decisions/0024-self-hosted-ci-runner.md`
 - `project-tracking/reports/0024-self-hosted-runner-and-full-audit-report.md`
+- `project-tracking/tasks/0025-disable-ci-system-installation.md`
+- `project-tracking/decisions/0025-validation-only-self-hosted-ci.md`
+- `project-tracking/reports/0025-disable-ci-system-installation-report.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 
@@ -174,11 +177,15 @@ npm run build
 ./scripts/test-rust.ps1
 ```
 
-The permanent `Release Quality` workflow runs both jobs on the dedicated Windows self-hosted runner selected by `[self-hosted, v2rayn-widget-ci]`. It validates every non-draft same-repository PR revision on `opened`, `reopened`, `ready_for_review` and `synchronize`; PR-number concurrency cancels obsolete runs. The workflow logs and asserts the self-hosted environment, uses process-scoped npm configuration, uploads diagnostics/artifacts, and cleans generated dependency/build directories from the persistent workspace.
+The permanent `Release Quality` workflow runs both jobs on the dedicated Windows self-hosted runner selected by `[self-hosted, v2rayn-widget-ci]`. It validates every non-draft same-repository PR revision on `opened`, `reopened`, `ready_for_review` and `synchronize`; PR-number concurrency cancels obsolete runs.
+
+CI is validation-only. Node.js, npm, the stable x64 MSVC Rust toolchain, rustfmt, Clippy and Visual Studio C++ Build Tools must already exist on the runner. Workflow jobs never install or update system toolchains, request elevation, invoke package-manager installers or run generated setup executables. Missing prerequisites fail immediately with a manual-provisioning message.
+
+Frontend dependencies are restored only into the checkout with `npm ci --ignore-scripts`, process-scoped registry/cache settings and cleanup after artifact upload. The PR quality gate does not package NSIS installers.
 
 The Release Quality workflow additionally:
 
-- verifies workflow runner, trigger, permission, cleanup and release-distribution contracts;
+- verifies workflow runner, trigger, no-provisioning, permission and cleanup contracts;
 - rejects high-severity frontend dependency advisories;
 - transfers the exact built frontend into the Tauri job;
 - checks formatting for the complete Rust workspace;
@@ -186,10 +193,9 @@ The Release Quality workflow additionally:
 - runs strict `cargo clippy --locked --all-targets -- -D warnings`;
 - runs strict release/no-default-features Clippy;
 - executes `cargo check --locked`;
-- performs a locked release build and verifies that the portable Windows executable is produced;
-- performs a clean locked Tauri/NSIS build and verifies that the Windows installer is produced.
+- performs a locked release build and verifies that the portable Windows executable is produced.
 
-Windows release builds also use `v2rayn-widget-ci`. The only write-enabled release-publishing job remains on an isolated hosted Linux runner, does not check out project code, and uploads only checksum-verified allowlisted assets. See `docs/release-process.md`.
+The trusted `Build Release Assets` workflow also uses `v2rayn-widget-ci`, but only with pre-provisioned Node/Rust/MSVC/NSIS tools. The generated installer is packaged and uploaded; it is never executed by CI. The only write-enabled release-publishing job remains on an isolated hosted Linux runner, does not check out project code, and uploads only checksum-verified allowlisted assets. See `docs/release-process.md`.
 
 ## Build portable executable
 

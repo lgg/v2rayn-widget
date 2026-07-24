@@ -154,9 +154,10 @@ fn preferred_window_minimums_match_native_declarations() {
     }
 
     let geometry = include_str!("../src/utils/window_position.rs");
-    assert!(geometry.contains("MAIN_MIN_INNER_SIZE: (u32, u32) = (360, 270)"));
-    assert!(geometry.contains("DEBUG_MIN_INNER_SIZE: (u32, u32) = (460, 420)"));
-    assert!(geometry.contains("DIAGNOSTICS_MIN_INNER_SIZE: (u32, u32) = (760, 520)"));
+    assert!(geometry.contains("MAIN_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (360, 270)"));
+    assert!(geometry.contains("DEBUG_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (460, 420)"));
+    assert!(geometry.contains("DIAGNOSTICS_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (760, 520)"));
+    assert!(geometry.contains(".to_physical(scale_factor)"));
 
     let commands = include_str!("../src/commands/mod.rs");
     assert!(commands.contains(".min_inner_size(760.0, 520.0)"));

@@ -21,9 +21,9 @@ if (-not $env:TEMP -or -not $env:LOCALAPPDATA) {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$sourceFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-source-$PID.sha256"
-$beforeFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-before-$PID.sha256"
-$afterFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-after-$PID.sha256"
+$sourceFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-source.sha256.$PID"
+$beforeFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-before.sha256.$PID"
+$afterFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-after.sha256.$PID"
 $originalLocalAppData = $env:LOCALAPPDATA
 $sourceNsis = Join-Path $originalLocalAppData "tauri\NSIS"
 $isolatedLocalAppData = Join-Path $env:TEMP "v2rayn-widget-tauri-localappdata-$PID"
@@ -69,7 +69,7 @@ try {
         throw "The isolated Tauri NSIS cache changed during packaging. Provision bundler tools manually; the build script will not download or repair them."
     }
 
-    $installerScripts = @(Get-ChildItem "target\release\nsis" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
+    $installerScripts = @(Get-ChildItem "target\release" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
     if ($installerScripts.Count -ne 1) {
         throw "Expected exactly one generated installer.nsi, found $($installerScripts.Count)."
     }

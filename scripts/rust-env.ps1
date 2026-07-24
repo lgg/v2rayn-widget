@@ -18,6 +18,11 @@ function Invoke-CheckedCommand {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $globalCargoHome = Join-Path $env:USERPROFILE ".cargo"
 $globalRustupHome = Join-Path $env:USERPROFILE ".rustup"
+$isGitHubActions = $env:GITHUB_ACTIONS -eq "true"
+
+if ($Bootstrap -and $isGitHubActions) {
+    throw "Automatic Rust installation is forbidden in GitHub Actions. Pre-provision the v2rayn-widget-ci runner instead."
+}
 
 if ($UseGlobalHomes) {
     $env:CARGO_HOME = $globalCargoHome
@@ -31,13 +36,20 @@ else {
 New-Item -ItemType Directory -Force -Path $env:CARGO_HOME, $env:RUSTUP_HOME | Out-Null
 
 $toolchainBin = Join-Path $env:RUSTUP_HOME "toolchains\stable-x86_64-pc-windows-msvc\bin"
+$toolchainCargo = Join-Path $toolchainBin "cargo.exe"
 $globalRustup = Join-Path $globalCargoHome "bin\rustup.exe"
+
 if (-not (Test-Path $globalRustup)) {
-    throw "rustup.exe not found at $globalRustup"
+    throw "rustup.exe not found at $globalRustup. Provision Rust manually before starting the runner."
 }
 
-if ($Bootstrap -or -not (Test-Path (Join-Path $toolchainBin "cargo.exe"))) {
-    Invoke-CheckedCommand { & $globalRustup toolchain install stable --profile minimal }
+if (-not (Test-Path $toolchainCargo)) {
+    if ($Bootstrap) {
+        Invoke-CheckedCommand { & $globalRustup toolchain install stable --profile minimal }
+    }
+    else {
+        throw "Stable MSVC Rust toolchain is missing at $toolchainBin. Provision it manually; CI will not install or update toolchains."
+    }
 }
 
 $localCargoBin = Join-Path $env:CARGO_HOME "bin"
@@ -74,7 +86,7 @@ if (-not $vsDevCmd) {
 }
 
 if (-not $vsDevCmd) {
-    throw "VsDevCmd.bat not found. Install Visual Studio 2022 C++ build tools."
+    throw "VsDevCmd.bat not found. Provision Visual Studio 2022 C++ build tools manually before starting the runner."
 }
 
 $envDump = cmd /c "`"$vsDevCmd`" -arch=x64 && set"
@@ -87,7 +99,7 @@ foreach ($line in $envDump) {
 $env:PATH = "$localCargoBin;$toolchainBin;$env:PATH"
 $env:RUSTC = Join-Path $toolchainBin "rustc.exe"
 
-Write-Output "Rust environment is ready."
+Write-Output "Rust environment is ready without automatic installation."
 Write-Output "CARGO_HOME=$env:CARGO_HOME"
 Write-Output "RUSTUP_HOME=$env:RUSTUP_HOME"
 Write-Output "RUST_HOME_MODE=$(if ($UseGlobalHomes) { 'global' } else { 'isolated' })"

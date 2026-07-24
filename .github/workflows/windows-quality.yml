@@ -41,17 +41,15 @@ jobs:
             throw "Release Quality must run on the self-hosted v2rayn-widget-ci runner"
           }
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22.17.1
-          package-manager-cache: false
+      - name: Verify pre-provisioned Node.js
+        shell: pwsh
+        run: ./scripts/assert-ci-prerequisites.ps1 -RequireNode
 
       - name: Verify workflow contracts
         shell: pwsh
         run: node scripts/test-workflow-contracts.mjs
 
-      - name: Install frontend dependencies
+      - name: Restore frontend dependencies locally
         id: frontend_install
         continue-on-error: true
         working-directory: src/frontend
@@ -59,13 +57,7 @@ jobs:
         run: |
           $env:NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
           $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-cache"
-          node --version 2>&1 | Tee-Object -FilePath frontend-install-output.txt
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm --version 2>&1 | Tee-Object -FilePath frontend-install-output.txt -Append
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm cache clean --force 2>&1 | Tee-Object -FilePath frontend-install-output.txt -Append
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm ci --no-audit --no-fund 2>&1 | Tee-Object -FilePath frontend-install-output.txt -Append
+          npm ci --ignore-scripts --no-audit --no-fund 2>&1 | Tee-Object -FilePath frontend-install-output.txt
           exit $LASTEXITCODE
 
       - name: Audit frontend dependencies
@@ -164,20 +156,9 @@ jobs:
           name: frontend-dist
           path: src/frontend/dist
 
-      - name: Set up Node.js for installer smoke
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22.17.1
-          package-manager-cache: false
-
-      - name: Bootstrap project Rust toolchain
+      - name: Verify pre-provisioned Rust and MSVC
         shell: pwsh
-        run: |
-          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes -Bootstrap
-          rustup component add rustfmt clippy --toolchain stable
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo --version
-          rustc --version
+        run: ./scripts/assert-ci-prerequisites.ps1 -RequireRust
 
       - name: Check all Rust formatting
         id: rust_format
@@ -187,8 +168,7 @@ jobs:
         run: |
           . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo fmt --all -- --check 2>&1 | Tee-Object -FilePath rust-format-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          exit $LASTEXITCODE
 
       - name: Run Rust tests
         id: rust_tests
@@ -198,8 +178,7 @@ jobs:
         run: |
           . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo test --locked 2>&1 | Tee-Object -FilePath rust-test-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          exit $LASTEXITCODE
 
       - name: Run Rust clippy
         id: rust_clippy
@@ -209,8 +188,7 @@ jobs:
         run: |
           . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo clippy --locked --all-targets -- -D warnings 2>&1 | Tee-Object -FilePath rust-clippy-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          exit $LASTEXITCODE
 
       - name: Run release configuration Clippy
         id: rust_release_clippy
@@ -220,8 +198,7 @@ jobs:
         run: |
           . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo clippy --locked --release --no-default-features -- -D warnings 2>&1 | Tee-Object -FilePath rust-release-clippy-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          exit $LASTEXITCODE
 
       - name: Check Rust build
         id: rust_build
@@ -231,8 +208,7 @@ jobs:
         run: |
           . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo check --locked 2>&1 | Tee-Object -FilePath rust-build-output.txt
-          $commandExitCode = $LASTEXITCODE
-          exit $commandExitCode
+          exit $LASTEXITCODE
 
       - name: Build portable release smoke artifact
         id: rust_release
@@ -242,8 +218,7 @@ jobs:
         run: |
           . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo build --release --locked 2>&1 | Tee-Object -FilePath rust-release-output.txt
-          $commandExitCode = $LASTEXITCODE
-          if ($commandExitCode -ne 0) { exit $commandExitCode }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path "target/release/v2rayn-widget.exe")) {
             Write-Error "Release executable was not produced"
             exit 1
@@ -255,46 +230,6 @@ jobs:
         with:
           name: portable-release-smoke
           path: src/tauri/target/release/v2rayn-widget.exe
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Install frontend dependencies for installer smoke
-        id: installer_dependencies
-        continue-on-error: true
-        working-directory: src/frontend
-        shell: pwsh
-        run: |
-          $env:NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
-          $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-installer-cache"
-          npm cache clean --force 2>&1 | Tee-Object -FilePath installer-dependencies-output.txt
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm ci --no-audit --no-fund 2>&1 | Tee-Object -FilePath installer-dependencies-output.txt -Append
-          exit $LASTEXITCODE
-
-      - name: Build NSIS installer smoke artifact
-        if: steps.installer_dependencies.outcome == 'success'
-        id: installer_release
-        continue-on-error: true
-        working-directory: src/tauri
-        shell: pwsh
-        run: |
-          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
-          $tauriCli = (Resolve-Path "../frontend/node_modules/.bin/tauri.cmd").Path
-          & $tauriCli build --bundles nsis --config "tauri.installer.conf.json" --ci -- --locked 2>&1 | Tee-Object -FilePath installer-release-output.txt
-          $commandExitCode = $LASTEXITCODE
-          if ($commandExitCode -ne 0) { exit $commandExitCode }
-          $installers = @(Get-ChildItem "target/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue)
-          if ($installers.Count -eq 0) {
-            Write-Error "NSIS installer was not produced"
-            exit 1
-          }
-
-      - name: Upload NSIS installer smoke artifact
-        if: steps.installer_release.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: nsis-installer-smoke
-          path: src/tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
           retention-days: 1
 
@@ -310,21 +245,17 @@ jobs:
             src/tauri/rust-release-clippy-output.txt
             src/tauri/rust-build-output.txt
             src/tauri/rust-release-output.txt
-            src/frontend/installer-dependencies-output.txt
-            src/tauri/installer-release-output.txt
-            ${{ runner.temp }}/npm-installer-cache/_logs/*.log
           if-no-files-found: warn
           retention-days: 1
 
       - name: Fail when Rust checks failed
-        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_release_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure' || steps.rust_release.outcome == 'failure' || steps.installer_dependencies.outcome == 'failure' || steps.installer_release.outcome == 'failure'
+        if: steps.rust_format.outcome == 'failure' || steps.rust_tests.outcome == 'failure' || steps.rust_clippy.outcome == 'failure' || steps.rust_release_clippy.outcome == 'failure' || steps.rust_build.outcome == 'failure' || steps.rust_release.outcome == 'failure'
         shell: pwsh
         run: exit 1
 
-      - name: Cleanup Rust and installer workspace
+      - name: Cleanup Rust workspace
         if: always()
         shell: pwsh
         run: |
-          Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue

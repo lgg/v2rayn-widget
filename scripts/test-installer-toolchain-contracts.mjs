@@ -47,7 +47,10 @@ function verifyIsolation(text, label) {
       "The isolated NSIS cache copy does not match",
       "isolated Tauri NSIS cache changed during packaging",
       "RequestExecutionLevel",
-      "WebView2Bootstrapper",
+      "INSTALLWEBVIEW2MODE",
+      "WEBVIEW2BOOTSTRAPPERPATH",
+      "WEBVIEW2INSTALLERPATH",
+      "MINIMUMWEBVIEW2VERSION",
       "Expected exactly one generated installer.nsi",
       "Expected exactly one NSIS installer",
     ],
@@ -86,4 +89,4 @@ if (config.bundle?.windows?.webviewInstallMode?.type !== "skip") {
   fail("installer config: WebView2 installation must be skipped");
 }
 
-console.log("Installer toolchain isolation, generated-script and non-execution contracts are valid.");
+console.log("Installer toolchain isolation, rendered WebView2 disablement and non-execution contracts are valid.");

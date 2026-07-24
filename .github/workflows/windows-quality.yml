@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Confirm self-hosted runner assignment
         shell: pwsh
@@ -59,6 +61,13 @@ jobs:
           $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-cache"
           npm ci --ignore-scripts --no-audit --no-fund 2>&1 | Tee-Object -FilePath frontend-install-output.txt
           exit $LASTEXITCODE
+
+      - name: Verify locked Tauri CLI and immutable NSIS cache
+        if: steps.frontend_install.outcome == 'success'
+        id: release_prerequisites
+        continue-on-error: true
+        shell: pwsh
+        run: ./scripts/assert-ci-prerequisites.ps1 -RequireTauriCli -RequireNsis
 
       - name: Audit frontend dependencies
         if: steps.frontend_install.outcome == 'success'
@@ -116,16 +125,17 @@ jobs:
           retention-days: 1
 
       - name: Fail when frontend checks failed
-        if: steps.frontend_install.outcome == 'failure' || steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
+        if: steps.frontend_install.outcome == 'failure' || steps.release_prerequisites.outcome == 'failure' || steps.frontend_audit.outcome == 'failure' || steps.frontend_tests.outcome == 'failure' || steps.frontend_build.outcome == 'failure'
         shell: pwsh
         run: exit 1
 
-      - name: Cleanup frontend workspace
+      - name: Cleanup frontend workspace and cache
         if: always()
         shell: pwsh
         run: |
           Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "npm-cache") -Recurse -Force -ErrorAction SilentlyContinue
 
   rust-windows:
     if: >-
@@ -139,6 +149,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Confirm self-hosted runner assignment
         shell: pwsh

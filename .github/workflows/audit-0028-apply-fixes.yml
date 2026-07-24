@@ -1,0 +1,57 @@
+name: Audit 0028 Apply Product Fixes
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audit-0028-apply-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply-audited-fixes:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'audit/0028-product-surface-completeness'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: audit/0028-product-surface-completeness
+          fetch-depth: 0
+
+      - name: Apply deterministic audited patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q 'connectionButton.unknown' src/frontend/src/locales/en.json; then
+            echo '0028 audited fixes are already applied.'
+            exit 0
+          fi
+          python scripts/apply-0028-product-audit-fixes.py
+
+      - name: Commit audited fixes to the PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git config user.name 'lgg'
+          git config user.email 'lgg@users.noreply.github.com'
+          git add README.md project-tracking src
+          git commit -m '0028: fix product surface completeness defects'
+          git push origin HEAD:audit/0028-product-surface-completeness

@@ -18,15 +18,8 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api", () => apiMocks);
-
 vi.mock("@tauri-apps/api/app", () => appMocks);
 vi.mock("@tauri-apps/api/event", () => eventMocks);
-
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: vi.fn(() => ({
-    hide: vi.fn()
-  }))
-}));
 
 import { mergeUiFields, SettingsWindow } from "@/app/SettingsWindow";
 
@@ -71,7 +64,7 @@ describe("SettingsWindow", () => {
     ]);
     apiMocks.updateSettings.mockImplementation(async (settings: AppSettings) => settings);
     apiMocks.applyUiSettings.mockImplementation(async (patch: Partial<AppSettings>) => ({ ...baseSettings, ...patch }));
-    apiMocks.closeWindow.mockResolvedValue(undefined);
+    apiMocks.closeWindow.mockResolvedValue(true);
   });
 
   it("shows the runtime application version instead of a hardcoded release", async () => {
@@ -164,6 +157,23 @@ describe("SettingsWindow", () => {
     await waitFor(() => {
       expect(apiMocks.closeWindow).toHaveBeenCalledWith("settings");
     });
+  });
+
+  it("retains the dirty draft and confirmation when safe discard close fails", async () => {
+    apiMocks.closeWindow.mockResolvedValueOnce(false);
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Autostart with Windows"));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard changes" }));
+
+    await waitFor(() => expect(apiMocks.closeWindow).toHaveBeenCalledWith("settings"));
+    expect(screen.getByText("Unsaved settings")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(await screen.findByText("Unsaved settings")).not.toBeNull();
   });
 
   it("keeps current adapter-owned fields while preserving an unrelated dirty draft", () => {

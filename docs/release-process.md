@@ -21,6 +21,18 @@ For a published release the workflow:
 11. checks the exact file allowlist and SHA-256 manifest;
 12. attaches every generated file to the published GitHub Release.
 
+## Runner assignment
+
+The Windows build job executes on the dedicated repository runner:
+
+```yaml
+runs-on: [self-hosted, v2rayn-widget-ci]
+```
+
+It logs the selected runner identity and fails if GitHub does not report a self-hosted environment. Generated dependencies, build targets and staged release files are removed after artifact upload because the runner workspace is persistent.
+
+The write-enabled `publish-release` job intentionally remains on `ubuntu-latest`. It does not check out or execute repository code; it only downloads the build artifact, verifies its exact contents and checksums, and attaches the allowlisted files to the release.
+
 ## Generated files
 
 For application version `X.Y.Z`:
@@ -37,9 +49,9 @@ GitHub also provides its standard source-code archives for every release.
 1. Update the version in both:
    - `src/tauri/Cargo.toml`;
    - `src/tauri/tauri.conf.json`.
-2. Merge the version update after `Release Quality` passes.
+2. Merge the version update after `Release Quality` passes on `v2rayn-widget-ci`.
 3. Create and publish a GitHub Release with a matching semantic-version tag such as `v1.2.3`.
-4. Open the `Build Release Assets` workflow run and verify that it completed successfully.
+4. Open the `Build Release Assets` workflow run and verify that the self-hosted Windows build and isolated publisher completed successfully.
 5. Confirm that the four generated files are attached to the release.
 
 A mismatched or malformed tag fails before any distribution files are uploaded.
@@ -57,7 +69,8 @@ When `release_tag` is supplied, it takes precedence over `ref`, preventing a dif
 
 - The workflow has no `push`, `pull_request` or `pull_request_target` trigger.
 - Release attachment is available only for trusted release/manual events.
-- The Windows build job has read-only repository permissions while it executes checked-out project code.
-- Only the isolated Linux publishing job receives `contents: write`; it does not check out or execute repository code.
+- The self-hosted Windows build job has read-only repository permissions while it executes checked-out project code.
+- Only the isolated hosted Linux publishing job receives `contents: write`; it does not check out or execute repository code.
 - The publishing job accepts exactly four expected files, rejects extras and verifies `SHA256SUMS.txt` before upload.
 - Runs are grouped by release tag or manual ref with `cancel-in-progress: true`.
+- Project-specific npm configuration is process-scoped and generated build directories are cleaned after upload.

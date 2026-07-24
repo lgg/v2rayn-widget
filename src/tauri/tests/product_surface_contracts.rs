@@ -117,3 +117,31 @@ fn native_debug_close_is_forwarded_to_the_frontend_safe_close_path() {
     let main = include_str!("../src/main.rs");
     assert!(main.contains("window.emit(\"debug-close-requested\", ())"));
 }
+
+#[test]
+fn preferred_window_minimums_match_native_declarations() {
+    let config: Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+        .expect("valid Tauri configuration");
+    let windows = config["app"]["windows"]
+        .as_array()
+        .expect("window configuration array");
+
+    for (label, expected_width, expected_height) in
+        [("main", 360_u64, 270_u64), ("debug", 460_u64, 420_u64)]
+    {
+        let window = windows
+            .iter()
+            .find(|window| window["label"].as_str() == Some(label))
+            .expect("configured local window");
+        assert_eq!(window["minWidth"].as_u64(), Some(expected_width));
+        assert_eq!(window["minHeight"].as_u64(), Some(expected_height));
+    }
+
+    let geometry = include_str!("../src/utils/window_position.rs");
+    assert!(geometry.contains("MAIN_MIN_INNER_SIZE: (u32, u32) = (360, 270)"));
+    assert!(geometry.contains("DEBUG_MIN_INNER_SIZE: (u32, u32) = (460, 420)"));
+    assert!(geometry.contains("DIAGNOSTICS_MIN_INNER_SIZE: (u32, u32) = (760, 520)"));
+
+    let commands = include_str!("../src/commands/mod.rs");
+    assert!(commands.contains(".min_inner_size(760.0, 520.0)"));
+}

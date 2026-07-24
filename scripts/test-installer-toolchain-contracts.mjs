@@ -9,7 +9,7 @@ const prerequisites = resolve(root, "scripts/assert-ci-prerequisites.ps1");
 const toolchainPolicy = resolve(root, "scripts/ci-toolchain-policy.json");
 const installerConfig = resolve(root, "src/tauri/tauri.installer.conf.json");
 
-const PINNED_NSIS_FINGERPRINT = "28852b9b39fd712258bd098f6d875b4d8053d91e704f5729f0b1e5b139971388";
+const PINNED_NSIS_FINGERPRINT = "e1cbd35b909809366db4f46dbfbb4da5f4c181194d00fa064f27240b091b1451";
 
 function fail(message) {
   throw new Error(message);
@@ -91,7 +91,7 @@ verifyIsolation(releaseText, "release installer isolation");
 verifyIsolation(localText, "local installer isolation");
 
 if (policy.nsis?.cacheFingerprintSha256 !== PINNED_NSIS_FINGERPRINT) {
-  fail("toolchain policy: complete NSIS cache fingerprint is not pinned to the audited value");
+  fail("toolchain policy: complete NSIS cache fingerprint is not pinned to the canonical audited value");
 }
 requireAll(
   prerequisiteText,

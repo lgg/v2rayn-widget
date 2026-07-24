@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation in progress; exact-head Release Quality and merge pending.
+Implementation and repository-controlled review complete; exact-head Release Quality is queued because the dedicated self-hosted runner has not accepted the job. Merge remains blocked.
 
 ## Context
 
@@ -21,7 +21,7 @@ Close every newly confirmed repository-controlled gap between the documented pro
 - custom and native auxiliary-window close behavior;
 - unsaved Settings/Happ draft preservation;
 - frontend `invoke` to Rust handler registration parity;
-- multi-monitor, small-screen and RDP work-area geometry;
+- multi-monitor, high-DPI, small-screen and RDP work-area geometry;
 - EN/RU close-failure feedback;
 - v2rayN/Happ capability matrix re-verification;
 - README, architecture and roadmap accuracy;
@@ -38,12 +38,13 @@ Close every newly confirmed repository-controlled gap between the documented pro
 
 1. Native minimum window sizes could override a smaller fitted target and push Main, Debug or Diagnostics beyond a tiny/RDP monitor work area.
 2. Restoring a preferred native minimum after moving back to a larger monitor could expand the window after position calculation and put its edge outside the work area.
-3. Settings, Debug and Happ Setup contained direct native `.hide()` fallbacks that bypassed the backend invariant requiring Main restoration before auxiliary hide.
-4. A failed Settings **Discard changes** close cleared the dirty flag even though the window and unsaved draft remained visible.
-5. A failed Happ Setup discard close dismissed its confirmation while the draft remained open.
-6. Native Debug close failures were logged only in Rust and did not reach the user-visible error surface used by custom close.
-7. Happ Setup initial-load effect depended on the translated `t` function and could reload backend settings over an unsaved draft after a language change.
-8. `docs/architecture.md` still described an obsolete quality workflow that installed dependencies normally and built an NSIS installer, contradicting the current validation-only self-hosted policy.
+3. Preferred sizes declared in Tauri configuration are logical pixels; treating them as physical pixels would under-size restored minima on 150-200% DPI displays.
+4. Settings, Debug and Happ Setup contained direct native `.hide()` fallbacks that bypassed the backend invariant requiring Main restoration before auxiliary hide.
+5. A failed Settings **Discard changes** close cleared the dirty flag even though the window and unsaved draft remained visible.
+6. A failed Happ Setup discard close dismissed its confirmation while the draft remained open.
+7. Native Debug close failures were logged only in Rust and did not reach the user-visible error surface used by custom close.
+8. Happ Setup initial-load effect depended on the translated `t` function and could reload backend settings over an unsaved draft after a language change.
+9. `docs/architecture.md` still described an obsolete quality workflow that installed dependencies normally and built an NSIS installer, contradicting the current validation-only self-hosted policy.
 
 ## Affected parts
 
@@ -67,16 +68,23 @@ Close every newly confirmed repository-controlled gap between the documented pro
 - [x] Happ Setup keeps its draft and discard confirmation after a failed close.
 - [x] Happ Setup does not reload and overwrite an unsaved draft when language changes.
 - [x] Main, Debug and Diagnostics native minimum sizes are capped to the current available inner work area.
+- [x] Preferred logical minima are converted using the active window DPI scale factor.
 - [x] Preferred minima are restored on larger monitors before final size and position clamping.
-- [x] Every frontend Tauri invocation has an exact registered Rust handler and vice versa.
+- [x] Every frontend Tauri invocation has an exact, non-duplicated registered Rust handler and vice versa.
 - [x] EN/RU catalogs remain in exact parity and contain nonblank values.
 - [x] v2rayN/Happ capability declarations remain truthful and unchanged where no new stable contract exists.
-- [ ] README, architecture, roadmap and report reflect the final implementation and CI policy.
+- [x] README, architecture, roadmap and report reflect the final implementation and CI policy.
 - [ ] Frontend audit/tests/build pass on the exact PR head.
 - [ ] Rust fmt, tests, both strict Clippy configurations, locked check and portable build pass on the exact PR head.
 - [ ] Artifacts, diagnostics and cleanup complete successfully.
-- [ ] Temporary/noncompliant workflow files are absent from the final diff.
+- [x] Temporary/noncompliant workflow files are absent from the final diff.
 - [ ] PR is squash-merged into `main` and final evidence is recorded.
+
+## Verification state
+
+Release Quality #343 (`30111918962`) was created for the prior exact head but remained queued without starting `Set up job` because the dedicated `[self-hosted, v2rayn-widget-ci]` runner did not accept it. This tracking update creates a new exact-head run; only that latest run may authorize merge.
+
+No frontend or Rust success is claimed from a queued job. Static review and permanent regression additions do not replace the required Windows execution gate.
 
 ## Verification plan
 
@@ -91,7 +99,7 @@ Close every newly confirmed repository-controlled gap between the documented pro
 ## Questions and decisions
 
 - No user clarification was required. Conservative behavior is to keep an auxiliary window and any draft visible whenever Main restoration or close IPC cannot be proven successful.
-- Native minimum sizes remain preferred UX constraints, but are dynamically lowered only when the active work area cannot contain them and restored when sufficient space returns.
+- Native minimum sizes remain preferred UX constraints, but are converted from logical to physical units, dynamically lowered only when the active work area cannot contain them and restored when sufficient space returns.
 - Experimental and unsupported adapter capabilities are not promoted merely to make the matrix look complete.
 
 ## Risks

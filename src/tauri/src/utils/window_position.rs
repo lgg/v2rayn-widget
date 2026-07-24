@@ -82,48 +82,58 @@ pub fn fit_window_to_current_work_area<R: Runtime>(
             .ok_or_else(|| "No monitor is available for window fitting".to_owned())?,
     };
     let area = monitor.work_area();
+    let work_area = ScreenRect {
+        x: area.position.x,
+        y: area.position.y,
+        width: area.size.width.max(1),
+        height: area.size.height.max(1),
+    };
     let position = window
         .outer_position()
         .map_err(|error| format!("Could not read window position: {error}"))?;
-    let size = window
+    let outer_size = window
         .outer_size()
         .map_err(|error| format!("Could not read window size: {error}"))?;
     let inner_size = window
         .inner_size()
         .map_err(|error| format!("Could not read window client size: {error}"))?;
-    let fitted = fit_rect_to_work_area(
-        ScreenRect {
-            x: position.x,
-            y: position.y,
-            width: size.width,
-            height: size.height,
-        },
-        ScreenRect {
-            x: area.position.x,
-            y: area.position.y,
-            width: area.size.width,
-            height: area.size.height,
-        },
+    let frame_size = (
+        outer_size.width.saturating_sub(inner_size.width),
+        outer_size.height.saturating_sub(inner_size.height),
     );
+    let maximum_inner_size = (
+        work_area.width.saturating_sub(frame_size.0).max(1),
+        work_area.height.saturating_sub(frame_size.1).max(1),
+    );
+    let minimum_inner_size = constrained_min_inner_size(window.label(), maximum_inner_size);
 
-    let maximum_inner_size = inner_size_for_outer_target(
-        (size.width, size.height),
-        (inner_size.width, inner_size.height),
-        (area.size.width.max(1), area.size.height.max(1)),
-    );
-    if let Some((minimum_width, minimum_height)) =
-        constrained_min_inner_size(window.label(), maximum_inner_size)
-    {
+    if let Some((minimum_width, minimum_height)) = minimum_inner_size {
         window
             .set_min_size(Some(PhysicalSize::new(minimum_width, minimum_height)))
             .map_err(|error| format!("Could not fit window minimum size to work area: {error}"))?;
     }
 
-    let size_changed = fitted.width != size.width || fitted.height != size.height;
+    let target_size = fitted_outer_size(
+        (outer_size.width, outer_size.height),
+        frame_size,
+        minimum_inner_size,
+        (work_area.width, work_area.height),
+    );
+    let fitted = fit_rect_to_work_area(
+        ScreenRect {
+            x: position.x,
+            y: position.y,
+            width: target_size.0,
+            height: target_size.1,
+        },
+        work_area,
+    );
+
+    let size_changed = fitted.width != outer_size.width || fitted.height != outer_size.height;
     let position_changed = fitted.x != position.x || fitted.y != position.y;
     if size_changed {
         let (target_inner_width, target_inner_height) = inner_size_for_outer_target(
-            (size.width, size.height),
+            (outer_size.width, outer_size.height),
             (inner_size.width, inner_size.height),
             (fitted.width, fitted.height),
         );
@@ -194,6 +204,33 @@ fn constrained_min_inner_size(
             preferred.1.min(maximum_inner_size.1.max(1)),
         )
     })
+}
+
+fn fitted_outer_size(
+    current_outer: (u32, u32),
+    frame_size: (u32, u32),
+    minimum_inner: Option<(u32, u32)>,
+    available_outer: (u32, u32),
+) -> (u32, u32) {
+    let minimum_outer = minimum_inner
+        .map(|minimum| {
+            (
+                minimum.0.saturating_add(frame_size.0),
+                minimum.1.saturating_add(frame_size.1),
+            )
+        })
+        .unwrap_or((1, 1));
+
+    (
+        current_outer
+            .0
+            .max(minimum_outer.0)
+            .min(available_outer.0.max(1)),
+        current_outer
+            .1
+            .max(minimum_outer.1)
+            .min(available_outer.1.max(1)),
+    )
 }
 
 fn inner_size_for_outer_target(
@@ -374,18 +411,45 @@ mod tests {
     }
 
     #[test]
-    fn restores_preferred_native_minimum_when_the_work_area_allows_it() {
+    fn restores_preferred_minimum_and_clamps_the_expanded_outer_rect() {
+        let minimum = constrained_min_inner_size("debug", (1920, 1040));
+        assert_eq!(minimum, Some(DEBUG_MIN_INNER_SIZE));
+        let target_size = fitted_outer_size((320, 240), (0, 0), minimum, (1920, 1040));
+        assert_eq!(target_size, DEBUG_MIN_INNER_SIZE);
         assert_eq!(
-            constrained_min_inner_size("main", (1920, 1040)),
-            Some(MAIN_MIN_INNER_SIZE),
+            fit_rect_to_work_area(
+                ScreenRect {
+                    x: 1700,
+                    y: 900,
+                    width: target_size.0,
+                    height: target_size.1,
+                },
+                ScreenRect {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1040,
+                },
+            ),
+            ScreenRect {
+                x: 1460,
+                y: 620,
+                width: 460,
+                height: 420,
+            }
         );
+    }
+
+    #[test]
+    fn includes_decorated_frame_when_restoring_a_minimum() {
         assert_eq!(
-            constrained_min_inner_size("debug", (1920, 1040)),
-            Some(DEBUG_MIN_INNER_SIZE),
-        );
-        assert_eq!(
-            constrained_min_inner_size("diagnostics", (1920, 1040)),
-            Some(DIAGNOSTICS_MIN_INNER_SIZE),
+            fitted_outer_size(
+                (700, 480),
+                (16, 39),
+                Some(DIAGNOSTICS_MIN_INNER_SIZE),
+                (1920, 1040),
+            ),
+            (776, 559),
         );
     }
 

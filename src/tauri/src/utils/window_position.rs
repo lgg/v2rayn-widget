@@ -38,21 +38,28 @@ pub fn saved_position_has_visible_drag_area(
     }
 
     let saved = ScreenRect::from(saved);
+    let required_width = i64::from(saved.width.min(MIN_VISIBLE_WIDTH as u32));
+    let required_height = i64::from(saved.height.min(MIN_VISIBLE_HEIGHT as u32));
+    let drag_area = ScreenRect {
+        height: required_height as u32,
+        ..saved
+    };
+
     monitors.iter().any(|monitor| {
         let visible_width = intersection_length(
-            i64::from(saved.x),
-            i64::from(saved.width),
+            i64::from(drag_area.x),
+            i64::from(drag_area.width),
             i64::from(monitor.x),
             i64::from(monitor.width),
         );
         let visible_height = intersection_length(
-            i64::from(saved.y),
-            i64::from(saved.height),
+            i64::from(drag_area.y),
+            i64::from(drag_area.height),
             i64::from(monitor.y),
             i64::from(monitor.height),
         );
 
-        visible_width >= MIN_VISIBLE_WIDTH && visible_height >= MIN_VISIBLE_HEIGHT
+        visible_width >= required_width && visible_height >= required_height
     })
 }
 
@@ -354,6 +361,20 @@ mod tests {
         }];
         assert!(!saved_position_has_visible_drag_area(
             &position(1900, 1030),
+            &monitors
+        ));
+    }
+
+    #[test]
+    fn rejects_visible_body_when_the_top_drag_region_is_offscreen() {
+        let monitors = [ScreenRect {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1040,
+        }];
+        assert!(!saved_position_has_visible_drag_area(
+            &position(100, -452),
             &monitors
         ));
     }

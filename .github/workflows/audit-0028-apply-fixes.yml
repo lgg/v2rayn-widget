@@ -45,13 +45,31 @@ jobs:
           fi
           python - <<'PY'
           from pathlib import Path
-          path = Path('README.md')
-          text = path.read_text(encoding='utf-8')
+
+          readme = Path('README.md')
+          text = readme.read_text(encoding='utf-8')
           current = 'All four local windows expose explicit loading/error behavior. Settings and Happ Setup route native close requests through unsaved-draft confirmation, and asynchronous Tauri listeners are disposed safely even when registration finishes after a React surface unmounts.\n'
           expected = 'All four local windows expose explicit loading/error behavior. Settings and Happ Setup protect unsaved draft-only changes on both custom and native close requests. Async Tauri listeners are disposed even if registration finishes after React unmounts. Endpoint lists and loaded settings are normalized and bounded before use.\n'
           if text.count(current) != 1:
               raise SystemExit('README audit paragraph changed unexpectedly')
-          path.write_text(text.replace(current, expected, 1), encoding='utf-8', newline='\n')
+          readme.write_text(text.replace(current, expected, 1), encoding='utf-8', newline='\n')
+
+          task = Path('project-tracking/tasks/0018-full-project-screen-audit.md')
+          text = task.read_text(encoding='utf-8')
+          title = '# 0018 - Full Project and Screen Audit\n'
+          if text.count(title) != 1 or '| Status | Final Verification |' not in text:
+              raise SystemExit('task 0018 status format changed unexpectedly')
+          text = text.replace(title, title + '\n## Status\n\nFinal Verification\n', 1)
+          text = text.replace('| Status | Final Verification |', '| Status | Superseded and completed by verified follow-up audits 0026-0028 |', 1)
+          task.write_text(text, encoding='utf-8', newline='\n')
+
+          report = Path('project-tracking/reports/0018-full-project-screen-audit-report.md')
+          text = report.read_text(encoding='utf-8')
+          title = '# 0018 - Full Project and Screen Audit Report\n'
+          if text.count(title) != 1:
+              raise SystemExit('report 0018 title changed unexpectedly')
+          text = text.replace(title, title + '\n## Status\n\nImplementation completed. Final exact-head verification and merge remain pending.\n', 1)
+          report.write_text(text, encoding='utf-8', newline='\n')
           PY
           python scripts/apply-0028-product-audit-fixes.py 2>&1 | tee patch-driver.log
 

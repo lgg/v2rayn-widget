@@ -3,6 +3,14 @@
     "active": true,
     "targets": [
       "nsis"
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "skip"
+      },
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }

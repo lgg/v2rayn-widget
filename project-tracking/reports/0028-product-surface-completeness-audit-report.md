@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and deterministic product verification are complete. Final clean exact-head Release Quality and merge remain pending after correcting the strict Rust hygiene defects exposed by the first complete release-build attempt.
+Completed. The implementation was verified by a clean exact-head Release Quality run and squash-merged through PR #17.
 
 ## Objective
 
@@ -25,7 +25,7 @@ The audit cross-checked:
 - path/process scoping, settings persistence and UI Automation consent;
 - diagnostic network target validation;
 - frontend/Rust tests and permanent Release Quality jobs;
-- diagnostic artifacts rather than only high-level GitHub step conclusions;
+- uploaded diagnostic artifacts rather than only high-level GitHub step conclusions;
 - historical tracking records that still described completed work as pending.
 
 ## Declared capability matrix
@@ -185,23 +185,45 @@ Rust:
 
 ### Implementation head `95bb525820ed155e923dc572cbf57b9e727279f4`
 
-Release Quality #329 (`30102240110`) proved:
-
-- frontend contracts, npm audit, complete tests and production build passed;
-- Rust unit/integration tests passed, including 102 internal tests and both new product-surface contracts;
-- locked Cargo check passed;
-- portable release executable built successfully on the later full attempt.
-
-The first Rust attempt disappeared during release linking without a normal log or diagnostics artifact. The runner became unavailable and a same-SHA retry remained queued. This was an infrastructure interruption.
+Release Quality #329 (`30102240110`) proved the frontend suite, Rust tests and locked check. Its first portable-link attempt ended with an infrastructure interruption when the self-hosted runner disappeared without normal logs or a Rust diagnostics artifact.
 
 ### Finalized tracking head `40153b22ba7ea23cedd8f20ecdcaf5d039c10dd5`
 
-Release Quality #331 (`30104073460`) completed the portable release build, portable artifact upload, diagnostics upload and cleanup. The aggregate failure step nevertheless correctly blocked the job. Inspection of `rust-diagnostics` showed two hidden failures that the jobs API's continue-on-error conclusions did not expose clearly:
+Release Quality #331 (`30104073460`) completed the portable release build, artifact upload, diagnostics upload and cleanup. Its aggregate failure correctly blocked acceptance. Inspection of `rust-diagnostics` exposed two repository defects hidden behind continue-on-error step presentation:
 
 1. `src/client_commands.rs` retained an unused `Manager` import, causing both strict Clippy configurations to fail under `-D warnings`.
 2. `src/utils/window_position.rs` was not rustfmt-clean.
 
-The portable executable still built, but a successful binary alone was insufficient for acceptance. Both defects were fixed by removing the stale import and formatting the complete Rust workspace. Temporary patch workflows were removed afterward.
+The portable executable built, but a successful binary alone was insufficient for acceptance. Both defects were fixed by removing the stale import and formatting the complete Rust workspace.
+
+### Final exact-head acceptance
+
+Release Quality #336 (`30105332510`) completed successfully on exact PR head `e6dc07a384e1705f17008430392b3c6f49bc55f6`.
+
+The `frontend` job passed:
+
+- workflow contracts;
+- locked dependency restoration with lifecycle scripts disabled;
+- Tauri/NSIS prerequisite validation;
+- npm audit;
+- complete frontend test suite including all new regressions;
+- production frontend build;
+- frontend artifacts and diagnostics upload;
+- cleanup.
+
+The `rust-windows` job passed:
+
+- Rust/MSVC prerequisite validation;
+- complete rustfmt check;
+- complete Rust unit/integration tests;
+- strict all-targets Clippy;
+- strict release/no-default-features Clippy;
+- locked Cargo check;
+- portable release smoke build;
+- portable executable and diagnostics upload;
+- cleanup.
+
+PR #17 was squash-merged into `main` as commit `1b848318a92f2e3b0456d53d7e40c1343964ff56`.
 
 ## Repository-controlled issues resolved
 
@@ -231,8 +253,11 @@ The portable executable still built, but a successful binary alone was insuffici
 - Diagnostics can load a user-configured HTTP(S) page, but that remote webview has no default Tauri IPC capability.
 - Deterministic layout/work-area contracts do not replace screenshot comparison across every DPI, font renderer and GPU combination.
 
-## Definition of done remaining
+## Definition of done
 
-- complete one clean exact-head Release Quality run after the Rust hygiene corrections;
-- squash-merge PR #17;
-- write the final run and merge evidence back to task/report 0028.
+- [x] every declared screen and capability was traced to implementation or an explicit unsupported/research-required boundary;
+- [x] every confirmed repository-controlled defect was fixed;
+- [x] deterministic regression coverage was added;
+- [x] one clean exact-head Release Quality run passed completely;
+- [x] PR #17 was squash-merged into `main`;
+- [x] final run and merge evidence were recorded in task/report 0028.

@@ -1,0 +1,136 @@
+name: Audit Release Packaging
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-release-packaging-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  package-installer:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'audit/0026-post-uac-fix-hardening'
+    runs-on: [self-hosted, v2rayn-widget-ci]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout audited revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Confirm dedicated self-hosted runner
+        shell: pwsh
+        run: |
+          if ("${{ runner.environment }}" -ne "self-hosted") {
+            throw "Installer audit must run on v2rayn-widget-ci"
+          }
+          Write-Host "Runner: ${{ runner.name }} / ${{ runner.os }} / ${{ runner.arch }}"
+
+      - name: Verify pre-provisioned toolchain and source NSIS cache
+        shell: pwsh
+        run: ./scripts/assert-ci-prerequisites.ps1 -RequireNode -RequireRust -RequireNsis
+
+      - name: Restore and verify locked frontend toolchain
+        working-directory: src/frontend
+        shell: pwsh
+        run: |
+          $env:NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+          $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-audit-release-cache"
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm audit --audit-level=high
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          exit $LASTEXITCODE
+
+      - name: Verify locked Tauri CLI
+        shell: pwsh
+        run: ./scripts/assert-ci-prerequisites.ps1 -RequireTauriCli
+
+      - name: Build installer against isolated immutable NSIS cache
+        working-directory: src/tauri
+        shell: pwsh
+        run: |
+          $sourceFingerprint = Join-Path $env:RUNNER_TEMP "audit-nsis-source.sha256"
+          $beforeFingerprint = Join-Path $env:RUNNER_TEMP "audit-nsis-before.sha256"
+          $afterFingerprint = Join-Path $env:RUNNER_TEMP "audit-nsis-after.sha256"
+          $sourceNsis = Join-Path $env:LOCALAPPDATA "tauri\NSIS"
+          $isolatedLocalAppData = Join-Path $env:RUNNER_TEMP "audit-tauri-localappdata"
+          $isolatedTauriRoot = Join-Path $isolatedLocalAppData "tauri"
+
+          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireRust -RequireTauriCli -RequireNsis -WriteNsisFingerprint $sourceFingerprint
+          Remove-Item -LiteralPath $isolatedLocalAppData -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $isolatedTauriRoot | Out-Null
+          Copy-Item -LiteralPath $sourceNsis -Destination $isolatedTauriRoot -Recurse -Force
+          $env:LOCALAPPDATA = $isolatedLocalAppData
+
+          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireNsis -WriteNsisFingerprint $beforeFingerprint
+          if ((Get-Content -LiteralPath $sourceFingerprint -Raw) -ne (Get-Content -LiteralPath $beforeFingerprint -Raw)) {
+            throw "Isolated NSIS cache copy differs from the validated source cache."
+          }
+
+          $env:CARGO_NET_OFFLINE = "true"
+          $tauriCli = (Resolve-Path "../frontend/node_modules/.bin/tauri.cmd").Path
+          & $tauriCli build --bundles nsis --config "tauri.installer.conf.json" --ci -- --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireNsis -WriteNsisFingerprint $afterFingerprint
+          if ((Get-Content -LiteralPath $beforeFingerprint -Raw) -ne (Get-Content -LiteralPath $afterFingerprint -Raw)) {
+            throw "Isolated NSIS cache changed during packaging."
+          }
+
+          $scripts = @(Get-ChildItem "target/release/nsis" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
+          if ($scripts.Count -ne 1) {
+            throw "Expected exactly one generated installer.nsi, found $($scripts.Count)."
+          }
+          $scriptText = Get-Content -LiteralPath $scripts[0].FullName -Raw
+          if ($scriptText -notmatch '(?mi)^\s*RequestExecutionLevel\s+user\s*$') {
+            throw "Generated installer does not request current-user execution."
+          }
+          if ($scriptText -match '(?i)MicrosoftEdgeWebview2Setup\.exe|WebView2Bootstrapper\.exe') {
+            throw "Generated installer contains a WebView2 setup payload."
+          }
+
+          $installers = @(Get-ChildItem "target/release/bundle/nsis/*.exe" -File -ErrorAction SilentlyContinue)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one installer, found $($installers.Count)."
+          }
+          Copy-Item -LiteralPath $scripts[0].FullName -Destination "target/release/bundle/nsis/installer.nsi" -Force
+
+      - name: Upload audited installer and generated script
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: audited-nsis-package
+          path: |
+            src/tauri/target/release/bundle/nsis/*.exe
+            src/tauri/target/release/bundle/nsis/installer.nsi
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Cleanup audit workspace and caches
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "npm-audit-release-cache") -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "audit-tauri-localappdata") -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "audit-nsis-source.sha256") -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "audit-nsis-before.sha256") -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "audit-nsis-after.sha256") -Force -ErrorAction SilentlyContinue

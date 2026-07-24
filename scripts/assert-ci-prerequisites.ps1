@@ -1,40 +1,96 @@
 param(
     [switch]$RequireNode,
     [switch]$RequireRust,
-    [switch]$RequireNsis
+    [switch]$RequireTauriCli,
+    [switch]$RequireNsis,
+    [string]$WriteNsisFingerprint
 )
 
 $ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+if (-not ($RequireNode -or $RequireRust -or $RequireTauriCli -or $RequireNsis)) {
+    throw "Specify at least one prerequisite to validate."
+}
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$policyPath = Join-Path $PSScriptRoot "ci-toolchain-policy.json"
+if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
+    throw "CI toolchain policy is missing."
+}
+$policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
 
 function Assert-CommandAvailable {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Name,
+        [Parameter(Mandatory = $true)]
         [string]$ProvisioningHint
     )
 
     $command = Get-Command $Name -ErrorAction SilentlyContinue
     if (-not $command) {
-        throw "$Name is not available. $ProvisioningHint CI is validation-only and will not install it."
+        throw "$Name is not available. $ProvisioningHint Validation-only jobs will not install it."
     }
     return $command
 }
 
+function Invoke-NativeText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Command,
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
+    )
+
+    $output = & $Command 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "$FailureMessage Exit code: $exitCode."
+    }
+    return (($output | Out-String).Trim())
+}
+
+function Get-NsisCacheFingerprint {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Root
+    )
+
+    $manifestLines = Get-ChildItem -LiteralPath $Root -File -Recurse |
+        Sort-Object FullName |
+        ForEach-Object {
+            $relativePath = [System.IO.Path]::GetRelativePath($Root, $_.FullName).Replace("\", "/")
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$relativePath|$hash"
+        }
+
+    if (-not $manifestLines) {
+        throw "The Tauri NSIS cache is empty. Provision it manually before running validation."
+    }
+
+    $manifest = $manifestLines -join "`n"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($manifest)
+    return [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+}
+
 if ($RequireNode) {
-    Assert-CommandAvailable -Name "node.exe" -ProvisioningHint "Provision Node.js 22 or newer on v2rayn-widget-ci manually." | Out-Null
+    Assert-CommandAvailable -Name "node.exe" -ProvisioningHint "Provision Node.js on v2rayn-widget-ci manually." | Out-Null
     Assert-CommandAvailable -Name "npm.cmd" -ProvisioningHint "Provision npm with Node.js on v2rayn-widget-ci manually." | Out-Null
 
-    $nodeVersionText = (& node --version).Trim()
-    if ($LASTEXITCODE -ne 0 -or $nodeVersionText -notmatch '^v(\d+)\.') {
-        throw "Could not determine the pre-provisioned Node.js version."
-    }
-    if ([int]$Matches[1] -lt 22) {
-        throw "Node.js 22 or newer is required; found $nodeVersionText. Update the runner manually."
+    $nodeVersionText = Invoke-NativeText -Command { node --version } -FailureMessage "Could not determine the pre-provisioned Node.js version."
+    if ($nodeVersionText -notmatch '^v(?<version>\d+\.\d+\.\d+)$') {
+        throw "Unexpected Node.js version format: $nodeVersionText"
     }
 
-    Write-Output "Using pre-provisioned Node.js $nodeVersionText"
-    & npm --version
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $nodeVersion = [version]$Matches.version
+    $minimumNodeVersion = [version][string]$policy.node.minimumVersion
+    if ($nodeVersion -lt $minimumNodeVersion) {
+        throw "Node.js $minimumNodeVersion or newer is required; found $nodeVersion. Update the runner manually."
+    }
+
+    $npmVersion = Invoke-NativeText -Command { npm --version } -FailureMessage "Could not determine the pre-provisioned npm version."
+    Write-Output "Using pre-provisioned Node.js $nodeVersion and npm $npmVersion"
 }
 
 if ($RequireRust) {
@@ -43,37 +99,81 @@ if ($RequireRust) {
     Assert-CommandAvailable -Name "cargo.exe" -ProvisioningHint "Provision the stable x64 MSVC Rust toolchain manually." | Out-Null
     Assert-CommandAvailable -Name "rustc.exe" -ProvisioningHint "Provision the stable x64 MSVC Rust toolchain manually." | Out-Null
     Assert-CommandAvailable -Name "rustfmt.exe" -ProvisioningHint "Add rustfmt to the runner manually." | Out-Null
+    Assert-CommandAvailable -Name "cargo-clippy.exe" -ProvisioningHint "Add Clippy to the runner manually." | Out-Null
     Assert-CommandAvailable -Name "cl.exe" -ProvisioningHint "Provision Visual Studio 2022 C++ Build Tools manually." | Out-Null
+    Assert-CommandAvailable -Name "link.exe" -ProvisioningHint "Provision the MSVC linker manually." | Out-Null
+    Assert-CommandAvailable -Name "rc.exe" -ProvisioningHint "Provision the Windows SDK resource compiler manually." | Out-Null
 
-    & cargo --version
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & rustc --version
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & rustfmt --version
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & cargo clippy --version
-    if ($LASTEXITCODE -ne 0) {
-        throw "Clippy is not pre-provisioned. Add it to the runner manually; CI will not install components."
+    $cargoVersion = Invoke-NativeText -Command { cargo --version } -FailureMessage "Could not execute the pre-provisioned Cargo binary."
+    $rustVersionDetails = Invoke-NativeText -Command { rustc -vV } -FailureMessage "Could not execute the pre-provisioned Rust compiler."
+    $rustfmtVersion = Invoke-NativeText -Command { rustfmt --version } -FailureMessage "Could not execute pre-provisioned rustfmt."
+    $clippyVersion = Invoke-NativeText -Command { cargo clippy --version } -FailureMessage "Could not execute pre-provisioned Clippy."
+
+    $expectedHost = [string]$policy.rust.host
+    if ($rustVersionDetails -notmatch "(?m)^host:\s+$([regex]::Escape($expectedHost))$") {
+        throw "Rust host must be $expectedHost. Provision the correct toolchain manually."
     }
+
+    Write-Output "Using $cargoVersion"
+    Write-Output "Using $rustfmtVersion"
+    Write-Output "Using $clippyVersion"
+}
+
+if ($RequireTauriCli) {
+    $tauriCli = Join-Path $repoRoot "src\frontend\node_modules\.bin\tauri.cmd"
+    if (-not (Test-Path -LiteralPath $tauriCli -PathType Leaf)) {
+        throw "The locked Tauri CLI is missing from the workspace. Restore dependencies with npm ci --ignore-scripts; validation will not install it globally."
+    }
+
+    $tauriVersionText = Invoke-NativeText -Command { & $tauriCli --version } -FailureMessage "Could not execute the locked Tauri CLI."
+    $expectedTauriVersion = [string]$policy.tauriCli.version
+    if ($tauriVersionText -notmatch "(?i)(?:tauri-cli|tauri)\s+$([regex]::Escape($expectedTauriVersion))(?:\s|$)") {
+        throw "Tauri CLI $expectedTauriVersion is required; found '$tauriVersionText'."
+    }
+
+    Write-Output "Using locked Tauri CLI $expectedTauriVersion"
 }
 
 if ($RequireNsis) {
-    $makensis = Get-Command "makensis.exe" -ErrorAction SilentlyContinue
-    if (-not $makensis) {
-        $tauriToolsRoot = Join-Path $env:LOCALAPPDATA "tauri"
-        if (Test-Path $tauriToolsRoot) {
-            $candidate = Get-ChildItem $tauriToolsRoot -Filter "makensis.exe" -File -Recurse -ErrorAction SilentlyContinue |
-                Select-Object -First 1
-            if ($candidate) {
-                $env:PATH = "$($candidate.DirectoryName);$env:PATH"
-                $makensis = Get-Command "makensis.exe" -ErrorAction SilentlyContinue
-            }
+    if (-not $env:LOCALAPPDATA) {
+        throw "LOCALAPPDATA is unavailable; the exact Tauri NSIS cache cannot be validated."
+    }
+
+    $nsisRoot = Join-Path $env:LOCALAPPDATA "tauri\NSIS"
+    if (-not (Test-Path -LiteralPath $nsisRoot -PathType Container)) {
+        throw "The exact Tauri NSIS cache is missing at %LOCALAPPDATA%\tauri\NSIS. Provision it manually; validation will not download it."
+    }
+
+    foreach ($relativePath in $policy.nsis.requiredFiles) {
+        $requiredPath = Join-Path $nsisRoot ([string]$relativePath)
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+            throw "The Tauri NSIS cache is incomplete: missing $relativePath. Provision the complete cache manually; validation will not repair or download it."
         }
     }
 
-    if (-not $makensis) {
-        throw "makensis.exe is not pre-provisioned. Install NSIS manually before starting the runner; CI will not download or install bundler tools."
+    $pluginPath = Join-Path $nsisRoot "Plugins\x86-unicode\additional\nsis_tauri_utils.dll"
+    $actualPluginHash = (Get-FileHash -LiteralPath $pluginPath -Algorithm SHA1).Hash.ToUpperInvariant()
+    $expectedPluginHash = ([string]$policy.nsis.tauriUtilsPluginSha1).ToUpperInvariant()
+    if ($actualPluginHash -ne $expectedPluginHash) {
+        throw "The Tauri NSIS utility plugin hash is invalid. Replace the cache manually; validation will not download a replacement."
     }
 
-    Write-Output "Using pre-provisioned NSIS compiler at $($makensis.Source)"
+    $makensisPath = Join-Path $nsisRoot "makensis.exe"
+    $nsisVersionText = Invoke-NativeText -Command { & $makensisPath /VERSION } -FailureMessage "Could not execute the cached Tauri makensis binary."
+    $expectedNsisVersion = [string]$policy.nsis.version
+    if ($nsisVersionText -notmatch "(?i)^v?$([regex]::Escape($expectedNsisVersion))(?:\D|$)") {
+        throw "NSIS $expectedNsisVersion is required; found '$nsisVersionText'."
+    }
+
+    $fingerprint = Get-NsisCacheFingerprint -Root $nsisRoot
+    if ($WriteNsisFingerprint) {
+        $fingerprintPath = [System.IO.Path]::GetFullPath($WriteNsisFingerprint)
+        $fingerprintDirectory = Split-Path -Parent $fingerprintPath
+        if ($fingerprintDirectory) {
+            New-Item -ItemType Directory -Force -Path $fingerprintDirectory | Out-Null
+        }
+        Set-Content -LiteralPath $fingerprintPath -Value $fingerprint -Encoding ascii -NoNewline
+    }
+
+    Write-Output "Using validated Tauri NSIS $expectedNsisVersion cache (fingerprint $fingerprint)"
 }

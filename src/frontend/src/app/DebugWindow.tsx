@@ -13,6 +13,7 @@ import {
   runUiDebugProbe,
   toggleTunViaUi
 } from "@/lib/api";
+import { bindTauriListener } from "@/lib/tauri-listener";
 import type { DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
 
 async function closeDebugWindow(): Promise<void> {
@@ -107,6 +108,14 @@ export function DebugWindow(): JSX.Element {
       { captureSnapshot: true, probeOperation: true }
     ).finally(() => setInitialProbePending(false));
   }, []);
+
+  useEffect(
+    () =>
+      bindTauriListener("debug-close-requested", () => {
+        void closeDebugWindow();
+      }),
+    [],
+  );
 
   return (
     <main data-tauri-drag-region className="drag-region h-full p-0">

@@ -99,7 +99,6 @@ if ($RequireRust) {
     Assert-CommandAvailable -Name "cargo.exe" -ProvisioningHint "Provision the stable x64 MSVC Rust toolchain manually." | Out-Null
     Assert-CommandAvailable -Name "rustc.exe" -ProvisioningHint "Provision the stable x64 MSVC Rust toolchain manually." | Out-Null
     Assert-CommandAvailable -Name "rustfmt.exe" -ProvisioningHint "Add rustfmt to the runner manually." | Out-Null
-    Assert-CommandAvailable -Name "cargo-clippy.exe" -ProvisioningHint "Add Clippy to the runner manually." | Out-Null
     Assert-CommandAvailable -Name "cl.exe" -ProvisioningHint "Provision Visual Studio 2022 C++ Build Tools manually." | Out-Null
     Assert-CommandAvailable -Name "link.exe" -ProvisioningHint "Provision the MSVC linker manually." | Out-Null
     Assert-CommandAvailable -Name "rc.exe" -ProvisioningHint "Provision the Windows SDK resource compiler manually." | Out-Null
@@ -110,7 +109,8 @@ if ($RequireRust) {
     $clippyVersion = Invoke-NativeText -Command { cargo clippy --version } -FailureMessage "Could not execute pre-provisioned Clippy."
 
     $expectedHost = [string]$policy.rust.host
-    if ($rustVersionDetails -notmatch "(?m)^host:\s+$([regex]::Escape($expectedHost))$") {
+    $hostLine = $rustVersionDetails -split "`r?`n" | Where-Object { $_ -match '^host:\s+' } | Select-Object -First 1
+    if (-not $hostLine -or $hostLine.Trim() -ne "host: $expectedHost") {
         throw "Rust host must be $expectedHost. Provision the correct toolchain manually."
     }
 

@@ -31,18 +31,36 @@ jobs:
         with:
           ref: audit/0028-product-surface-completeness
           fetch-depth: 0
+          show-progress: false
 
       - name: Apply deterministic audited patches
+        id: apply
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set -o pipefail
           if grep -q 'connectionButton.unknown' src/frontend/src/locales/en.json; then
-            echo '0028 audited fixes are already applied.'
+            echo '0028 audited fixes are already applied.' | tee patch-driver.log
             exit 0
           fi
-          python scripts/apply-0028-product-audit-fixes.py
+          python scripts/apply-0028-product-audit-fixes.py 2>&1 | tee patch-driver.log
+
+      - name: Upload patch diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: audit-0028-patch-diagnostics
+          path: patch-driver.log
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Fail when deterministic patching failed
+        if: steps.apply.outcome == 'failure'
+        shell: bash
+        run: exit 1
 
       - name: Commit audited fixes to the PR branch
+        if: steps.apply.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail

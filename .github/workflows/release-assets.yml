@@ -299,6 +299,11 @@ jobs:
 
           mapfile -t expected_entries < <(printf '%s\n' "${expected_assets[@]}" | LC_ALL=C sort)
           mapfile -t actual_entries < <(find "$distribution_dir" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+          actual_count="${#actual_entries[@]}"
+          if [[ "$actual_count" -ne "${#expected_entries[@]}" ]]; then
+            echo "Expected exactly ${#expected_entries[@]} release entries, found $actual_count" >&2
+            exit 1
+          fi
           if ! diff -u <(printf '%s\n' "${expected_entries[@]}") <(printf '%s\n' "${actual_entries[@]}"); then
             echo "Release distribution does not match the exact recursive allowlist" >&2
             exit 1

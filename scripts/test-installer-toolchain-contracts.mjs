@@ -97,11 +97,13 @@ requireAll(
   prerequisiteText,
   [
     "cacheFingerprintSha256",
+    "$manifestLines.Sort([System.StringComparer]::Ordinal)",
     "The Tauri NSIS cache fingerprint is not approved",
     "if ($fingerprint -ne $expectedFingerprint)",
   ],
-  "NSIS full-cache validation",
+  "NSIS deterministic full-cache validation",
 );
+rejectAll(prerequisiteText, ["Sort-Object FullName"], "locale-dependent NSIS fingerprint ordering");
 
 requireAll(
   localText,
@@ -144,4 +146,4 @@ if (config.bundle?.windows?.webviewInstallMode?.type !== "skip") {
   fail("installer config: WebView2 installation must be skipped");
 }
 
-console.log("Installer cache pinning, isolated packaging, local shell hygiene, exact release refs and publisher integrity contracts are valid.");
+console.log("Installer cache pinning, deterministic isolated packaging, local shell hygiene, exact release refs and publisher integrity contracts are valid.");

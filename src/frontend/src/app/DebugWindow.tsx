@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTranslation } from "react-i18next";
 import {
   closeWindow,
@@ -16,18 +15,8 @@ import {
 } from "@/lib/api";
 import type { DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
 
-const debugWindow = getCurrentWindow();
-
 async function closeDebugWindow(): Promise<void> {
-  try {
-    await closeWindow("debug");
-  } catch {
-    try {
-      await debugWindow.hide();
-    } catch {
-      // The native close handler remains available if both command paths fail.
-    }
-  }
+  await closeWindow("debug");
 }
 
 function formatSnapshot(snapshot: DebugRuntimeSnapshot): string {

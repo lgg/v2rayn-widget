@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete; exact-head Release Quality, merge and final evidence remain pending.
+Implementation and repository-controlled review complete. The permanent exact-head Windows gate and merge remain pending because the dedicated self-hosted runner has not accepted the queued job.
 
 ## Audited baseline
 
@@ -20,8 +20,9 @@ The review cross-checked:
 - all four local React surfaces and external Diagnostics;
 - custom and native window-close handlers;
 - unsaved-draft state transitions;
-- every frontend Tauri `invoke` string against `tauri::generate_handler!`;
+- every frontend Tauri `invoke` declaration against `tauri::generate_handler!` including duplicate detection;
 - configured and runtime native minimum sizes;
+- logical/physical units and active DPI scale factor;
 - multi-monitor work areas, negative coordinates, small/RDP screens and decorated frames;
 - EN/RU catalog parity;
 - v2rayN/Happ descriptors, frontend gating and adapter methods;
@@ -49,7 +50,18 @@ Correction:
 - derive the final outer target from current size, frame size, preferred/capped minimum and available work area;
 - clamp both final size and final position from that single geometry result.
 
-### 3. Auxiliary React windows bypassed safe close
+### 3. Preferred minimums mixed logical and physical units
+
+Tauri configuration and builder sizes are logical pixels, while monitor work areas and runtime outer/inner sizes are physical pixels. Treating `360×270`, `460×420` and `760×520` as physical values would restore undersized minimums on high-DPI displays.
+
+Correction:
+
+- read the current window scale factor;
+- convert preferred `LogicalSize` values to `PhysicalSize` before comparison and native minimum application;
+- add deterministic 150% and 200% DPI regressions;
+- contract-test consistency between Tauri declarations, Diagnostics builder and logical geometry constants.
+
+### 4. Auxiliary React windows bypassed safe close
 
 Settings, Debug and Happ Setup caught `close_window` rejection and called native `.hide()` directly. This contradicted the backend rule that Main must be restored before the source can disappear.
 
@@ -59,7 +71,7 @@ Correction:
 - `closeWindow` now returns a boolean success outcome instead of rejecting into unsafe fallback code;
 - backend failure dispatches a shared close-failure event and deliberately leaves the source visible.
 
-### 4. Settings failed discard lost dirty-state protection
+### 5. Settings failed discard lost dirty-state protection
 
 Settings cleared its dirty flag before knowing whether the safe backend close succeeded.
 
@@ -68,7 +80,7 @@ Correction:
 - discard confirmation and dirty state are cleared only after `closeWindow("settings")` returns `true`;
 - a failed close leaves both the draft and confirmation available.
 
-### 5. Happ failed discard dismissed its confirmation
+### 6. Happ failed discard dismissed its confirmation
 
 Happ Setup closed the confirmation before safe close completed.
 
@@ -77,7 +89,7 @@ Correction:
 - confirmation remains open after failure;
 - the current path/consent draft remains unchanged.
 
-### 6. Native Debug close had no user-visible failure path
+### 7. Native Debug close had no user-visible failure path
 
 The native title-bar close handler called the Rust close command directly and only logged an error.
 
@@ -87,7 +99,7 @@ Correction:
 - Debug React surface handles it through the same shared safe-close API as the custom close button;
 - the global accessible alert is therefore available for both close paths.
 
-### 7. Happ draft could be overwritten by language change
+### 8. Happ draft could be overwritten by language change
 
 Happ Setup initial load depended on the translated `t` function. A runtime language change could recreate that function, re-run the load effect and overwrite an unsaved setup draft with persisted backend values.
 
@@ -97,7 +109,7 @@ Correction:
 - translated load errors use `i18n.t` inside the effect;
 - a component regression changes language while a draft path is present and verifies only one settings load.
 
-### 8. Architecture CI documentation was stale
+### 9. Architecture CI documentation was stale
 
 `docs/architecture.md` still described ordinary dependency installation and an NSIS build in the PR quality workflow.
 
@@ -123,11 +135,13 @@ Rust/source contracts:
 
 - tiny work area caps native minima;
 - large work area restores preferred minima and clamps expanded geometry;
+- preferred logical minima are converted at 150% and 200% DPI;
 - decorated frame is included in restored outer size;
 - unconstrained fixed Settings/Happ windows do not receive invented minima;
-- every frontend invoke matches exactly one registered Tauri command set entry;
+- every frontend invoke matches exactly one non-duplicated registered Tauri command and vice versa;
 - auxiliary React source files contain no `.hide()`;
 - native Debug close forwarding remains registered;
+- preferred minimum declarations cannot silently drift;
 - existing local-surface and remote Diagnostics capability contracts remain.
 
 ## Capability re-verification
@@ -156,13 +170,15 @@ Unsupported and research-required operations still fail explicitly and are not r
 - Settings, Debug and Happ Setup surfaces;
 - frontend entry point, EN/RU catalogs and component tests;
 - Tauri native close forwarding;
-- work-area/minimum-size geometry helper and Rust tests;
-- product surface/IPC source contracts;
+- work-area/minimum-size/DPI geometry helper and Rust tests;
+- product surface/IPC/source drift contracts;
 - README, architecture, roadmap and task/report 0029.
 
 ## Verification status
 
-Pending on the final exact PR head:
+Release Quality #343 (`30111918962`) remained queued without starting any job step because the dedicated `[self-hosted, v2rayn-widget-ci]` runner did not accept it. This report update creates a new exact-head run; only the latest head/run may authorize merge.
+
+Still pending on the final exact PR head:
 
 - workflow contracts;
 - frontend dependency audit;
@@ -176,6 +192,8 @@ Pending on the final exact PR head:
 - portable release smoke build;
 - artifact and diagnostics upload;
 - cleanup and aggregate gate.
+
+No successful test/build claim is made from a queued job. Static review and deterministic contracts do not substitute for the required Windows execution gate.
 
 ## What cannot be fully automated
 
@@ -198,8 +216,7 @@ Completed. No private endpoint, subscription, local user directory, credential, 
 
 ## Next steps
 
-1. Finish documentation alignment and complete diff review.
-2. Open the product PR.
-3. Resolve every exact-head Release Quality finding.
-4. Squash-merge only after a fully green permanent gate.
-5. Record final run and merge evidence in task/report 0029 through a minimal follow-up PR if required.
+1. Run the permanent exact-head frontend and Rust jobs when the dedicated runner is available.
+2. Resolve every diagnostic finding, if any.
+3. Squash-merge only a fully green exact head.
+4. Record the final run and merge evidence in task/report 0029 through a minimal follow-up PR.

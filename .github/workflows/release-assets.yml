@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: [self-hosted, v2rayn-widget-ci]
     timeout-minutes: 90
     outputs:
       artifact_name: ${{ steps.metadata.outputs.artifact_name }}
@@ -41,19 +41,36 @@ jobs:
         with:
           ref: ${{ env.BUILD_REF }}
 
+      - name: Confirm self-hosted runner assignment
+        shell: pwsh
+        run: |
+          Write-Host "Runner name: ${{ runner.name }}"
+          Write-Host "Runner OS: ${{ runner.os }}"
+          Write-Host "Runner architecture: ${{ runner.arch }}"
+          if ("${{ runner.environment }}" -ne "self-hosted") {
+            throw "Windows release builds must run on the self-hosted v2rayn-widget-ci runner"
+          }
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22.17.1
           package-manager-cache: false
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Bootstrap project Rust toolchain
+        shell: pwsh
+        run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes -Bootstrap
+          rustup component add rustfmt clippy --toolchain stable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo --version
+          rustc --version
 
       - name: Resolve and verify release version
         id: metadata
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           $metadata = cargo metadata --manifest-path src/tauri/Cargo.toml --no-deps --format-version 1 | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) {
             throw "Could not read Cargo package metadata"
@@ -94,13 +111,14 @@ jobs:
         working-directory: src/frontend
         shell: pwsh
         run: |
-          npm config set registry "https://registry.npmjs.org/" --global
-          npm config set cache "$env:RUNNER_TEMP\npm-release-cache" --global
+          $env:NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+          $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-release-cache"
           npm cache clean --force
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm ci --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm audit --audit-level=high
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          exit $LASTEXITCODE
 
       - name: Build frontend distribution
         working-directory: src/frontend
@@ -113,6 +131,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo build --release --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path "target/release/v2rayn-widget.exe")) {
@@ -123,6 +142,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           $tauriCli = (Resolve-Path "../frontend/node_modules/.bin/tauri.cmd").Path
           & $tauriCli build --bundles nsis --config "tauri.installer.conf.json" --ci -- --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -175,6 +195,15 @@ jobs:
           path: dist/release/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Cleanup Windows release workspace
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "dist/release" -Recurse -Force -ErrorAction SilentlyContinue
 
   publish-release:
     if: needs.build-windows.outputs.release_tag != ''

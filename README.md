@@ -128,6 +128,9 @@ Planning and decisions:
 - `project-tracking/reports/0017-final-post-merge-audit-report.md`
 - `project-tracking/tasks/0018-full-project-screen-audit.md`
 - `project-tracking/reports/0018-full-project-screen-audit-report.md`
+- `project-tracking/tasks/0024-self-hosted-runner-and-full-audit.md`
+- `project-tracking/decisions/0024-self-hosted-ci-runner.md`
+- `project-tracking/reports/0024-self-hosted-runner-and-full-audit-report.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 
@@ -171,16 +174,22 @@ npm run build
 ./scripts/test-rust.ps1
 ```
 
+The permanent `Release Quality` workflow runs both jobs on the dedicated Windows self-hosted runner selected by `[self-hosted, v2rayn-widget-ci]`. It validates every non-draft same-repository PR revision on `opened`, `reopened`, `ready_for_review` and `synchronize`; PR-number concurrency cancels obsolete runs. The workflow logs and asserts the self-hosted environment, uses process-scoped npm configuration, uploads diagnostics/artifacts, and cleans generated dependency/build directories from the persistent workspace.
+
 The Release Quality workflow additionally:
 
+- verifies workflow runner, trigger, permission, cleanup and release-distribution contracts;
 - rejects high-severity frontend dependency advisories;
 - transfers the exact built frontend into the Tauri job;
 - checks formatting for the complete Rust workspace;
 - runs the Rust regression suite;
 - runs strict `cargo clippy --locked --all-targets -- -D warnings`;
+- runs strict release/no-default-features Clippy;
 - executes `cargo check --locked`;
 - performs a locked release build and verifies that the portable Windows executable is produced;
 - performs a clean locked Tauri/NSIS build and verifies that the Windows installer is produced.
+
+Windows release builds also use `v2rayn-widget-ci`. The only write-enabled release-publishing job remains on an isolated hosted Linux runner, does not check out project code, and uploads only checksum-verified allowlisted assets. See `docs/release-process.md`.
 
 ## Build portable executable
 

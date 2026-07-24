@@ -216,7 +216,10 @@ mod tests {
             width: 1920,
             height: 1040,
         }];
-        assert!(saved_position_has_visible_drag_area(&position(1500, 700), &monitors));
+        assert!(saved_position_has_visible_drag_area(
+            &position(1500, 700),
+            &monitors
+        ));
     }
 
     #[test]
@@ -227,7 +230,10 @@ mod tests {
             width: 1920,
             height: 1040,
         }];
-        assert!(!saved_position_has_visible_drag_area(&position(3000, 200), &monitors));
+        assert!(!saved_position_has_visible_drag_area(
+            &position(3000, 200),
+            &monitors
+        ));
     }
 
     #[test]
@@ -238,32 +244,76 @@ mod tests {
             width: 1920,
             height: 1040,
         }];
-        assert!(!saved_position_has_visible_drag_area(&position(1900, 1030), &monitors));
+        assert!(!saved_position_has_visible_drag_area(
+            &position(1900, 1030),
+            &monitors
+        ));
     }
 
     #[test]
     fn supports_monitors_with_negative_desktop_coordinates() {
         let monitors = [
-            ScreenRect { x: -1920, y: 0, width: 1920, height: 1040 },
-            ScreenRect { x: 0, y: 0, width: 1920, height: 1040 },
+            ScreenRect {
+                x: -1920,
+                y: 0,
+                width: 1920,
+                height: 1040,
+            },
+            ScreenRect {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1040,
+            },
         ];
-        assert!(saved_position_has_visible_drag_area(&position(-1200, 200), &monitors));
+        assert!(saved_position_has_visible_drag_area(
+            &position(-1200, 200),
+            &monitors
+        ));
     }
 
     #[test]
     fn rejects_zero_sized_corrupt_position() {
-        let monitors = [ScreenRect { x: 0, y: 0, width: 1920, height: 1040 }];
-        let corrupt = WindowPosition { x: 10, y: 10, width: 0, height: 0 };
+        let monitors = [ScreenRect {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1040,
+        }];
+        let corrupt = WindowPosition {
+            x: 10,
+            y: 10,
+            width: 0,
+            height: 0,
+        };
         assert!(!saved_position_has_visible_drag_area(&corrupt, &monitors));
     }
 
     #[test]
     fn shrinks_fixed_window_to_short_work_area_and_keeps_it_visible() {
         let fitted = fit_rect_to_work_area(
-            ScreenRect { x: 900, y: 100, width: 500, height: 720 },
-            ScreenRect { x: 0, y: 0, width: 1366, height: 700 },
+            ScreenRect {
+                x: 900,
+                y: 100,
+                width: 500,
+                height: 720,
+            },
+            ScreenRect {
+                x: 0,
+                y: 0,
+                width: 1366,
+                height: 700,
+            },
         );
-        assert_eq!(fitted, ScreenRect { x: 866, y: 0, width: 500, height: 700 });
+        assert_eq!(
+            fitted,
+            ScreenRect {
+                x: 866,
+                y: 0,
+                width: 500,
+                height: 700
+            }
+        );
     }
 
     #[test]
@@ -277,9 +327,27 @@ mod tests {
     #[test]
     fn clamps_window_inside_negative_coordinate_work_area() {
         let fitted = fit_rect_to_work_area(
-            ScreenRect { x: -2100, y: 900, width: 430, height: 760 },
-            ScreenRect { x: -1920, y: 0, width: 1920, height: 1040 },
+            ScreenRect {
+                x: -2100,
+                y: 900,
+                width: 430,
+                height: 760,
+            },
+            ScreenRect {
+                x: -1920,
+                y: 0,
+                width: 1920,
+                height: 1040,
+            },
         );
-        assert_eq!(fitted, ScreenRect { x: -1920, y: 280, width: 430, height: 760 });
+        assert_eq!(
+            fitted,
+            ScreenRect {
+                x: -1920,
+                y: 280,
+                width: 430,
+                height: 760
+            }
+        );
     }
 }

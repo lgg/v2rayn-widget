@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tracing::warn;
 
 use crate::{

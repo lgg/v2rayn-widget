@@ -7,6 +7,8 @@ const MIN_VISIBLE_HEIGHT: i64 = 48;
 const MAIN_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (360, 270);
 const DEBUG_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (460, 420);
 const DIAGNOSTICS_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (760, 520);
+const SETTINGS_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (430, 760);
+const HAPP_SETUP_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (500, 720);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScreenRect {
@@ -110,6 +112,7 @@ pub fn fit_window_to_current_work_area<R: Runtime>(
     );
     let minimum_inner_size =
         constrained_min_inner_size(window.label(), scale_factor, maximum_inner_size);
+    let fixed_inner_size = preferred_fixed_inner_size(window.label(), scale_factor);
 
     if let Some((minimum_width, minimum_height)) = minimum_inner_size {
         window
@@ -121,6 +124,7 @@ pub fn fit_window_to_current_work_area<R: Runtime>(
         (outer_size.width, outer_size.height),
         frame_size,
         minimum_inner_size,
+        fixed_inner_size,
         (work_area.width, work_area.height),
     );
     let fitted = fit_rect_to_work_area(
@@ -189,6 +193,15 @@ pub fn restore_or_center<R: Runtime>(
     }
 }
 
+fn logical_inner_size_to_physical(logical: (u32, u32), scale_factor: f64) -> (u32, u32) {
+    let physical: PhysicalSize<u32> = LogicalSize::new(
+        f64::from(logical.0),
+        f64::from(logical.1),
+    )
+    .to_physical(scale_factor);
+    (physical.width.max(1), physical.height.max(1))
+}
+
 fn preferred_min_inner_size(label: &str, scale_factor: f64) -> Option<(u32, u32)> {
     let logical = match label {
         "main" => Some(MAIN_MIN_INNER_LOGICAL_SIZE),
@@ -196,12 +209,16 @@ fn preferred_min_inner_size(label: &str, scale_factor: f64) -> Option<(u32, u32)
         "diagnostics" => Some(DIAGNOSTICS_MIN_INNER_LOGICAL_SIZE),
         _ => None,
     }?;
-    let physical: PhysicalSize<u32> = LogicalSize::new(
-        f64::from(logical.0),
-        f64::from(logical.1),
-    )
-    .to_physical(scale_factor);
-    Some((physical.width.max(1), physical.height.max(1)))
+    Some(logical_inner_size_to_physical(logical, scale_factor))
+}
+
+fn preferred_fixed_inner_size(label: &str, scale_factor: f64) -> Option<(u32, u32)> {
+    let logical = match label {
+        "settings" => Some(SETTINGS_PREFERRED_INNER_LOGICAL_SIZE),
+        "happ-setup" => Some(HAPP_SETUP_PREFERRED_INNER_LOGICAL_SIZE),
+        _ => None,
+    }?;
+    Some(logical_inner_size_to_physical(logical, scale_factor))
 }
 
 fn constrained_min_inner_size(
@@ -221,26 +238,32 @@ fn fitted_outer_size(
     current_outer: (u32, u32),
     frame_size: (u32, u32),
     minimum_inner: Option<(u32, u32)>,
+    fixed_inner: Option<(u32, u32)>,
     available_outer: (u32, u32),
 ) -> (u32, u32) {
-    let minimum_outer = minimum_inner
-        .map(|minimum| {
-            (
-                minimum.0.saturating_add(frame_size.0),
-                minimum.1.saturating_add(frame_size.1),
-            )
-        })
-        .unwrap_or((1, 1));
+    let target_outer = if let Some(fixed) = fixed_inner {
+        (
+            fixed.0.saturating_add(frame_size.0),
+            fixed.1.saturating_add(frame_size.1),
+        )
+    } else {
+        let minimum_outer = minimum_inner
+            .map(|minimum| {
+                (
+                    minimum.0.saturating_add(frame_size.0),
+                    minimum.1.saturating_add(frame_size.1),
+                )
+            })
+            .unwrap_or((1, 1));
+        (
+            current_outer.0.max(minimum_outer.0),
+            current_outer.1.max(minimum_outer.1),
+        )
+    };
 
     (
-        current_outer
-            .0
-            .max(minimum_outer.0)
-            .min(available_outer.0.max(1)),
-        current_outer
-            .1
-            .max(minimum_outer.1)
-            .min(available_outer.1.max(1)),
+        target_outer.0.min(available_outer.0.max(1)),
+        target_outer.1.min(available_outer.1.max(1)),
     )
 }
 
@@ -422,6 +445,18 @@ mod tests {
     }
 
     #[test]
+    fn scales_fixed_window_preferences_from_logical_to_physical_pixels() {
+        assert_eq!(
+            preferred_fixed_inner_size("settings", 1.5),
+            Some((645, 1140)),
+        );
+        assert_eq!(
+            preferred_fixed_inner_size("happ-setup", 2.0),
+            Some((1000, 1440)),
+        );
+    }
+
+    #[test]
     fn caps_native_minimum_to_the_available_inner_work_area() {
         assert_eq!(
             constrained_min_inner_size("debug", 1.5, (500, 400)),
@@ -437,7 +472,13 @@ mod tests {
     fn restores_preferred_minimum_and_clamps_the_expanded_outer_rect() {
         let minimum = constrained_min_inner_size("debug", 1.0, (1920, 1040));
         assert_eq!(minimum, Some(DEBUG_MIN_INNER_LOGICAL_SIZE));
-        let target_size = fitted_outer_size((320, 240), (0, 0), minimum, (1920, 1040));
+        let target_size = fitted_outer_size(
+            (320, 240),
+            (0, 0),
+            minimum,
+            None,
+            (1920, 1040),
+        );
         assert_eq!(target_size, DEBUG_MIN_INNER_LOGICAL_SIZE);
         assert_eq!(
             fit_rect_to_work_area(
@@ -470,9 +511,24 @@ mod tests {
                 (700, 480),
                 (16, 39),
                 preferred_min_inner_size("diagnostics", 1.0),
+                None,
                 (1920, 1040),
             ),
             (776, 559),
+        );
+    }
+
+    #[test]
+    fn restores_fixed_window_size_after_a_constrained_work_area() {
+        let preferred = preferred_fixed_inner_size("settings", 1.0);
+        assert_eq!(preferred, Some(SETTINGS_PREFERRED_INNER_LOGICAL_SIZE));
+        assert_eq!(
+            fitted_outer_size((300, 200), (0, 0), None, preferred, (1920, 1040)),
+            SETTINGS_PREFERRED_INNER_LOGICAL_SIZE,
+        );
+        assert_eq!(
+            fitted_outer_size((430, 760), (0, 0), None, preferred, (400, 600)),
+            (400, 600),
         );
     }
 

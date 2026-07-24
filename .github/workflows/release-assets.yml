@@ -130,13 +130,28 @@ jobs:
             throw "Portable release executable was not produced"
           }
 
-      - name: Build NSIS installer without tool provisioning
+      - name: Build and inspect NSIS installer without tool provisioning
         working-directory: src/tauri
         shell: pwsh
         run: |
+          $sourceFingerprint = Join-Path $env:RUNNER_TEMP "nsis-source.sha256"
           $beforeFingerprint = Join-Path $env:RUNNER_TEMP "nsis-before.sha256"
           $afterFingerprint = Join-Path $env:RUNNER_TEMP "nsis-after.sha256"
-          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireRust -RequireTauriCli -RequireNsis -WriteNsisFingerprint $beforeFingerprint
+          $sourceNsis = Join-Path $env:LOCALAPPDATA "tauri\NSIS"
+          $isolatedLocalAppData = Join-Path $env:RUNNER_TEMP "tauri-release-localappdata"
+          $isolatedTauriRoot = Join-Path $isolatedLocalAppData "tauri"
+
+          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireRust -RequireTauriCli -RequireNsis -WriteNsisFingerprint $sourceFingerprint
+
+          Remove-Item -LiteralPath $isolatedLocalAppData -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $isolatedTauriRoot | Out-Null
+          Copy-Item -LiteralPath $sourceNsis -Destination $isolatedTauriRoot -Recurse -Force
+          $env:LOCALAPPDATA = $isolatedLocalAppData
+
+          & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireNsis -WriteNsisFingerprint $beforeFingerprint
+          if ((Get-Content -LiteralPath $sourceFingerprint -Raw) -ne (Get-Content -LiteralPath $beforeFingerprint -Raw)) {
+            throw "The isolated NSIS cache copy does not match the validated source cache."
+          }
 
           $env:CARGO_NET_OFFLINE = "true"
           $tauriCli = (Resolve-Path "../frontend/node_modules/.bin/tauri.cmd").Path
@@ -145,7 +160,19 @@ jobs:
 
           & "$env:GITHUB_WORKSPACE/scripts/assert-ci-prerequisites.ps1" -RequireNsis -WriteNsisFingerprint $afterFingerprint
           if ((Get-Content -LiteralPath $beforeFingerprint -Raw) -ne (Get-Content -LiteralPath $afterFingerprint -Raw)) {
-            throw "The Tauri NSIS cache changed during packaging. Release jobs must not download, repair or mutate bundler tools."
+            throw "The isolated Tauri NSIS cache changed during packaging. Release jobs must not download, repair or mutate bundler tools."
+          }
+
+          $installerScripts = @(Get-ChildItem "target/release/nsis" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
+          if ($installerScripts.Count -ne 1) {
+            throw "Expected exactly one generated installer.nsi, found $($installerScripts.Count)."
+          }
+          $installerScriptText = Get-Content -LiteralPath $installerScripts[0].FullName -Raw
+          if ($installerScriptText -notmatch '(?mi)^\s*RequestExecutionLevel\s+user\s*$') {
+            throw "Generated NSIS script is not explicitly current-user only."
+          }
+          if ($installerScriptText -match '(?i)MicrosoftEdgeWebview2Setup\.exe|WebView2Bootstrapper\.exe') {
+            throw "Generated NSIS script contains a WebView2 installer payload."
           }
 
           $installers = @(Get-ChildItem "target/release/bundle/nsis/*.exe" -File -ErrorAction SilentlyContinue)
@@ -209,6 +236,8 @@ jobs:
           Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "dist/release" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item (Join-Path $env:RUNNER_TEMP "npm-release-cache") -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "tauri-release-localappdata") -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "nsis-source.sha256") -Force -ErrorAction SilentlyContinue
           Remove-Item (Join-Path $env:RUNNER_TEMP "nsis-before.sha256") -Force -ErrorAction SilentlyContinue
           Remove-Item (Join-Path $env:RUNNER_TEMP "nsis-after.sha256") -Force -ErrorAction SilentlyContinue
 

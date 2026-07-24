@@ -210,7 +210,7 @@ export function App(): JSX.Element {
   };
 
   return (
-    <main data-tauri-drag-region className="drag-region h-full overflow-hidden p-0">
+    <main data-tauri-drag-region className="drag-region h-full overflow-y-auto p-0">
       <section
         ref={panelRef}
         className="glass relative mx-auto w-full max-w-sm rounded-3xl border border-white/40 p-4 dark:border-slate-700/70"

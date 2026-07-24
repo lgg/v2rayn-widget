@@ -166,6 +166,14 @@ if ($RequireNsis) {
     }
 
     $fingerprint = Get-NsisCacheFingerprint -Root $nsisRoot
+    $expectedFingerprint = ([string]$policy.nsis.cacheFingerprintSha256).ToLowerInvariant()
+    if ($expectedFingerprint -notmatch '^[0-9a-f]{64}$') {
+        throw "The pinned NSIS cache fingerprint in ci-toolchain-policy.json is invalid."
+    }
+    if ($fingerprint -ne $expectedFingerprint) {
+        throw "The Tauri NSIS cache fingerprint is not approved. Expected $expectedFingerprint, found $fingerprint. Replace the complete cache manually; validation will not repair or download it."
+    }
+
     if ($WriteNsisFingerprint) {
         $fingerprintPath = [System.IO.Path]::GetFullPath($WriteNsisFingerprint)
         $fingerprintDirectory = Split-Path -Parent $fingerprintPath

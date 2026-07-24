@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and installer packaging audit complete; final exact-head quality verification pending.
+Completed and squash-merged through PR #14.
 
 ## Scope
 
@@ -24,7 +24,7 @@ The previous prerequisite script accepted an arbitrary `makensis.exe`. The pinne
 Correction:
 
 - added a centralized policy matching the pinned Tauri CLI;
-- validate the exact cache, every required file, compiler version and plugin SHA-1;
+- validate the cache, every required file, compiler version and plugin SHA-1;
 - fingerprint the complete cache before and after packaging;
 - removed PATH and recursive compiler discovery.
 
@@ -95,7 +95,7 @@ Correction:
 
 Correction:
 
-- contracts now validate workflows, prerequisite and Rust scripts, local installer build, installer JSON, centralized policy and npm lockfile;
+- contracts validate workflows, prerequisite and Rust scripts, local installer build, installer JSON, centralized policy and npm lockfile;
 - system installers, elevation, download helpers, setup actions, implicit NSIS packaging in PR quality and global npm mutation remain forbidden;
 - contract stdout/stderr is uploaded even when a contract fails;
 - the one-off packaging audit preserved full Tauri output, generated installer script and release tree for review.
@@ -106,7 +106,7 @@ Audit Release Packaging run #10 (`30069117962`) completed successfully on the de
 
 The run successfully:
 
-- validated pre-provisioned Node.js, Rust/MSVC and the exact source NSIS cache;
+- validated pre-provisioned Node.js, Rust/MSVC and the source NSIS cache;
 - restored locked frontend dependencies with lifecycle scripts disabled;
 - passed npm audit, frontend tests and frontend build;
 - validated the locked Tauri CLI;
@@ -120,11 +120,17 @@ The run successfully:
 
 The generated setup executable was never launched.
 
-A final exact-head `Release Quality` run is still required after removal of the one-off audit workflow and final documentation changes.
+Final exact-head Release Quality run #297 (`30069434337`) completed successfully on SHA `7aa1621c9d14289039c857e57850d2d3d13fbefa`. Both frontend and Rust jobs passed every required contract, prerequisite, audit, test, formatting, Clippy, locked check, portable build, artifact and cleanup step.
+
+PR #14 was squash-merged into `main` as commit `35d5ed743cc0789d438306d069ada6b47d18873f` on 2026-07-24.
+
+## Follow-up
+
+Continuation audit 0027 found and addresses additional post-merge hardening gaps that were outside the completed 0026 acceptance evidence: complete-cache fingerprint approval, the documented local installer Rust-home selection, exact release-tag qualification and stricter publisher artifact/checksum validation.
 
 ## Residual boundaries
 
-- The runner toolchain and exact Tauri NSIS cache must be provisioned manually before jobs run.
+- The runner toolchain and Tauri NSIS cache must be provisioned manually before jobs run.
 - WebView2 must already exist on the target Windows system because the installer deliberately skips dependency installation.
 - Windows binaries remain unsigned until a code-signing certificate or signing service is configured.
 - The repository cannot identify which executable displayed the historical UAC dialog; it can only remove and enforce against repository-controlled provisioning and elevation paths.

@@ -20,6 +20,8 @@
 6. Неофициальный UI Automation path является version-sensitive и требует явного opt-in.
 7. Публичный репозиторий не содержит реальных subscription URLs, proxy endpoints, локальных путей и runtime logs.
 8. Профили/серверы и подписки являются разными сущностями.
+9. Auxiliary window не скрывается, пока Main не восстановлен; ошибка закрытия остаётся видимой пользователю.
+10. Native minimum size не может делать окно недоступным на маленьком или RDP work area.
 
 ## Capability Model
 
@@ -177,22 +179,30 @@ Onboarding checklist:
 
 ## Testing Strategy and Result
 
-Automated Windows quality pipeline covers:
+Permanent validation-only Windows quality pipeline covers:
 
+- workflow/runner/no-provisioning/action-pinning/credential/cleanup contracts;
+- dependency restoration with lifecycle scripts disabled;
+- frontend dependency audit;
 - frontend unit/component tests;
 - TypeScript/Vite production build;
-- formatting of changed Rust sources;
-- Rust unit/regression tests;
-- `cargo check --locked` with the built frontend distribution;
-- adapter registry, capability and settings migration tests;
+- complete Rust workspace formatting;
+- Rust unit/integration tests;
+- strict all-targets Clippy;
+- strict release/no-default-features Clippy;
+- `cargo check --locked` with the exact built frontend distribution;
+- portable release smoke build, artifacts, diagnostics and cleanup;
+- adapter registry, capability, frontend invoke/handler parity and settings migration tests;
 - pure Happ UI action/transport classifier tests;
-- existing v2rayN resolver/config/log regression tests.
+- existing v2rayN resolver/config/log regression tests;
+- safe-close, draft-lifecycle and small-work-area geometry contracts.
 
 Runtime validation support:
 
 - v2rayN keeps its existing Debug Tools window;
 - Happ provides a dedicated probe with process, PID, executable, window, inferred state, transport, action label, confidence score and UI tree;
-- experimental control fails closed if the current installed Happ UI cannot be identified safely.
+- experimental control fails closed if the current installed Happ UI cannot be identified safely;
+- auxiliary close failures fail visibly while preserving access and drafts.
 
 ## Release Strategy
 
@@ -213,9 +223,12 @@ Runtime validation support:
 | Process running is mistaken for VPN connected | High | Never infer Connected from process alone |
 | Settings migration breaks existing users | High | Serde defaults, v2rayN default and migration tests |
 | Subscription and profile concepts are conflated | High | Separate future subscription abstraction and explicit capability states |
+| RDP/small monitor constraints hide a window | High | Work-area fitting caps native minima and restores them before final geometry clamp |
+| Auxiliary close fails after source hide | High | Main restoration precedes hide; frontend direct hide is contract-forbidden and failure is visible |
 
 ## Related Work
 
 - Task 0011 — subscription-mode profile switch validation matrix.
 - Task 0013 — adapter architecture and Happ baseline/control MVP.
 - Decision 0013 — multi-client adapter architecture.
+- Task/report 0029 — second independent safe-close and small-work-area audit.

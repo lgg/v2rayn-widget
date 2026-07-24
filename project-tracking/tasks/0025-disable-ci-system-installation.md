@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress.
+Completed; PR #13 prepared for squash merge.
 
 ## Context
 
@@ -27,5 +27,20 @@ The dedicated interactive Windows runner displayed UAC prompts while the reposit
 - [x] NSIS is checked before release packaging and is never installed by the workflow.
 - [x] npm uses `ci --ignore-scripts` and process-scoped cache/registry settings.
 - [x] NSIS smoke packaging is removed from the PR quality gate.
-- [ ] Final quality run passes without UAC or provisioning commands.
-- [ ] PR is merged into `main`.
+- [x] Release Quality run #266 passed without provisioning steps.
+- [x] Workflow contracts reject known installer, elevation and toolchain setup commands.
+- [x] README, AGENTS, release documentation, decision and report reflect validation-only CI.
+- [x] PR #13 contains the complete correction and is ready for squash merge after the exact-head gate.
+
+## Verification evidence
+
+- Release Quality run #266: frontend and Rust/Windows jobs completed successfully on `v2rayn-widget-ci`.
+- Pre-provisioned Node.js and Rust/MSVC/rustfmt/Clippy checks passed.
+- Frontend audit/tests/build, Rust formatting/tests/Clippy/check and portable release build passed.
+- The run contained no NSIS step and no setup/toolchain installation step.
+
+## Related files
+
+- Decision: `project-tracking/decisions/0025-validation-only-self-hosted-ci.md`.
+- Report: `project-tracking/reports/0025-disable-ci-system-installation-report.md`.
+- Pull request: #13.

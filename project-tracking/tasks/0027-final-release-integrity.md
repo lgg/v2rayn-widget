@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and dedicated runtime audit complete; final permanent exact-head quality gate pending.
+Completed and squash-merged through PR #15.
 
 ## Context
 
@@ -46,5 +46,5 @@ PR #14 completed the post-UAC validation-only hardening, but its final tracking 
 - [x] Task/report 0026 status is corrected.
 - [x] Audit 0027 Installer Integrity run #7 (`30072641292`) passed both the real Windows installer build and hosted-Linux publisher fixtures on SHA `cf06ebd1f2c39f4e63d32d31f8f1d58ffdd0e2ac`.
 - [x] Temporary audit workflow was removed after successful verification.
-- [ ] Final exact-head Release Quality passes on the clean permanent workflow set.
-- [ ] PR is squash-merged into `main`.
+- [x] Final exact-head Release Quality run #309 (`30073241976`) passed on SHA `76efa4d29e518fe03b27a799c1e1e06fc24a666d`.
+- [x] PR #15 was squash-merged into `main` as `c1686aa6e8374d348ef9c097671296c181704e06` on 2026-07-24.

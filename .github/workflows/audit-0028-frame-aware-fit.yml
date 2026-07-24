@@ -1,0 +1,128 @@
+name: Audit 0028 Frame Aware Fit
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audit-0028-frame-fit-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply-frame-aware-fit:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'audit/0028-product-surface-completeness'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: audit/0028-product-surface-completeness
+          fetch-depth: 0
+          show-progress: false
+
+      - name: Apply exact frame-aware fitting patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/tauri/src/utils/window_position.rs')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''    let size = window
+                  .outer_size()
+                  .map_err(|error| format!("Could not read window size: {error}"))?;
+              let fitted = fit_rect_to_work_area(
+          '''
+          new = '''    let size = window
+                  .outer_size()
+                  .map_err(|error| format!("Could not read window size: {error}"))?;
+              let inner_size = window
+                  .inner_size()
+                  .map_err(|error| format!("Could not read window client size: {error}"))?;
+              let fitted = fit_rect_to_work_area(
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'outer/inner size insertion match count: {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old = '''    if size_changed {
+                  window
+                      .set_size(PhysicalSize::new(fitted.width, fitted.height))
+                      .map_err(|error| format!("Could not fit window size to work area: {error}"))?;
+              }
+          '''
+          new = '''    if size_changed {
+                  let (target_inner_width, target_inner_height) = inner_size_for_outer_target(
+                      (size.width, size.height),
+                      (inner_size.width, inner_size.height),
+                      (fitted.width, fitted.height),
+                  );
+                  window
+                      .set_size(PhysicalSize::new(target_inner_width, target_inner_height))
+                      .map_err(|error| format!("Could not fit window size to work area: {error}"))?;
+              }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'set_size replacement match count: {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          marker = '''fn clamp_axis(position: i32, size: u32, area_start: i32, area_size: u32) -> i32 {
+          '''
+          helper = '''fn inner_size_for_outer_target(
+              current_outer: (u32, u32),
+              current_inner: (u32, u32),
+              target_outer: (u32, u32),
+          ) -> (u32, u32) {
+              let frame_width = current_outer.0.saturating_sub(current_inner.0);
+              let frame_height = current_outer.1.saturating_sub(current_inner.1);
+              (
+                  target_outer.0.saturating_sub(frame_width).max(1),
+                  target_outer.1.saturating_sub(frame_height).max(1),
+              )
+          }
+
+          fn clamp_axis(position: i32, size: u32, area_start: i32, area_size: u32) -> i32 {
+          '''
+          if text.count(marker) != 1:
+              raise SystemExit(f'helper insertion match count: {text.count(marker)}')
+          text = text.replace(marker, helper, 1)
+
+          test_marker = '''    #[test]
+              fn clamps_window_inside_negative_coordinate_work_area() {
+          '''
+          test = '''    #[test]
+              fn converts_an_outer_target_to_the_matching_decorated_inner_size() {
+                  assert_eq!(
+                      inner_size_for_outer_target((1100, 780), (1084, 741), (900, 700)),
+                      (884, 661),
+                  );
+              }
+
+              #[test]
+              fn clamps_window_inside_negative_coordinate_work_area() {
+          '''
+          if text.count(test_marker) != 1:
+              raise SystemExit(f'frame test insertion match count: {text.count(test_marker)}')
+          text = text.replace(test_marker, test, 1)
+          path.write_text(text, encoding='utf-8', newline='\n')
+          PY
+
+      - name: Commit exact fix to PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'lgg'
+          git config user.email 'lgg@users.noreply.github.com'
+          git add src/tauri/src/utils/window_position.rs
+          git commit -m '0028: account for decorated window frames when fitting'
+          git push origin HEAD:audit/0028-product-surface-completeness

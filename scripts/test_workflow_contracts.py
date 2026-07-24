@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 QUALITY_WORKFLOW = ROOT / ".github" / "workflows" / "windows-quality.yml"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release-assets.yml"
+SELF_HOSTED_RUNNER = "runs-on: [self-hosted, v2rayn-widget-ci]"
 
 
 def fail(message: str) -> None:
@@ -72,7 +73,7 @@ def verify_quality_workflow() -> None:
 
     pull_request_block = block(on_block, "pull_request", 2)
     types = list_items(block(pull_request_block, "types", 4), 6)
-    expected_types = ["opened", "reopened", "ready_for_review"]
+    expected_types = ["opened", "reopened", "ready_for_review", "synchronize"]
     if types != expected_types:
         fail(f"Release Quality pull_request types must be {expected_types}, got {types}")
 
@@ -90,7 +91,14 @@ def verify_quality_workflow() -> None:
     require_text(text, "cancel-in-progress: true", "PR concurrency")
     reject_text(text, "pull_request_target:", "Release Quality")
     reject_text("\n".join(on_block), "push:", "Release Quality events")
-    reject_text("\n".join(pull_request_block), "synchronize", "Release Quality PR events")
+
+    if text.count(SELF_HOSTED_RUNNER) != 2:
+        fail("Both Release Quality jobs must target [self-hosted, v2rayn-widget-ci]")
+    reject_text(text, "runs-on: ubuntu-latest", "Release Quality runner assignment")
+    reject_text(text, "runs-on: windows-latest", "Release Quality runner assignment")
+    require_text(text, "runner.environment", "self-hosted runtime assertion")
+    require_text(text, "Cleanup frontend workspace", "self-hosted workspace cleanup")
+    require_text(text, "Cleanup Rust and installer workspace", "self-hosted workspace cleanup")
 
 
 def verify_release_workflow() -> None:
@@ -113,7 +121,12 @@ def verify_release_workflow() -> None:
     reject_text(text, "pull_request_target:", "Release assets")
     reject_text("\n".join(on_block), "pull_request:", "Release asset events")
     reject_text("\n".join(on_block), "push:", "Release asset events")
-    require_text(text, "runs-on: windows-latest", "Windows distribution build")
+    require_text(build_block, SELF_HOSTED_RUNNER, "Windows distribution build")
+    reject_text(build_block, "runs-on: windows-latest", "Windows distribution build")
+    require_text(build_block, "runner.environment", "self-hosted release runtime assertion")
+    require_text(build_block, "Cleanup Windows release workspace", "self-hosted release cleanup")
+    require_text(publish_block, "runs-on: ubuntu-latest", "isolated release publisher")
+    reject_text(publish_block, SELF_HOSTED_RUNNER, "isolated release publisher")
     require_text(text, "github.event.release.tag_name || inputs.release_tag || inputs.ref", "exact release ref")
     require_text(text, "cargo build --release --locked", "portable build")
     require_text(text, "--bundles nsis", "installer build")
@@ -140,4 +153,4 @@ def verify_release_workflow() -> None:
 if __name__ == "__main__":
     verify_quality_workflow()
     verify_release_workflow()
-    print("Workflow trigger, security, and distribution contracts are valid.")
+    print("Workflow trigger, runner, security, cleanup, and distribution contracts are valid.")

@@ -17,11 +17,11 @@ The repository cannot observe the Windows consent dialog itself, but the workflo
 
 Added `scripts/assert-ci-prerequisites.ps1` to check already-installed:
 
-- Node.js 22+ and npm;
+- Node.js and npm;
 - stable x64 MSVC Rust, cargo and rustc;
 - rustfmt and Clippy;
 - Visual Studio x64 C++ tools;
-- NSIS `makensis.exe` for trusted release packaging.
+- NSIS tooling for trusted release packaging.
 
 Missing prerequisites stop the job with a manual-provisioning message. The script contains no installer or elevation behavior.
 
@@ -48,7 +48,7 @@ The workflow now:
 
 ### Trusted release workflow
 
-The release build also contains no setup or toolchain installation actions. It verifies pre-provisioned Node/Rust/MSVC/NSIS first. NSIS packaging is allowed only after an existing `makensis.exe` is found. The generated setup executable is staged and uploaded but never launched.
+The release build contains no setup or toolchain installation actions. It verifies pre-provisioned Node/Rust/MSVC/NSIS first. The generated setup executable is staged and uploaded but never launched.
 
 ### Contract enforcement
 
@@ -81,6 +81,16 @@ Successful steps included:
 
 No NSIS/setup step existed in the run. No workflow step installed or updated Node.js, Rust, Rust components, MSVC or system packages.
 
+## Follow-up correction
+
+The initial implementation treated discovery of an existing `makensis.exe` as sufficient proof that a later Tauri build would not provision tooling. The post-merge audit in task 0026 showed that this was incomplete: the pinned Tauri bundler uses its exact `%LOCALAPPDATA%\tauri\NSIS` cache and may download or repair files when that cache is incomplete or its utility plugin hash differs.
+
+Task 0026 supersedes that part of this report by validating the exact cache, pinned required files and plugin hash, and by comparing a complete cache fingerprint before and after packaging. See:
+
+- `project-tracking/tasks/0026-post-uac-fix-hardening.md`;
+- `project-tracking/decisions/0026-validation-only-release-toolchain.md`;
+- `project-tracking/reports/0026-post-uac-fix-hardening-report.md`.
+
 ## Residual boundary
 
-The repository cannot inspect a Windows UAC dialog or prove which executable displayed a historical prompt. It now removes and contractually prohibits every identified repository-controlled provisioning/elevation path. If a prompt occurs after this change is merged, its executable and publisher should be captured because the source would be outside the checked workflow, such as runner host management or another process on the workstation.
+The repository cannot inspect a Windows UAC dialog or prove which executable displayed a historical prompt. It removes and contractually prohibits every identified repository-controlled provisioning/elevation path. If a prompt occurs after these changes, its executable and publisher should be captured because the source would be outside the checked workflow, such as runner host management or another process on the workstation.

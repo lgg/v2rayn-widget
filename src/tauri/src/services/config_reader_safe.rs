@@ -30,11 +30,8 @@ const PROFILE_ID_SELECTOR_KEYS: &[&str] = &[
     "selectedServerId",
 ];
 
-const PROFILE_NAME_SELECTOR_KEYS: &[&str] = &[
-    "activeProfileName",
-    "activeServerName",
-    "currentProfile",
-];
+const PROFILE_NAME_SELECTOR_KEYS: &[&str] =
+    &["activeProfileName", "activeServerName", "currentProfile"];
 
 pub fn read_config(base_path: &Path) -> Result<ConfigSnapshot> {
     config_reader_legacy::read_config(base_path)
@@ -199,12 +196,14 @@ mod tests {
         );
 
         set_active_profile(&base_path, "second").expect("set profile");
-        let updated: Value = serde_json::from_str(
-            &fs::read_to_string(&config_path).expect("read updated config"),
-        )
-        .expect("parse updated config");
+        let updated: Value =
+            serde_json::from_str(&fs::read_to_string(&config_path).expect("read updated config"))
+                .expect("parse updated config");
 
-        assert_eq!(updated.get("IndexId").and_then(Value::as_str), Some("second"));
+        assert_eq!(
+            updated.get("IndexId").and_then(Value::as_str),
+            Some("second")
+        );
         assert_eq!(
             updated.get("activeProfileName").and_then(Value::as_str),
             Some("Second profile")
@@ -267,8 +266,7 @@ mod tests {
     fn selector_inside_profile_records_is_not_treated_as_application_state() {
         let json = profiles_without_selector();
         let original = json.to_string();
-        let (base_path, config_path) =
-            test_config("v2rayn-widget-profile-record-selector", json);
+        let (base_path, config_path) = test_config("v2rayn-widget-profile-record-selector", json);
 
         assert!(set_active_profile(&base_path, "second").is_err());
         assert_eq!(

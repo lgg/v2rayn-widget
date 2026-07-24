@@ -10,6 +10,7 @@
   },
   "nsis": {
     "version": "3.11",
+    "cacheFingerprintSha256": "e1cbd35b909809366db4f46dbfbb4da5f4c181194d00fa064f27240b091b1451",
     "tauriUtilsPluginSha1": "75197FEE3C6A814FE035788D1C34EAD39349B860",
     "requiredFiles": [
       "makensis.exe",

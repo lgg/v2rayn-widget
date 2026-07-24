@@ -16,6 +16,23 @@ function Invoke-CheckedCommand {
     }
 }
 
+function Restore-EnvironmentSnapshot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Snapshot
+    )
+
+    foreach ($name in @(Get-ChildItem Env: | ForEach-Object Name)) {
+        if (-not $Snapshot.ContainsKey($name)) {
+            Remove-Item -Path "Env:$name" -ErrorAction SilentlyContinue
+        }
+    }
+
+    foreach ($entry in $Snapshot.GetEnumerator()) {
+        Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value
+    }
+}
+
 if (-not $env:TEMP -or -not $env:LOCALAPPDATA) {
     throw "TEMP and LOCALAPPDATA must be available for isolated installer tooling."
 }
@@ -24,6 +41,9 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $sourceFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-source.sha256.$PID"
 $beforeFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-before.sha256.$PID"
 $afterFingerprint = Join-Path $env:TEMP "v2rayn-widget-nsis-after.sha256.$PID"
+$originalLocation = Get-Location
+$originalEnvironment = @{}
+Get-ChildItem Env: | ForEach-Object { $originalEnvironment[$_.Name] = $_.Value }
 $originalLocalAppData = $env:LOCALAPPDATA
 $sourceNsis = Join-Path $originalLocalAppData "tauri\NSIS"
 $isolatedLocalAppData = Join-Path $env:TEMP "v2rayn-widget-tauri-localappdata-$PID"
@@ -53,8 +73,7 @@ try {
         npm test
     }
 
-    & (Join-Path $PSScriptRoot "assert-ci-prerequisites.ps1") -RequireTauriCli
-    . (Join-Path $PSScriptRoot "rust-env.ps1")
+    & (Join-Path $PSScriptRoot "assert-ci-prerequisites.ps1") -RequireRust -RequireTauriCli
 
     $tauriCli = Join-Path (Join-Path $repoRoot "src\frontend") "node_modules\.bin\tauri.cmd"
     $toolchainCargo = Join-Path $env:RUSTUP_HOME "toolchains\stable-x86_64-pc-windows-msvc\bin\cargo.exe"
@@ -99,9 +118,10 @@ try {
     Write-Output "INSTALLER_EXE=$($installers[0].FullName)"
 }
 finally {
-    $env:LOCALAPPDATA = $originalLocalAppData
+    Set-Location -LiteralPath $originalLocation.Path
     Remove-Item -LiteralPath $isolatedLocalAppData -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $sourceFingerprint -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $beforeFingerprint -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $afterFingerprint -Force -ErrorAction SilentlyContinue
+    Restore-EnvironmentSnapshot -Snapshot $originalEnvironment
 }

@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and installer packaging audit complete. Final exact-head quality gate and squash merge remain.
+Completed and squash-merged through PR #14.
 
 ## Context
 
@@ -49,6 +49,6 @@ PR #13 removed explicit CI provisioning after UAC prompts appeared on the dedica
 - [x] Temporary npm caches are cleaned.
 - [x] Installer and distribution output counts are deterministic.
 - [x] Contract tests cover the new boundary.
-- [x] Release packaging path was executed successfully in Audit Release Packaging run #10 (`30069117962`) on SHA `7e1efaf97a343300e702f4d0bb8ee2516a7afb0a`.
-- [ ] Full quality run passes on the final exact head SHA.
-- [ ] PR is squash-merged into `main`.
+- [x] Release packaging path executed successfully in Audit Release Packaging run #10 (`30069117962`) on SHA `7e1efaf97a343300e702f4d0bb8ee2516a7afb0a`.
+- [x] Final exact-head Release Quality run #297 (`30069434337`) passed on SHA `7aa1621c9d14289039c857e57850d2d3d13fbefa`.
+- [x] PR #14 was squash-merged into `main` as `35d5ed743cc0789d438306d069ada6b47d18873f`.

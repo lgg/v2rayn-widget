@@ -2,13 +2,14 @@
 
 ## Status
 
-Implementation in progress; runtime verification pending.
+Implementation and dedicated runtime verification complete; final permanent exact-head quality gate pending.
 
 ## Scope
 
 Continued from merged PR #14 and re-audited:
 
 - complete NSIS toolchain authenticity;
+- deterministic fingerprint generation;
 - documented local installer execution;
 - caller environment and working-directory hygiene;
 - release tag resolution and commit identity;
@@ -16,7 +17,7 @@ Continued from merged PR #14 and re-audited:
 - permanent contract coverage;
 - completion state of project-tracking records.
 
-## Confirmed findings
+## Confirmed findings and corrections
 
 ### Complete NSIS cache was not cryptographically approved
 
@@ -24,9 +25,26 @@ The existing implementation computed a full cache fingerprint but only compared 
 
 Correction:
 
-- pin the complete audited cache fingerprint `28852b9b39fd712258bd098f6d875b4d8053d91e704f5729f0b1e5b139971388`;
+- pin the complete audited cache fingerprint;
 - reject any source or isolated cache with a different fingerprint;
 - retain required-file, compiler-version and plugin-hash validation as independent checks.
+
+### Fingerprint ordering depended on machine collation
+
+The original full-cache fingerprint used `Sort-Object FullName`. Its order could depend on current culture and absolute path rules, making a cryptographic policy potentially differ across otherwise identical machines.
+
+Correction:
+
+- normalize every cache file to a forward-slash relative path;
+- combine it with the lowercase file SHA-256;
+- sort manifest lines with `System.StringComparer.Ordinal`;
+- hash the LF-joined UTF-8 manifest.
+
+The canonical Tauri CLI 2.11.2 / NSIS 3.11 cache fingerprint is:
+
+`e1cbd35b909809366db4f46dbfbb4da5f4c181194d00fa064f27240b091b1451`
+
+A deliberate negative audit using the old culture-ordered value failed closed and still restored the complete caller state, proving both rejection and cleanup behavior.
 
 ### Local installer command selected the wrong Rust home
 
@@ -66,7 +84,8 @@ Correction:
 - require exactly three checksum lines;
 - accept only the portable executable, portable ZIP and setup executable;
 - reject malformed, duplicate, missing or unexpected targets;
-- run GNU `sha256sum --check --strict` after structural validation.
+- run GNU `sha256sum --check --strict` after structural validation;
+- submit all validated assets in one `gh release upload` invocation.
 
 ### Previous tracking state remained incomplete
 
@@ -75,21 +94,49 @@ Task/report 0026 still described the exact-head quality run and PR merge as pend
 Correction:
 
 - record Release Quality run #297 and merge commit `35d5ed743cc0789d438306d069ada6b47d18873f`;
-- mark task 0026 completed.
+- mark task/report 0026 completed.
 
-## Verification
+## Runtime verification
 
-Pending:
+Temporary Audit 0027 Installer Integrity run #7 (`30072641292`) completed successfully on SHA `cf06ebd1f2c39f4e63d32d31f8f1d58ffdd0e2ac`.
 
-- real Windows installer packaging using the corrected local build command;
-- caller environment/location restoration assertions;
-- exact pinned NSIS fingerprint validation on the dedicated runner;
-- publisher validation regression cases;
-- final exact-head permanent Release Quality run.
+### Windows installer audit
+
+The self-hosted Windows job successfully:
+
+- checked out without persisted credentials;
+- passed both permanent contract suites;
+- ran the documented `scripts/build-installer.ps1` command;
+- validated Node.js, global Rust/MSVC, locked Tauri CLI and canonical NSIS fingerprint;
+- restored locked npm dependencies with lifecycle scripts disabled;
+- passed npm audit and frontend tests;
+- completed a full optimized Tauri/NSIS release build;
+- produced exactly one setup executable and one generated `installer.nsi`;
+- confirmed the canonical cache fingerprint before and after packaging;
+- proved that the complete caller environment-variable set and working directory were restored exactly;
+- uploaded audited installer/diagnostic artifacts and completed cleanup.
+
+The setup executable was created but never launched.
+
+### Hosted publisher fixtures
+
+The isolated hosted-Linux job accepted a valid four-file distribution and rejected each of these fixtures:
+
+- nested unexpected file;
+- duplicate checksum entry;
+- missing checksum entry;
+- symlinked expected asset;
+- unexpected checksum target.
+
+The temporary audit workflow was removed from the branch after both jobs passed and will not enter `main`.
+
+## Permanent verification
+
+Pending final exact-head `Release Quality` on the clean permanent workflow set after documentation/tracking finalization.
 
 ## Residual boundaries
 
-- The manually provisioned runner cache remains an operational dependency, but its full contents are now required to match the audited fingerprint.
+- The manually provisioned runner cache remains an operational dependency, but its complete contents must match the canonical approved fingerprint.
 - WebView2 must already exist on target Windows systems.
 - Windows executables remain unsigned until signing is configured.
-- A hosted publisher cannot make multi-asset GitHub upload transactionally atomic; pre-upload validation minimizes but cannot eliminate a remote partial-failure boundary.
+- A hosted publisher cannot make GitHub's remote multi-asset update transactionally atomic; exhaustive pre-upload validation and one upload invocation minimize but cannot eliminate a remote transport/service partial-failure boundary.

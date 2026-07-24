@@ -1,0 +1,148 @@
+name: Audit 0027 Installer Integrity
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-0027-installer-integrity-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  installer-audit:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'audit/0027-final-release-integrity'
+    runs-on: [self-hosted, v2rayn-widget-ci]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout audited revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Confirm dedicated self-hosted runner
+        shell: pwsh
+        run: |
+          Write-Host "Runner: ${{ runner.name }} / ${{ runner.os }} / ${{ runner.arch }}"
+          if ("${{ runner.environment }}" -ne "self-hosted") {
+            throw "Installer integrity audit must run on v2rayn-widget-ci"
+          }
+
+      - name: Verify permanent contracts
+        shell: pwsh
+        run: |
+          node scripts/test-workflow-contracts.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/test-installer-toolchain-contracts.mjs
+          exit $LASTEXITCODE
+
+      - name: Build through documented local command and verify caller state
+        id: installer_build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $diagnosticsDir = Join-Path $env:GITHUB_WORKSPACE "audit-0027-diagnostics"
+          $buildLog = Join-Path $diagnosticsDir "local-installer-build.txt"
+          $stateLog = Join-Path $diagnosticsDir "caller-state-verification.txt"
+          New-Item -ItemType Directory -Force -Path $diagnosticsDir | Out-Null
+
+          $beforeLocation = (Get-Location).Path
+          $beforeEnvironment = @{}
+          Get-ChildItem Env: | ForEach-Object { $beforeEnvironment[$_.Name] = $_.Value }
+          $buildError = $null
+
+          try {
+            & "$env:GITHUB_WORKSPACE/scripts/build-installer.ps1" 2>&1 | Tee-Object -FilePath $buildLog
+          }
+          catch {
+            $buildError = $_
+            $_ | Format-List * -Force | Out-String | Tee-Object -FilePath $buildLog -Append
+          }
+
+          $stateErrors = [System.Collections.Generic.List[string]]::new()
+          $afterLocation = (Get-Location).Path
+          if ($afterLocation -ne $beforeLocation) {
+            $stateErrors.Add("Working directory changed: '$beforeLocation' -> '$afterLocation'")
+          }
+
+          $afterEnvironment = @{}
+          Get-ChildItem Env: | ForEach-Object { $afterEnvironment[$_.Name] = $_.Value }
+          $nameDiff = @(Compare-Object @($beforeEnvironment.Keys | Sort-Object) @($afterEnvironment.Keys | Sort-Object))
+          foreach ($difference in $nameDiff) {
+            $stateErrors.Add("Environment variable set changed: $($difference.InputObject) $($difference.SideIndicator)")
+          }
+          foreach ($name in $beforeEnvironment.Keys) {
+            if ($afterEnvironment.ContainsKey($name) -and $afterEnvironment[$name] -cne $beforeEnvironment[$name]) {
+              $stateErrors.Add("Environment variable changed: $name")
+            }
+          }
+
+          if ($stateErrors.Count -eq 0) {
+            "Caller location and complete environment were restored exactly." | Tee-Object -FilePath $stateLog
+          }
+          else {
+            $stateErrors | Tee-Object -FilePath $stateLog
+          }
+
+          if ($buildError) {
+            throw "Documented local installer command failed: $($buildError.Exception.Message)"
+          }
+          if ($stateErrors.Count -ne 0) {
+            throw "Documented local installer command leaked caller state."
+          }
+
+          $scripts = @(Get-ChildItem "src/tauri/target/release" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
+          $installers = @(Get-ChildItem "src/tauri/target/release/bundle/nsis/*.exe" -File -ErrorAction SilentlyContinue)
+          if ($scripts.Count -ne 1) {
+            throw "Expected exactly one generated installer.nsi, found $($scripts.Count)."
+          }
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one generated installer, found $($installers.Count)."
+          }
+          Copy-Item -LiteralPath $scripts[0].FullName -Destination "src/tauri/target/release/bundle/nsis/installer.nsi" -Force
+
+      - name: Upload audited installer
+        if: steps.installer_build.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: audited-0027-installer
+          path: |
+            src/tauri/target/release/bundle/nsis/*.exe
+            src/tauri/target/release/bundle/nsis/installer.nsi
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload audit diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: audit-0027-diagnostics
+          path: audit-0027-diagnostics/*
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Fail when installer audit failed
+        if: steps.installer_build.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
+
+      - name: Cleanup installer audit workspace
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "audit-0027-diagnostics" -Recurse -Force -ErrorAction SilentlyContinue

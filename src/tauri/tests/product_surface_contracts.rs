@@ -11,7 +11,7 @@ fn string_set(values: &Value) -> BTreeSet<String> {
         .collect()
 }
 
-fn frontend_invoke_commands(source: &str) -> BTreeSet<String> {
+fn frontend_invoke_commands(source: &str) -> Vec<String> {
     source
         .lines()
         .filter_map(|line| {
@@ -27,7 +27,7 @@ fn frontend_invoke_commands(source: &str) -> BTreeSet<String> {
         .collect()
 }
 
-fn registered_tauri_commands(source: &str) -> BTreeSet<String> {
+fn registered_tauri_commands(source: &str) -> Vec<String> {
     let handlers = source
         .split_once("tauri::generate_handler![")
         .expect("Tauri handler registration")
@@ -45,6 +45,10 @@ fn registered_tauri_commands(source: &str) -> BTreeSet<String> {
                 .map(|(_, command)| command.to_owned())
         })
         .collect()
+}
+
+fn unique_commands(commands: &[String]) -> BTreeSet<String> {
+    commands.iter().cloned().collect()
 }
 
 #[test]
@@ -88,8 +92,20 @@ fn remote_diagnostics_webview_has_no_default_ipc_capability() {
 fn every_frontend_invoke_has_exactly_one_registered_tauri_command() {
     let frontend = frontend_invoke_commands(include_str!("../../frontend/src/lib/api.ts"));
     let registered = registered_tauri_commands(include_str!("../src/main.rs"));
+    let frontend_unique = unique_commands(&frontend);
+    let registered_unique = unique_commands(&registered);
 
-    assert_eq!(frontend, registered);
+    assert_eq!(
+        frontend.len(),
+        frontend_unique.len(),
+        "frontend API contains a duplicate Tauri command wrapper"
+    );
+    assert_eq!(
+        registered.len(),
+        registered_unique.len(),
+        "Tauri generate_handler contains a duplicate command registration"
+    );
+    assert_eq!(frontend_unique, registered_unique);
 }
 
 #[test]

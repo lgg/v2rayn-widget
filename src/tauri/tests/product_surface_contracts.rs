@@ -135,7 +135,7 @@ fn native_debug_close_is_forwarded_to_the_frontend_safe_close_path() {
 }
 
 #[test]
-fn preferred_window_minimums_match_native_declarations() {
+fn preferred_window_geometry_matches_native_declarations() {
     let config: Value = serde_json::from_str(include_str!("../tauri.conf.json"))
         .expect("valid Tauri configuration");
     let windows = config["app"]["windows"]
@@ -153,10 +153,29 @@ fn preferred_window_minimums_match_native_declarations() {
         assert_eq!(window["minHeight"].as_u64(), Some(expected_height));
     }
 
+    for (label, expected_width, expected_height) in [
+        ("settings", 430_u64, 760_u64),
+        ("happ-setup", 500_u64, 720_u64),
+    ] {
+        let window = windows
+            .iter()
+            .find(|window| window["label"].as_str() == Some(label))
+            .expect("configured fixed window");
+        assert_eq!(window["width"].as_u64(), Some(expected_width));
+        assert_eq!(window["height"].as_u64(), Some(expected_height));
+        assert_eq!(window["resizable"].as_bool(), Some(false));
+    }
+
     let geometry = include_str!("../src/utils/window_position.rs");
     assert!(geometry.contains("MAIN_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (360, 270)"));
     assert!(geometry.contains("DEBUG_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (460, 420)"));
     assert!(geometry.contains("DIAGNOSTICS_MIN_INNER_LOGICAL_SIZE: (u32, u32) = (760, 520)"));
+    assert!(geometry.contains(
+        "SETTINGS_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (430, 760)"
+    ));
+    assert!(geometry.contains(
+        "HAPP_SETUP_PREFERRED_INNER_LOGICAL_SIZE: (u32, u32) = (500, 720)"
+    ));
     assert!(geometry.contains(".to_physical(scale_factor)"));
 
     let commands = include_str!("../src/commands/mod.rs");

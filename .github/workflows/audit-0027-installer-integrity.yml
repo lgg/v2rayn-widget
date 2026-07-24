@@ -146,3 +146,128 @@ jobs:
           Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "audit-0027-diagnostics" -Recurse -Force -ErrorAction SilentlyContinue
+
+  publisher-fixtures:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'audit/0027-final-release-integrity'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Exercise publisher validation against positive and negative fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          readonly version="1.0.0"
+          readonly portable_exe="v2rayn-widget-${version}-windows-x64-portable.exe"
+          readonly portable_zip="v2rayn-widget-${version}-windows-x64-portable.zip"
+          readonly installer_exe="v2rayn-widget-${version}-windows-x64-setup.exe"
+          readonly checksum_file="SHA256SUMS.txt"
+          readonly expected_assets=("$portable_exe" "$portable_zip" "$installer_exe" "$checksum_file")
+          readonly expected_hashed_assets=("$portable_exe" "$portable_zip" "$installer_exe")
+
+          validate_distribution() {
+            local distribution_dir="$1"
+            local actual_count asset line
+            local -a expected_entries actual_entries manifest_lines
+            local -A manifest_seen=()
+
+            mapfile -t expected_entries < <(printf '%s\n' "${expected_assets[@]}" | LC_ALL=C sort)
+            mapfile -t actual_entries < <(find "$distribution_dir" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+            actual_count="${#actual_entries[@]}"
+            if [[ "$actual_count" -ne "${#expected_entries[@]}" ]]; then
+              return 1
+            fi
+            if ! diff -u <(printf '%s\n' "${expected_entries[@]}") <(printf '%s\n' "${actual_entries[@]}") >/dev/null; then
+              return 1
+            fi
+
+            for asset in "${expected_assets[@]}"; do
+              if [[ ! -f "$distribution_dir/$asset" || -L "$distribution_dir/$asset" ]]; then
+                return 1
+              fi
+            done
+
+            mapfile -t manifest_lines < "$distribution_dir/$checksum_file"
+            if [[ "${#manifest_lines[@]}" -ne "${#expected_hashed_assets[@]}" ]]; then
+              return 1
+            fi
+
+            for line in "${manifest_lines[@]}"; do
+              if [[ ! "$line" =~ ^([0-9a-f]{64})\ \*(.+)$ ]]; then
+                return 1
+              fi
+              asset="${BASH_REMATCH[2]}"
+              case "$asset" in
+                "$portable_exe"|"$portable_zip"|"$installer_exe") ;;
+                *) return 1 ;;
+              esac
+              if [[ -n "${manifest_seen[$asset]:-}" ]]; then
+                return 1
+              fi
+              manifest_seen[$asset]=1
+            done
+
+            for asset in "${expected_hashed_assets[@]}"; do
+              if [[ -z "${manifest_seen[$asset]:-}" ]]; then
+                return 1
+              fi
+            done
+
+            (cd "$distribution_dir" && sha256sum --check --strict "$checksum_file" >/dev/null)
+          }
+
+          create_valid_fixture() {
+            local fixture="$1"
+            mkdir -p "$fixture"
+            printf 'portable' > "$fixture/$portable_exe"
+            printf 'archive' > "$fixture/$portable_zip"
+            printf 'installer' > "$fixture/$installer_exe"
+            (cd "$fixture" && sha256sum --binary "${expected_hashed_assets[@]}" > "$checksum_file")
+          }
+
+          create_valid_fixture valid
+          validate_distribution valid
+
+          cp -a valid nested-extra
+          mkdir -p nested-extra/unexpected
+          printf 'extra' > nested-extra/unexpected/file.txt
+          if validate_distribution nested-extra; then
+            echo "Nested extra fixture was incorrectly accepted" >&2
+            exit 1
+          fi
+
+          cp -a valid duplicate-checksum
+          head -n 1 duplicate-checksum/SHA256SUMS.txt >> duplicate-checksum/SHA256SUMS.txt
+          if validate_distribution duplicate-checksum; then
+            echo "Duplicate checksum fixture was incorrectly accepted" >&2
+            exit 1
+          fi
+
+          cp -a valid missing-checksum
+          head -n 2 missing-checksum/SHA256SUMS.txt > missing-checksum/SHA256SUMS.tmp
+          mv missing-checksum/SHA256SUMS.tmp missing-checksum/SHA256SUMS.txt
+          if validate_distribution missing-checksum; then
+            echo "Missing checksum fixture was incorrectly accepted" >&2
+            exit 1
+          fi
+
+          cp -a valid symlink-asset
+          rm symlink-asset/"$portable_exe"
+          ln -s /etc/hosts symlink-asset/"$portable_exe"
+          if validate_distribution symlink-asset; then
+            echo "Symlink fixture was incorrectly accepted" >&2
+            exit 1
+          fi
+
+          cp -a valid unexpected-target
+          sed -i "1s#\*$portable_exe#*unexpected.exe#" unexpected-target/SHA256SUMS.txt
+          if validate_distribution unexpected-target; then
+            echo "Unexpected checksum target fixture was incorrectly accepted" >&2
+            exit 1
+          fi
+
+          echo "Valid distribution accepted; all malicious/incomplete fixtures rejected."

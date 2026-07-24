@@ -44,4 +44,17 @@ describe("safe auxiliary close feedback", () => {
 
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("clears a stale failure before a later successful close attempt", async () => {
+    coreMocks.invoke
+      .mockRejectedValueOnce(new Error("temporary restore failure"))
+      .mockResolvedValueOnce(undefined);
+    render(<WindowCloseFailureBanner />);
+
+    await expect(closeWindow("happ-setup")).resolves.toBe(false);
+    expect(await screen.findByRole("alert")).not.toBeNull();
+
+    await expect(closeWindow("happ-setup")).resolves.toBe(true);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

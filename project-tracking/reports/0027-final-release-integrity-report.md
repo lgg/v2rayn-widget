@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and dedicated runtime verification complete; final permanent exact-head quality gate pending.
+Completed and squash-merged through PR #15.
 
 ## Scope
 
@@ -128,11 +128,30 @@ The isolated hosted-Linux job accepted a valid four-file distribution and reject
 - symlinked expected asset;
 - unexpected checksum target.
 
-The temporary audit workflow was removed from the branch after both jobs passed and will not enter `main`.
+The temporary audit workflow was removed from the branch after both jobs passed and did not enter `main`.
 
 ## Permanent verification
 
-Pending final exact-head `Release Quality` on the clean permanent workflow set after documentation/tracking finalization.
+Final exact-head Release Quality run #309 (`30073241976`) completed successfully on SHA `76efa4d29e518fe03b27a799c1e1e06fc24a666d`.
+
+Both permanent jobs passed every required step:
+
+- checkout without persisted credentials;
+- runner identity checks;
+- Node.js and canonical NSIS/Tauri prerequisite validation;
+- both permanent contract suites;
+- locked npm restore with lifecycle scripts disabled;
+- npm audit, frontend tests and production build;
+- Rust/MSVC/Windows SDK validation;
+- complete Rust formatting check;
+- Rust tests;
+- strict all-targets Clippy;
+- strict release/no-default-features Clippy;
+- locked Rust check;
+- portable release build and artifact upload;
+- diagnostics upload and always-running cleanup.
+
+PR #15 was squash-merged into `main` as commit `c1686aa6e8374d348ef9c097671296c181704e06` on 2026-07-24.
 
 ## Residual boundaries
 

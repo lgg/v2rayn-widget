@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/lib/i18n";
 
 const coreMocks = vi.hoisted(() => ({ invoke: vi.fn() }));
@@ -17,11 +17,15 @@ describe("safe auxiliary close feedback", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
-  it("keeps the close API resolved and reports a visible failure when IPC rejects", async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns false and reports a visible failure when close IPC rejects", async () => {
     coreMocks.invoke.mockRejectedValueOnce(new Error("main window restore failed"));
     render(<WindowCloseFailureBanner />);
 
-    await expect(closeWindow("settings")).resolves.toBeUndefined();
+    await expect(closeWindow("settings")).resolves.toBe(false);
 
     expect(coreMocks.invoke).toHaveBeenCalledWith("close_window", { label: "settings" });
     const alert = await screen.findByRole("alert");
@@ -32,11 +36,11 @@ describe("safe auxiliary close feedback", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("does not show feedback after a successful safe close command", async () => {
+  it("returns true without feedback after a successful safe close command", async () => {
     coreMocks.invoke.mockResolvedValueOnce(undefined);
     render(<WindowCloseFailureBanner />);
 
-    await closeWindow("debug");
+    await expect(closeWindow("debug")).resolves.toBe(true);
 
     expect(screen.queryByRole("alert")).toBeNull();
   });

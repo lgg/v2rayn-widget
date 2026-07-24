@@ -1,0 +1,56 @@
+name: Audit 0028 Final Rust Hygiene
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audit-0028-rust-hygiene-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply-rust-hygiene:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'audit/0028-product-surface-completeness'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: audit/0028-product-surface-completeness
+          fetch-depth: 0
+          show-progress: false
+
+      - name: Remove stale import and format Rust workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/tauri/src/client_commands.rs')
+          text = path.read_text(encoding='utf-8')
+          old = 'use tauri::{AppHandle, Emitter, Manager, State};'
+          new = 'use tauri::{AppHandle, Emitter, State};'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one stale Manager import, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8', newline='\n')
+          PY
+          cargo fmt --manifest-path src/tauri/Cargo.toml --all
+
+      - name: Commit exact hygiene fixes to PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'lgg'
+          git config user.email 'lgg@users.noreply.github.com'
+          git add src/tauri
+          git commit -m '0028: fix strict Rust hygiene regressions'
+          git push origin HEAD:audit/0028-product-surface-completeness

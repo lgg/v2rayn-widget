@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/lib/i18n";
 
@@ -55,6 +55,6 @@ describe("safe auxiliary close feedback", () => {
     expect(await screen.findByRole("alert")).not.toBeNull();
 
     await expect(closeWindow("happ-setup")).resolves.toBe(true);
-    expect(screen.queryByRole("alert")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 });

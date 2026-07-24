@@ -170,10 +170,14 @@ jobs:
           node-version: 22.17.1
           package-manager-cache: false
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - name: Bootstrap project Rust toolchain
+        shell: pwsh
+        run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes -Bootstrap
+          rustup component add rustfmt clippy --toolchain stable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo --version
+          rustc --version
 
       - name: Check all Rust formatting
         id: rust_format
@@ -181,6 +185,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo fmt --all -- --check 2>&1 | Tee-Object -FilePath rust-format-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
@@ -191,6 +196,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo test --locked 2>&1 | Tee-Object -FilePath rust-test-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
@@ -201,6 +207,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo clippy --locked --all-targets -- -D warnings 2>&1 | Tee-Object -FilePath rust-clippy-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
@@ -211,6 +218,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo clippy --locked --release --no-default-features -- -D warnings 2>&1 | Tee-Object -FilePath rust-release-clippy-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
@@ -221,6 +229,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo check --locked 2>&1 | Tee-Object -FilePath rust-build-output.txt
           $commandExitCode = $LASTEXITCODE
           exit $commandExitCode
@@ -231,6 +240,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo build --release --locked 2>&1 | Tee-Object -FilePath rust-release-output.txt
           $commandExitCode = $LASTEXITCODE
           if ($commandExitCode -ne 0) { exit $commandExitCode }
@@ -268,6 +278,7 @@ jobs:
         working-directory: src/tauri
         shell: pwsh
         run: |
+          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           $tauriCli = (Resolve-Path "../frontend/node_modules/.bin/tauri.cmd").Path
           & $tauriCli build --bundles nsis --config "tauri.installer.conf.json" --ci -- --locked 2>&1 | Tee-Object -FilePath installer-release-output.txt
           $commandExitCode = $LASTEXITCODE

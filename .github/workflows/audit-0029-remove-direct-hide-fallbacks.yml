@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message != '0029: remove direct auxiliary hide fallbacks'
+    if: github.event.head_commit.message != '0029: remove remaining direct auxiliary hide fallbacks'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact branch head
@@ -25,26 +25,6 @@ jobs:
           from pathlib import Path
 
           replacements = {
-              "src/frontend/src/app/DebugWindow.tsx": [
-                  ('import { getCurrentWindow } from "@tauri-apps/api/window";\n', ''),
-                  ('''const debugWindow = getCurrentWindow();
-
-async function closeDebugWindow(): Promise<void> {
-  try {
-    await closeWindow("debug");
-  } catch {
-    try {
-      await debugWindow.hide();
-    } catch {
-      // The native close handler remains available if both command paths fail.
-    }
-  }
-}
-''', '''async function closeDebugWindow(): Promise<void> {
-  await closeWindow("debug");
-}
-'''),
-              ],
               "src/frontend/src/app/SettingsWindow.tsx": [
                   ('import { getCurrentWindow } from "@tauri-apps/api/window";\n', ''),
                   ('''const settingsWindow = getCurrentWindow();
@@ -94,10 +74,11 @@ async function closeHappSetupWindow(): Promise<void> {
 
           test_path = Path("src/frontend/src/lib/window-close-feedback.test.tsx")
           test = test_path.read_text(encoding="utf-8")
-          test = test.replace(
-              'import { beforeEach, describe, expect, it, vi } from "vitest";',
-              'import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";',
-          )
+          old_import = 'import { beforeEach, describe, expect, it, vi } from "vitest";'
+          new_import = 'import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";'
+          if test.count(old_import) != 1:
+              raise SystemExit("Expected the original Vitest import exactly once")
+          test = test.replace(old_import, new_import)
           marker = '''  beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -120,5 +101,5 @@ async function closeHappSetupWindow(): Promise<void> {
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "0029: remove direct auxiliary hide fallbacks"
+          git commit -m "0029: remove remaining direct auxiliary hide fallbacks"
           git push origin HEAD:audit/0029-close-and-small-work-area-hardening

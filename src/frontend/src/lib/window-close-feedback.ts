@@ -1,8 +1,13 @@
 export const WINDOW_CLOSE_FAILED_EVENT = "window-close-failed";
+export const WINDOW_CLOSE_CLEARED_EVENT = "window-close-cleared";
 
 export interface WindowCloseFailedDetail {
   label: string;
   cause: string;
+}
+
+export interface WindowCloseClearedDetail {
+  label: string;
 }
 
 function causeMessage(cause: unknown): string {
@@ -11,6 +16,14 @@ function causeMessage(cause: unknown): string {
   }
 
   return String(cause ?? "");
+}
+
+export function clearWindowCloseFailure(label: string): void {
+  window.dispatchEvent(
+    new CustomEvent<WindowCloseClearedDetail>(WINDOW_CLOSE_CLEARED_EVENT, {
+      detail: { label },
+    }),
+  );
 }
 
 export function reportWindowCloseFailure(label: string, cause: unknown): void {

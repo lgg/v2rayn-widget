@@ -129,6 +129,11 @@ jobs:
             exit 1
           }
           finally {
+            $generatedScripts = @(Get-ChildItem "target/release" -Filter "installer.nsi" -File -Recurse -ErrorAction SilentlyContinue)
+            if ($generatedScripts.Count -eq 1) {
+              Copy-Item -LiteralPath $generatedScripts[0].FullName -Destination (Join-Path $diagnosticsDir "generated-installer.nsi") -Force
+            }
+
             if (Test-Path "target/release") {
               Get-ChildItem "target/release" -File -Recurse -ErrorAction SilentlyContinue |
                 ForEach-Object { [System.IO.Path]::GetRelativePath((Resolve-Path "target/release").Path, $_.FullName) } |

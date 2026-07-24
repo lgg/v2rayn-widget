@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and repository-controlled review complete. The permanent exact-head Windows gate and merge remain pending; only a fully green run for the latest branch head may authorize merge.
+Complete. The exact implementation head passed the permanent Windows release-quality gate and PR #19 was squash-merged into `main` as commit `758eaf27ed1784235ac48ea4351fcb0bfe8220c7`.
 
 ## Audited baseline
 
@@ -230,26 +230,26 @@ Happ UI Automation remains fail-closed: exact Connect/Disconnect labels only, vi
 - product surface/IPC/source and configuration drift contracts;
 - README, architecture, roadmap and task/report 0029.
 
-## Verification status
+## Final verification and merge evidence
 
-The permanent `Release Quality` workflow is serialized on the dedicated `[self-hosted, v2rayn-widget-ci]` Windows runner. Each branch update creates a new exact-head run; only the latest head/run may authorize merge.
+Exact implementation head `524e044ac6e864e351bcf035f237b322890d0d68` passed permanent Release Quality #360 (`30117873904`) on the dedicated `[self-hosted, v2rayn-widget-ci]` Windows runner.
 
-Still required on the final exact PR head:
+- workflow contracts: success;
+- frontend dependency audit: success;
+- complete frontend tests: success;
+- production frontend build: success;
+- complete Rust formatting: success;
+- Rust unit/integration tests: 119 passed, 0 failed;
+- strict all-targets Clippy: success;
+- strict release/no-default-features Clippy: success;
+- locked Cargo check/build: success;
+- portable release smoke build: success;
+- frontend and Rust artifact/diagnostics upload: success;
+- cleanup and aggregate gates: success.
 
-- workflow contracts;
-- frontend dependency audit;
-- complete frontend tests;
-- production frontend build;
-- complete Rust formatting;
-- Rust unit/integration tests;
-- strict all-targets Clippy;
-- strict release/no-default-features Clippy;
-- locked Cargo check;
-- portable release smoke build;
-- artifact and diagnostics upload;
-- cleanup and aggregate gate.
+The first otherwise-clean run exposed only canonical Rust formatting drift through the aggregate gate. The exact rustfmt diff was applied, and the complete gate was rerun successfully rather than bypassed.
 
-No successful test/build claim is made until the exact final head completes. Static review and deterministic contracts do not substitute for the required Windows execution gate.
+PR #19 was squash-merged into `main` as commit `758eaf27ed1784235ac48ea4351fcb0bfe8220c7`. This evidence-only update changes no product implementation.
 
 ## What cannot be fully automated
 
@@ -270,9 +270,6 @@ The implementation remains fail-closed for ambiguous UI Automation and fail-visi
 
 Completed. No private endpoint, subscription, local user directory, credential, runtime config, private log or personal data was introduced.
 
-## Next steps
+## Completion
 
-1. Complete the permanent exact-head frontend and Rust jobs.
-2. Resolve every diagnostic finding, if any.
-3. Squash-merge only a fully green exact head.
-4. Record the final run and merge evidence in task/report 0029 through a minimal follow-up PR if required.
+Task 0029 is complete. No repository-controlled implementation or documentation item identified by this audit remains open. Future work is limited to the explicitly documented experimental/research-required compatibility surface and real-world client-version testing.

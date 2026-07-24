@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and repository-controlled review complete. The permanent exact-head Windows gate and merge remain pending because the dedicated self-hosted runner has not accepted the queued job.
+Implementation and repository-controlled review complete. The permanent exact-head Windows gate and merge remain pending; only a fully green run for the latest branch head may authorize merge.
 
 ## Audited baseline
 
@@ -22,8 +22,10 @@ The review cross-checked:
 - unsaved-draft state transitions;
 - every frontend Tauri `invoke` declaration against `tauri::generate_handler!` including duplicate detection;
 - configured and runtime native minimum and fixed window sizes;
+- saved-position recovery and the actual frameless top drag affordance;
 - logical/physical units and active DPI scale factor;
 - multi-monitor work areas, negative coordinates, small/RDP screens and decorated frames;
+- adapter operation locks, epochs and stale-result rejection;
 - EN/RU catalog parity;
 - v2rayN/Happ descriptors, frontend gating and adapter methods;
 - current validation-only self-hosted CI policy;
@@ -141,6 +143,29 @@ Correction:
 - let the current attempt report a new failure if Rust rejects again;
 - add a component regression covering failed attempt followed by successful retry.
 
+### 12. Saved-position validation did not validate the actual drag strip
+
+The helper named `saved_position_has_visible_drag_area` accepted any sufficiently large intersection between the saved window body and a monitor. For a frameless window, a visible lower body sliver is not the recovery affordance; the user needs the top drag strip. Final work-area fitting still bounded the window, so this was primarily an incorrect restore-versus-center decision rather than an unbounded off-screen result.
+
+Correction:
+
+- model the recoverable area as the top `48` physical pixels of the saved rectangle;
+- require up to `80×48` of that actual top strip to be visible on one current monitor;
+- center before final fitting when only another part of the body is visible;
+- add a regression where the lower body intersects the monitor while the top strip remains off-screen.
+
+### 13. Inactive Happ settings invalidated unrelated active operations
+
+`update_happ_settings` always used `replace_settings_and_status_invalidating_context`. When v2rayN was selected, changing only Happ's path or UI Automation consent incremented the active client epoch and could make an unrelated in-flight v2rayN operation return `CLIENT_CONTEXT_CHANGED`. Re-saving identical active Happ settings also reset a valid status without an operational change.
+
+Correction:
+
+- compare previous and final Happ operational fields;
+- invalidate the epoch and reset status only when Happ is active and its path or control consent actually changes;
+- update inactive Happ settings through the normal settings path, preserving the selected v2rayN epoch/status;
+- preserve active Happ context/status when the submitted values are identical;
+- add unit regressions for inactive update, unchanged active save and changed active save.
+
 ## Permanent regression coverage
 
 Frontend:
@@ -161,7 +186,11 @@ Rust/source contracts:
 - preferred logical minima are converted at 150% and 200% DPI;
 - decorated frame is included in restored outer size;
 - fixed Settings/Happ preferences are DPI-scaled, restored when space returns and bounded when constrained;
+- only an actually visible top drag strip qualifies a saved frameless position for direct restoration;
 - configured fixed sizes and resizability cannot drift from runtime geometry constants;
+- inactive Happ settings preserve active v2rayN context/status;
+- unchanged active Happ saves preserve context/status;
+- changed active Happ settings invalidate context and reset stale status;
 - every frontend invoke matches exactly one non-duplicated registered Tauri command and vice versa;
 - auxiliary React source files contain no `.hide()`;
 - native Debug close forwarding remains registered;
@@ -178,6 +207,8 @@ Confirmed unchanged and truthful:
 - experimental: profile selection;
 - unsupported: generic transport-mode reporting and all subscription operations.
 
+The concrete operations remain path-specific, serialized and guarded by primary-config confirmation plus UIPI checks where UI control is required.
+
 ### Happ
 
 Confirmed unchanged and truthful:
@@ -186,7 +217,7 @@ Confirmed unchanged and truthful:
 - experimental after explicit consent and successful probe: connection state/control and exact visible transport label;
 - research-required: profile/server list or selection, restart/reload and subscriptions.
 
-Unsupported and research-required operations still fail explicitly and are not rendered as stable success.
+Happ UI Automation remains fail-closed: exact Connect/Disconnect labels only, visible/enabled clickable controls, one unique candidate, confidence threshold, explicit post-click state confirmation and redacted arbitrary UI text. Unsupported and research-required operations fail explicitly and are not rendered as stable success.
 
 ## Files and modules changed
 
@@ -194,15 +225,16 @@ Unsupported and research-required operations still fail explicitly and are not r
 - Settings, Debug and Happ Setup surfaces;
 - frontend entry point, EN/RU catalogs and component tests;
 - Tauri native close forwarding;
-- work-area/minimum/fixed-size/DPI geometry helper and Rust tests;
+- client settings context-commit logic and Rust regressions;
+- work-area/minimum/fixed-size/DPI/saved-position geometry helper and Rust tests;
 - product surface/IPC/source and configuration drift contracts;
 - README, architecture, roadmap and task/report 0029.
 
 ## Verification status
 
-Release Quality #352 (`30115459438`) remained queued without starting because the dedicated `[self-hosted, v2rayn-widget-ci]` runner did not accept it. This report update creates a new exact-head run; only the latest head/run may authorize merge.
+The permanent `Release Quality` workflow is serialized on the dedicated `[self-hosted, v2rayn-widget-ci]` Windows runner. Each branch update creates a new exact-head run; only the latest head/run may authorize merge.
 
-Still pending on the final exact PR head:
+Still required on the final exact PR head:
 
 - workflow contracts;
 - frontend dependency audit;
@@ -217,7 +249,7 @@ Still pending on the final exact PR head:
 - artifact and diagnostics upload;
 - cleanup and aggregate gate.
 
-No successful test/build claim is made from a queued job. Static review and deterministic contracts do not substitute for the required Windows execution gate.
+No successful test/build claim is made until the exact final head completes. Static review and deterministic contracts do not substitute for the required Windows execution gate.
 
 ## What cannot be fully automated
 
@@ -240,7 +272,7 @@ Completed. No private endpoint, subscription, local user directory, credential, 
 
 ## Next steps
 
-1. Run the permanent exact-head frontend and Rust jobs when the dedicated runner is available.
+1. Complete the permanent exact-head frontend and Rust jobs.
 2. Resolve every diagnostic finding, if any.
 3. Squash-merge only a fully green exact head.
-4. Record the final run and merge evidence in task/report 0029 through a minimal follow-up PR.
+4. Record the final run and merge evidence in task/report 0029 through a minimal follow-up PR if required.

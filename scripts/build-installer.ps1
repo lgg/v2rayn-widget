@@ -77,8 +77,17 @@ try {
     if ($installerScriptText -notmatch '(?mi)^\s*RequestExecutionLevel\s+user\s*$') {
         throw "Generated NSIS script is not explicitly current-user only."
     }
-    if ($installerScriptText -match '(?i)MicrosoftEdgeWebview2Setup\.exe|WebView2Bootstrapper\.exe') {
-        throw "Generated NSIS script contains a WebView2 installer payload."
+
+    $disabledWebViewDefinitions = @(
+        '!define INSTALLWEBVIEW2MODE ""',
+        '!define WEBVIEW2BOOTSTRAPPERPATH ""',
+        '!define WEBVIEW2INSTALLERPATH ""',
+        '!define MINIMUMWEBVIEW2VERSION ""'
+    )
+    foreach ($definition in $disabledWebViewDefinitions) {
+        if ($installerScriptText -notmatch "(?m)^\s*$([regex]::Escape($definition))\s*$") {
+            throw "Generated NSIS script does not keep WebView2 installation disabled: $definition"
+        }
     }
 
     $bundleDir = Join-Path (Get-Location).Path "target\release\bundle\nsis"

@@ -178,3 +178,22 @@ fn preferred_window_geometry_matches_native_declarations() {
     let commands = include_str!("../src/commands/mod.rs");
     assert!(commands.contains(".min_inner_size(760.0, 520.0)"));
 }
+
+#[test]
+fn happ_toggle_confirms_before_restoring_the_original_minimized_state() {
+    let adapter = include_str!("../src/adapters/happ.rs");
+    let confirmation = adapter
+        .find("let confirmation: Result<DashboardStatus, String>")
+        .expect("Happ toggle confirmation phase");
+    let restoration = adapter
+        .find("happ_ui::restore_window_after_toggle")
+        .expect("Happ minimized-state restoration");
+
+    assert!(confirmation < restoration);
+    assert!(adapter.contains("refresh(settings, false, false, false)"));
+
+    let controller = include_str!("../src/services/happ_ui.rs");
+    assert!(controller.contains("restore_minimized: was_minimized"));
+    assert!(controller.contains("scan_controls(hwnd, true)"));
+    assert!(controller.contains("let require_onscreen = !unsafe { IsIconic(hwnd).as_bool() }"));
+}

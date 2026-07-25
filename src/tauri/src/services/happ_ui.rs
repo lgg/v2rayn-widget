@@ -286,7 +286,8 @@ mod windows_impl {
         };
 
         let title = sanitize_window_title(&get_window_title(hwnd));
-        match scan_controls(hwnd, false) {
+        let require_onscreen = !unsafe { IsIconic(hwnd).as_bool() };
+        match scan_controls(hwnd, require_onscreen) {
             Ok(scan) => {
                 let action = scan.action.as_ref();
                 let note = if scan.ambiguous_action {

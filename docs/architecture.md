@@ -125,6 +125,28 @@ Status refresh:
 
 Every command string exported by `src/frontend/src/lib/api.ts` is contract-tested against the exact set registered in `tauri::generate_handler!`. A missing handler, stale compatibility registration or frontend typo fails the Rust integration suite.
 
+## Active client context consistency
+
+Client epoch and stale-result rejection describe the selected adapter's operational context, not every persisted setting in the application.
+
+Active contexts:
+
+- v2rayN — selected client, path mode/path and v2rayN mock mode;
+- Happ — selected client, executable path and UI Automation consent.
+
+Rules:
+
+- selecting another client always invalidates the previous context;
+- changing fields owned by an inactive adapter preserves the selected adapter's epoch, status and in-flight operations;
+- appearance, tray, autostart, polling and diagnostics settings preserve the selected adapter's epoch/status;
+- shared health-display and endpoint changes request an eventual refresh but do not cancel a control operation;
+- an active non-mock v2rayN path change clears status from the previous installation;
+- an active v2rayN mock transition uses the supplied mock/default status;
+- active Happ path/consent changes keep the fail-closed status reset;
+- Main's operational refresh key contains only active-adapter fields plus shared health-display fields.
+
+The frontend and Rust backend both have permanent active/inactive context matrix tests. Backend state commit logic also ignores an accidentally supplied replacement status when no active context changed, preventing v2rayN mock status from leaking into active Happ state.
+
 ## v2rayN adapter
 
 The v2rayN adapter delegates to the proven existing services while exposing them through the generic contract.
@@ -216,7 +238,8 @@ Key responsibilities:
 
 - render selected-client UX;
 - persist selection through backend commands;
-- clear stale status/items after switching;
+- clear stale status/items after switching or changing the active adapter context;
+- preserve status and in-flight operations when only an inactive adapter or general setting changes;
 - gate controls using capabilities;
 - additionally require persisted Happ UIA consent before enabling connect;
 - render Settings, Debug and Happ Setup windows;
@@ -236,6 +259,7 @@ Key files:
 - `src/frontend/src/app/HappSetupWindow.tsx`
 - `src/frontend/src/components/client-selector.tsx`
 - `src/frontend/src/components/window-close-failure-banner.tsx`
+- `src/frontend/src/features/active-client-context.ts`
 - `src/frontend/src/features/dashboard-store.ts`
 - `src/frontend/src/lib/api.ts`
 - `src/frontend/src/lib/types.ts`
@@ -299,4 +323,4 @@ The separate trusted `Build Release Assets` workflow is responsible for installe
 
 Network diagnostics disable redirects and ambient proxy settings, resolve each configured HTTP(S) endpoint, reject the endpoint if any answer is non-public, and pin hostname requests to the exact validated `SocketAddr` set with `reqwest::ClientBuilder::resolve_to_addrs`. This removes the second unvalidated DNS lookup that could otherwise permit DNS rebinding. Literal or resolved loopback, private, link-local, CGNAT, benchmark, documentation, multicast, reserved, NAT64, Teredo and 6to4 addresses are rejected.
 
-The Rust suite includes v2rayN resolver/config/log tests, strict-primary versus backup observation tests, schema-preserving and guarded config-update tests, serialized v2rayN/Happ operation tests, selected-process launch/window tests, settings normalization and debounced-position tests, exact fail-closed UI action/profile classifiers, network-target safety tests, product-surface/IPC contracts, window geometry contracts and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.
+The Rust suite includes v2rayN resolver/config/log tests, strict-primary versus backup observation tests, schema-preserving and guarded config-update tests, serialized v2rayN/Happ operation tests, selected-process launch/window tests, settings normalization and debounced-position tests, exact fail-closed UI action/profile classifiers, network-target safety tests, product-surface/IPC contracts, window geometry contracts, active-client context transitions and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.

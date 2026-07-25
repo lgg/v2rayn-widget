@@ -215,8 +215,8 @@ A read-only probe may classify an exact enabled action while the top-level Happ 
 
 Connection state is inferred from the reliable action:
 
-- visible Disconnect action → currently Connected;
-- visible Connect action → currently Disconnected;
+- reliable Disconnect action → currently Connected;
+- reliable Connect action → currently Disconnected;
 - no reliable action → Unknown.
 
 Transport mode is reported experimentally only when the UI exposes an exact selected Proxy, TUN or Mixed item. Otherwise it remains Unknown.

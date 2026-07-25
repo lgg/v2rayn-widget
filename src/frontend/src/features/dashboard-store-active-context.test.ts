@@ -59,11 +59,11 @@ const baseSettings: AppSettings = {
   window_position: null,
 };
 
-function descriptor(id: "v2rayn" | "happ"): ClientDescriptor {
+function descriptor(id: "v2rayn" | "happ", maturity = "test"): ClientDescriptor {
   return {
     id,
     display_name: id === "v2rayn" ? "v2rayN" : "Happ",
-    maturity: "test",
+    maturity,
     status_note: "test",
     capabilities: {
       detect_application: "supported",
@@ -97,12 +97,18 @@ function connectedStatus(updatedAt: string): DashboardStatus {
   };
 }
 
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+} {
   let resolve: (value: T) => void = () => undefined;
-  const promise = new Promise<T>((next) => {
+  let reject: (reason: unknown) => void = () => undefined;
+  const promise = new Promise<T>((next, fail) => {
     resolve = next;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 describe("dashboard active-client context", () => {
@@ -114,6 +120,9 @@ describe("dashboard active-client context", () => {
       descriptor("happ"),
     ]);
     apiMocks.listSelectedClientItems.mockResolvedValue([]);
+    apiMocks.refreshSelectedClientStartup.mockResolvedValue(
+      connectedStatus("startup"),
+    );
     useDashboardStore.setState({
       status: connectedStatus("initial"),
       settings: baseSettings,
@@ -180,5 +189,79 @@ describe("dashboard active-client context", () => {
 
     expect(useDashboardStore.getState().status?.updated_at).toBe("happ-toggle");
     expect(useDashboardStore.getState().actionLoading).toBe(false);
+  });
+
+  it("rejects an older inactive-adapter catalog response", async () => {
+    const older = deferred<ClientDescriptor[]>();
+    const newer = deferred<ClientDescriptor[]>();
+    apiMocks.getClientCatalog
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(newer.promise);
+
+    useDashboardStore.getState().applyExternalSettings({
+      ...baseSettings,
+      happ_path: "C:\\Apps\\Happ\\Happ.exe",
+    });
+    useDashboardStore.getState().applyExternalSettings({
+      ...baseSettings,
+      happ_path: "C:\\Apps\\Happ\\Happ.exe",
+      happ_allow_ui_automation: true,
+    });
+
+    newer.resolve([descriptor("v2rayn"), descriptor("happ", "new")]);
+    await Promise.resolve();
+    expect(
+      useDashboardStore.getState().clients.find((client) => client.id === "happ")
+        ?.maturity,
+    ).toBe("new");
+
+    older.resolve([descriptor("v2rayn"), descriptor("happ", "old")]);
+    await Promise.resolve();
+    expect(
+      useDashboardStore.getState().clients.find((client) => client.id === "happ")
+        ?.maturity,
+    ).toBe("new");
+  });
+
+  it("does not overwrite newer settings when client selection finishes", async () => {
+    const startup = deferred<DashboardStatus>();
+    apiMocks.selectClient.mockResolvedValueOnce({
+      ...baseSettings,
+      selected_client: "happ",
+    });
+    apiMocks.refreshSelectedClientStartup.mockReturnValueOnce(startup.promise);
+
+    const selection = useDashboardStore.getState().selectClient("happ");
+    await Promise.resolve();
+    useDashboardStore.getState().applyExternalSettings({
+      ...baseSettings,
+      selected_client: "happ",
+      show_clock: false,
+    });
+
+    startup.resolve(connectedStatus("happ-startup"));
+    await selection;
+
+    expect(useDashboardStore.getState().settings?.selected_client).toBe("happ");
+    expect(useDashboardStore.getState().settings?.show_clock).toBe(false);
+  });
+
+  it("rolls back only the selected client after a failed switch", async () => {
+    const request = deferred<AppSettings>();
+    apiMocks.selectClient.mockReturnValueOnce(request.promise);
+
+    const selection = useDashboardStore.getState().selectClient("happ");
+    useDashboardStore.getState().applyExternalSettings({
+      ...baseSettings,
+      selected_client: "happ",
+      show_clock: false,
+      diagnostics_enabled: true,
+    });
+    request.reject(new Error("selection failed"));
+    await selection;
+
+    expect(useDashboardStore.getState().settings?.selected_client).toBe("v2rayn");
+    expect(useDashboardStore.getState().settings?.show_clock).toBe(false);
+    expect(useDashboardStore.getState().settings?.diagnostics_enabled).toBe(true);
   });
 });

@@ -253,10 +253,8 @@ mod tests {
         settings.poll_interval_sec = 60;
         settings.diagnostics_enabled = true;
 
-        state.replace_settings_and_status_invalidating_context(
-            settings,
-            DashboardStatus::default(),
-        );
+        state
+            .replace_settings_and_status_invalidating_context(settings, DashboardStatus::default());
 
         let after = state.snapshot();
         assert_eq!(after.client_epoch, before.client_epoch);
@@ -272,10 +270,8 @@ mod tests {
         settings.happ_path = Some("C:\\Apps\\Happ\\Happ.exe".to_owned());
         settings.happ_allow_ui_automation = true;
 
-        state.replace_settings_and_status_invalidating_context(
-            settings,
-            DashboardStatus::default(),
-        );
+        state
+            .replace_settings_and_status_invalidating_context(settings, DashboardStatus::default());
 
         let after = state.snapshot();
         assert_eq!(after.client_epoch, before.client_epoch);
@@ -296,10 +292,7 @@ mod tests {
             ..settings
         };
 
-        state.replace_settings_and_status_invalidating_context(
-            next,
-            DashboardStatus::default(),
-        );
+        state.replace_settings_and_status_invalidating_context(next, DashboardStatus::default());
 
         let after = state.snapshot();
         assert_eq!(after.client_epoch, before.client_epoch);

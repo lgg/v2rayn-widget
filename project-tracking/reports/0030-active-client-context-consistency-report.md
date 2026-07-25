@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and repository-controlled audit fixes are in progress. Exact-head Windows verification and merge remain pending.
+Complete. Exact implementation head `15829dd0318fcf901bc913dafed8ae5752db152d` passed permanent Release Quality #363 (`30143652586`) and PR #21 was squash-merged into `main` as `01260a564a39ff4a2a0931fddc440decb84c6363`.
 
 ## Audited baseline
 
@@ -10,7 +10,7 @@ Implementation and repository-controlled audit fixes are in progress. Exact-head
 
 ## Audit method
 
-The review followed persisted settings from every owning screen through Tauri events, Main store updates, automatic refresh effects, generic commands, adapter operation locks, client epochs and final status commits. It also rechecked all declared Main, Settings, Debug, Happ Setup and external Diagnostics surfaces, capability gating, IPC registration, window lifecycle, network target restrictions and existing regression contracts.
+The review followed persisted settings from every owning screen through Tauri events, Main store updates, automatic refresh effects, generic commands, adapter operation locks, client epochs, capability catalog requests, client-switch completion/rollback and final status commits. It also rechecked all declared Main, Settings, Debug, Happ Setup and external Diagnostics surfaces, capability gating, IPC registration, window lifecycle, network target restrictions and existing regression contracts.
 
 ## Confirmed defects
 
@@ -19,6 +19,8 @@ The review followed persisted settings from every owning screen through Tauri ev
 3. Generic backend settings saves always invalidated the client epoch.
 4. v2rayN-only mock mode could replace active Happ status.
 5. Active v2rayN path changes could leave the previous installation's status in backend state.
+6. Out-of-order capability catalog responses could overwrite a newer inactive-Happ descriptor.
+7. Client selection completion/failure could overwrite newer general settings with an older pre-selection snapshot.
 
 ## Corrections implemented
 
@@ -30,7 +32,10 @@ The review followed persisted settings from every owning screen through Tauri ev
 - preserved current status when no active context changed, even if a caller supplied a replacement status;
 - reset stale status for active non-mock v2rayN path changes;
 - retained supplied mock/default status for active mock transitions;
-- retained fail-closed reset for active Happ path/consent transitions.
+- retained fail-closed reset for active Happ path/consent transitions;
+- added independent catalog request/settings revisions so stale capability responses are rejected;
+- kept newer settings already received when client selection succeeds;
+- rolled back only `selected_client` when client selection fails.
 
 ## Regression coverage added
 
@@ -45,7 +50,10 @@ Frontend pure matrix:
 Frontend store integration:
 
 - in-flight v2rayN toggle remains current across inactive Happ settings;
-- in-flight Happ toggle remains current across inactive v2rayN path/mock settings.
+- in-flight Happ toggle remains current across inactive v2rayN path/mock settings;
+- an older capability catalog response cannot replace a newer descriptor;
+- successful client selection retains newer settings events;
+- failed client selection rolls back only the selected client and retains newer settings.
 
 Rust state transitions:
 
@@ -79,20 +87,26 @@ No additional capability inflation or missing screen implementation was found:
 - Happ profile/restart/subscription capabilities remain research-required;
 - Happ UI Automation remains explicit opt-in, PID-scoped, confidence-gated and fail-closed.
 
-## Verification status
+## Final verification and merge evidence
 
-Pending on the final exact PR head:
+Exact implementation head `15829dd0318fcf901bc913dafed8ae5752db152d` passed permanent Release Quality #363 (`30143652586`) on the dedicated `[self-hosted, v2rayn-widget-ci]` Windows runner.
 
-- frontend dependency audit;
-- complete frontend tests;
-- production build;
-- complete Rust formatting;
-- Rust unit/integration tests;
-- strict all-targets Clippy;
-- strict release/no-default-features Clippy;
-- locked check;
-- portable release smoke build;
-- artifact/diagnostics upload, cleanup and aggregate gates.
+- workflow contracts and immutable prerequisites: success;
+- frontend dependency audit: success;
+- complete frontend tests: success;
+- production frontend build: success;
+- complete Rust formatting: success;
+- Rust unit/integration suites: 124 passed, 0 failed;
+- strict all-targets Clippy: success;
+- strict release/no-default-features Clippy: success;
+- locked Rust build: success;
+- portable release smoke build: success;
+- frontend and Rust artifact/diagnostics upload: success;
+- cleanup and aggregate gates: success.
+
+The first otherwise-clean run exposed only canonical Rust formatting drift in three new test method calls. The exact rustfmt output was applied, and the complete exact-head gate was rerun successfully rather than bypassed.
+
+PR #21 was squash-merged into `main` as commit `01260a564a39ff4a2a0931fddc440decb84c6363`. This evidence-only follow-up changes no product implementation.
 
 ## Residual risks
 
@@ -103,9 +117,6 @@ Pending on the final exact PR head:
 
 Complete. No private endpoint, credential, local user path, subscription payload or private runtime log was introduced.
 
-## Next steps
+## Completion
 
-1. Complete exact-head permanent Release Quality verification.
-2. Resolve every aggregate diagnostic if present.
-3. Squash-merge only the exact green head.
-4. Record final run and merge evidence through a minimal follow-up if required by the tracking convention.
+Task 0030 is complete. No repository-controlled implementation, capability claim, screen or documentation item identified by this audit remains open. Future work remains limited to explicitly documented experimental/research-required compatibility and real-world client-version testing.

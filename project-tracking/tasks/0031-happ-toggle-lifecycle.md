@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation in progress on `audit/0031-happ-toggle-lifecycle`.
+Implementation complete on `audit/0031-happ-toggle-lifecycle`. Final exact-head Release Quality verification and merge remain pending. The first otherwise-clean permanent run exposed only three canonical rustfmt differences; the exact formatter output has been applied and will be verified by a complete rerun.
 
 ## Audited baseline
 

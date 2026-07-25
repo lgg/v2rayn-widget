@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AppSettings,
   ClientDescriptor,
@@ -127,6 +127,11 @@ describe("dashboard active-client context", () => {
     });
   });
 
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
   it("keeps an in-flight v2rayN action current when inactive Happ settings change", async () => {
     const toggle = deferred<DashboardStatus>();
     apiMocks.toggleSelectedClient.mockReturnValueOnce(toggle.promise);
@@ -148,8 +153,6 @@ describe("dashboard active-client context", () => {
 
     expect(useDashboardStore.getState().status?.updated_at).toBe("v2rayn-toggle");
     expect(useDashboardStore.getState().actionLoading).toBe(false);
-    vi.clearAllTimers();
-    vi.useRealTimers();
   });
 
   it("keeps an in-flight Happ action current when inactive v2rayN and mock settings change", async () => {
@@ -177,7 +180,5 @@ describe("dashboard active-client context", () => {
 
     expect(useDashboardStore.getState().status?.updated_at).toBe("happ-toggle");
     expect(useDashboardStore.getState().actionLoading).toBe(false);
-    vi.clearAllTimers();
-    vi.useRealTimers();
   });
 });

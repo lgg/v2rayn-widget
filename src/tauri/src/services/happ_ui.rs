@@ -16,9 +16,22 @@ pub struct HappUiSnapshot {
 pub struct HappToggleOutcome {
     pub note: String,
     pub expected_state: ConnectionState,
+    pub restore_minimized: bool,
 }
 
 const MIN_ACTION_SCORE: i32 = 220;
+
+pub fn control_ready(snapshot: &HappUiSnapshot) -> bool {
+    snapshot.window_found
+        && snapshot.action_label.is_some()
+        && snapshot
+            .action_score
+            .is_some_and(|score| score >= MIN_ACTION_SCORE)
+}
+
+fn action_candidate_is_eligible(enabled: bool, offscreen: bool, require_onscreen: bool) -> bool {
+    enabled && (!require_onscreen || !offscreen)
+}
 
 fn normalize_text(value: &str) -> String {
     value
@@ -273,7 +286,7 @@ mod windows_impl {
         };
 
         let title = sanitize_window_title(&get_window_title(hwnd));
-        match scan_controls(hwnd) {
+        match scan_controls(hwnd, false) {
             Ok(scan) => {
                 let action = scan.action.as_ref();
                 let note = if scan.ambiguous_action {
@@ -332,7 +345,7 @@ mod windows_impl {
         let was_minimized = bring_to_front(hwnd);
 
         let result = (|| -> Result<HappToggleOutcome> {
-            let scan = scan_controls(hwnd)?;
+            let scan = scan_controls(hwnd, true)?;
             if scan.ambiguous_action {
                 return Err(anyhow!(
                     "Multiple equally plausible Happ Connect/Disconnect controls were found; refusing to click"
@@ -358,14 +371,35 @@ mod windows_impl {
                     candidate.score
                 ),
                 expected_state: expected_state_after_action(candidate.inferred_state),
+                restore_minimized: was_minimized,
             })
         })();
 
-        restore_window_state(hwnd, was_minimized);
-        result
+        match result {
+            Ok(outcome) => Ok(outcome),
+            Err(error) => {
+                restore_window_state(hwnd, was_minimized);
+                Err(error)
+            }
+        }
     }
 
-    fn scan_controls(hwnd: HWND) -> Result<ScanResult> {
+    pub fn restore_window_after_toggle(
+        process_id: Option<u32>,
+        restore_minimized: bool,
+    ) -> Result<()> {
+        if !restore_minimized {
+            return Ok(());
+        }
+
+        let process_id = process_id.ok_or_else(|| anyhow!("Happ process is not running"))?;
+        let hwnd = find_happ_window(process_id)
+            .ok_or_else(|| anyhow!("Happ application window was not found"))?;
+        restore_window_state(hwnd, true);
+        Ok(())
+    }
+
+    fn scan_controls(hwnd: HWND, require_onscreen: bool) -> Result<ScanResult> {
         let _com = ComGuard::init()?;
         let automation: IUIAutomation = unsafe {
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
@@ -422,7 +456,9 @@ mod windows_impl {
                 ));
             }
 
-            if is_clickable(control_type) && element_is_interactable(&element) {
+            if is_clickable(control_type)
+                && element_is_action_candidate(&element, require_onscreen)
+            {
                 if let Some((state, base_score)) = classify_connection_action(&name) {
                     let score = base_score + clickable_score(control_type);
                     if score >= MIN_ACTION_SCORE {
@@ -455,14 +491,17 @@ mod windows_impl {
         })
     }
 
-    fn element_is_interactable(element: &IUIAutomationElement) -> bool {
+    fn element_is_action_candidate(
+        element: &IUIAutomationElement,
+        require_onscreen: bool,
+    ) -> bool {
         let enabled = unsafe { element.CurrentIsEnabled() }
             .map(|value| value.as_bool())
             .unwrap_or(false);
         let offscreen = unsafe { element.CurrentIsOffscreen() }
             .map(|value| value.as_bool())
             .unwrap_or(true);
-        enabled && !offscreen
+        action_candidate_is_eligible(enabled, offscreen, require_onscreen)
     }
 
     fn element_is_selected(element: &IUIAutomationElement) -> bool {
@@ -670,6 +709,22 @@ pub fn toggle_connection(_process_id: Option<u32>) -> anyhow::Result<HappToggleO
     anyhow::bail!("Happ UI Automation is only available on Windows")
 }
 
+#[cfg(target_os = "windows")]
+pub fn restore_window_after_toggle(
+    process_id: Option<u32>,
+    restore_minimized: bool,
+) -> anyhow::Result<()> {
+    windows_impl::restore_window_after_toggle(process_id, restore_minimized)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn restore_window_after_toggle(
+    _process_id: Option<u32>,
+    _restore_minimized: bool,
+) -> anyhow::Result<()> {
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -708,6 +763,37 @@ mod tests {
         assert_eq!(select_unique_candidate_index(0), None);
         assert_eq!(select_unique_candidate_index(1), Some(0));
         assert_eq!(select_unique_candidate_index(2), None);
+    }
+
+    #[test]
+    fn read_probes_accept_exact_offscreen_actions_but_clicks_do_not() {
+        assert!(action_candidate_is_eligible(true, true, false));
+        assert!(!action_candidate_is_eligible(true, true, true));
+        assert!(action_candidate_is_eligible(true, false, true));
+        assert!(!action_candidate_is_eligible(false, false, false));
+    }
+
+    #[test]
+    fn control_readiness_requires_a_high_confidence_action() {
+        let ready = HappUiSnapshot {
+            window_found: true,
+            action_label: Some("Connect".to_owned()),
+            action_score: Some(MIN_ACTION_SCORE),
+            ..HappUiSnapshot::default()
+        };
+        assert!(control_ready(&ready));
+
+        let low_score = HappUiSnapshot {
+            action_score: Some(MIN_ACTION_SCORE - 1),
+            ..ready.clone()
+        };
+        assert!(!control_ready(&low_score));
+
+        let missing_action = HappUiSnapshot {
+            action_label: None,
+            ..ready
+        };
+        assert!(!control_ready(&missing_action));
     }
 
     #[test]

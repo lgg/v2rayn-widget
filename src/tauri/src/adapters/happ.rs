@@ -260,26 +260,73 @@ pub async fn toggle(settings: &AppSettings) -> Result<DashboardStatus, String> {
         );
     }
 
-    let outcome = happ_ui::toggle_connection(process.pid).map_err(|error| error.to_string())?;
+    let mut ready = false;
     for _ in 0..20 {
-        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         let observed = happ_ui::probe(process.pid);
-        if observed.connection_state == outcome.expected_state {
-            let mut status = refresh(settings, true, true, false)
-                .await
-                .map_err(|error| error.to_string())?;
-            status.last_event = Some(format!(
-                "{}; confirmed state={:?}",
-                outcome.note, outcome.expected_state
-            ));
-            return Ok(status);
+        if happ_ui::control_ready(&observed) {
+            ready = true;
+            break;
         }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    if !ready {
+        return Err(
+            "HAPP_CONTROL_NOT_READY: Happ is running, but no unique high-confidence Connect/Disconnect action became available within 5 seconds."
+                .to_owned(),
+        );
     }
 
-    Err(format!(
-        "HAPP_TOGGLE_UNCONFIRMED: {}. The click was sent, but Happ did not expose the expected {:?} state within 5 seconds.",
-        outcome.note, outcome.expected_state
-    ))
+    let outcome = happ_ui::toggle_connection(process.pid).map_err(|error| error.to_string())?;
+    let confirmation: Result<DashboardStatus, String> = async {
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            let observed = happ_ui::probe(process.pid);
+            if observed.connection_state == outcome.expected_state {
+                let mut status = refresh(settings, false, false, false)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                status.last_event = Some(format!(
+                    "{}; confirmed state={:?}",
+                    outcome.note, outcome.expected_state
+                ));
+                return Ok(status);
+            }
+        }
+
+        Err(format!(
+            "HAPP_TOGGLE_UNCONFIRMED: {}. The click was sent, but Happ did not expose the expected {:?} state within 5 seconds.",
+            outcome.note, outcome.expected_state
+        ))
+    }
+    .await;
+
+    let restore_error = happ_ui::restore_window_after_toggle(
+        process.pid,
+        outcome.restore_minimized,
+    )
+    .err()
+    .map(|error| error.to_string());
+
+    match confirmation {
+        Ok(mut status) => {
+            if let Some(error) = restore_error {
+                let event = status.last_event.take().unwrap_or_default();
+                status.last_event = Some(format!(
+                    "{event}; original minimized state could not be restored: {error}"
+                ));
+            }
+            Ok(status)
+        }
+        Err(error) => {
+            if let Some(restore_error) = restore_error {
+                Err(format!(
+                    "{error} Original minimized state could not be restored: {restore_error}"
+                ))
+            } else {
+                Err(error)
+            }
+        }
+    }
 }
 
 pub fn diagnostics(settings: &AppSettings) -> ClientDiagnostics {

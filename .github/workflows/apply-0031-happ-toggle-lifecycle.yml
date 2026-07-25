@@ -21,6 +21,14 @@ jobs:
           ref: audit/0031-happ-toggle-lifecycle
           fetch-depth: 1
 
+      - name: Normalize target source line endings
+        shell: powershell
+        run: |
+          foreach ($path in @('src/tauri/src/services/happ_ui.rs', 'src/tauri/src/adapters/happ.rs')) {
+            $text = [System.IO.File]::ReadAllText($path).Replace("`r`n", "`n")
+            [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+          }
+
       - name: Apply exact source replacements
         shell: powershell
         run: ./scripts/apply-0031-happ-toggle-lifecycle.ps1

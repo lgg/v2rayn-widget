@@ -6,6 +6,7 @@ import { ConnectButton } from "@/components/connect-button";
 import { InfoPanel } from "@/components/info-panel";
 import { ProfileSelector } from "@/components/profile-selector";
 import { StatusBadge } from "@/components/status-badge";
+import { activeClientOperationalRefreshKey } from "@/features/active-client-context";
 import { useDashboardStore } from "@/features/dashboard-store";
 import { setMainWindowHeight } from "@/lib/api";
 import { bindTauriListener } from "@/lib/tauri-listener";
@@ -47,6 +48,7 @@ export function App(): JSX.Element {
     clearNotice,
     applyExternalSettings
   } = useDashboardStore();
+  const operationalRefreshKey = activeClientOperationalRefreshKey(settings);
 
   useEffect(() => {
     void bootstrap();
@@ -65,7 +67,7 @@ export function App(): JSX.Element {
   }, [refresh, settings]);
 
   useEffect(() => {
-    if (!settings) {
+    if (operationalRefreshKey === null) {
       return;
     }
 
@@ -75,18 +77,7 @@ export function App(): JSX.Element {
     }
 
     void refresh();
-  }, [
-    refresh,
-    settings?.selected_client,
-    settings?.v2rayn_path_mode,
-    settings?.v2rayn_path,
-    settings?.happ_path,
-    settings?.mock_mode_enabled,
-    settings?.happ_allow_ui_automation,
-    settings?.show_external_ip,
-    settings?.show_latency,
-    settings?.latency_mode
-  ]);
+  }, [refresh, operationalRefreshKey]);
 
   useEffect(() => {
     if (!notice) {

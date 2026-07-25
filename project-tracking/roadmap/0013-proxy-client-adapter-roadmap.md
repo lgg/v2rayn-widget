@@ -22,6 +22,7 @@
 8. Профили/серверы и подписки являются разными сущностями.
 9. Auxiliary window не скрывается, пока Main не восстановлен; ошибка закрытия остаётся видимой пользователю.
 10. Native minimum size не может делать окно недоступным на маленьком или RDP work area.
+11. Изменение настроек неактивного адаптера не сбрасывает status/epoch и не отменяет операции выбранного клиента.
 
 ## Capability Model
 
@@ -97,7 +98,8 @@ Implemented:
 - selected-client-aware open/refresh/toggle actions;
 - capability-gated connection and item controls;
 - adapter maturity/status notes;
-- separate Happ setup entry next to the selected client.
+- separate Happ setup entry next to the selected client;
+- selected-adapter-aware settings invalidation and refresh dependencies.
 
 ### Phase D — Happ Detection and Read-Only Baseline
 
@@ -193,6 +195,7 @@ Permanent validation-only Windows quality pipeline covers:
 - `cargo check --locked` with the exact built frontend distribution;
 - portable release smoke build, artifacts, diagnostics and cleanup;
 - adapter registry, capability, frontend invoke/handler parity and settings migration tests;
+- active/inactive adapter context, epoch/status and in-flight operation regressions;
 - pure Happ UI action/transport classifier tests;
 - existing v2rayN resolver/config/log regression tests;
 - safe-close, draft-lifecycle and small-work-area geometry contracts.
@@ -225,6 +228,7 @@ Runtime validation support:
 | Subscription and profile concepts are conflated | High | Separate future subscription abstraction and explicit capability states |
 | RDP/small monitor constraints hide a window | High | Work-area fitting caps native minima and restores them before final geometry clamp |
 | Auxiliary close fails after source hide | High | Main restoration precedes hide; frontend direct hide is contract-forbidden and failure is visible |
+| Inactive adapter settings cancel active work | High | Frontend and Rust use the same selected-adapter context matrix and permanent in-flight regressions |
 
 ## Related Work
 
@@ -232,3 +236,4 @@ Runtime validation support:
 - Task 0013 — adapter architecture and Happ baseline/control MVP.
 - Decision 0013 — multi-client adapter architecture.
 - Task/report 0029 — second independent safe-close and small-work-area audit.
+- Task/report 0030 — active selected-adapter context consistency audit.

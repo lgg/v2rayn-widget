@@ -300,12 +300,10 @@ pub async fn toggle(settings: &AppSettings) -> Result<DashboardStatus, String> {
     }
     .await;
 
-    let restore_error = happ_ui::restore_window_after_toggle(
-        process.pid,
-        outcome.restore_minimized,
-    )
-    .err()
-    .map(|error| error.to_string());
+    let restore_error =
+        happ_ui::restore_window_after_toggle(process.pid, outcome.restore_minimized)
+            .err()
+            .map(|error| error.to_string());
 
     match confirmation {
         Ok(mut status) => {

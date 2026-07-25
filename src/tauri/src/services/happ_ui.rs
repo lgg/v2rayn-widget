@@ -457,8 +457,7 @@ mod windows_impl {
                 ));
             }
 
-            if is_clickable(control_type)
-                && element_is_action_candidate(&element, require_onscreen)
+            if is_clickable(control_type) && element_is_action_candidate(&element, require_onscreen)
             {
                 if let Some((state, base_score)) = classify_connection_action(&name) {
                     let score = base_score + clickable_score(control_type);
@@ -492,10 +491,7 @@ mod windows_impl {
         })
     }
 
-    fn element_is_action_candidate(
-        element: &IUIAutomationElement,
-        require_onscreen: bool,
-    ) -> bool {
+    fn element_is_action_candidate(element: &IUIAutomationElement, require_onscreen: bool) -> bool {
         let enabled = unsafe { element.CurrentIsEnabled() }
             .map(|value| value.as_bool())
             .unwrap_or(false);

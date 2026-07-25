@@ -18,6 +18,7 @@ import {
   selectClientItem as selectClientItemApi,
   toggleSelectedClient,
 } from "@/lib/api";
+import { activeClientOperationalContextChanged } from "@/features/active-client-context";
 import i18n from "@/lib/i18n";
 import type {
   AppSettings,
@@ -508,15 +509,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   applyExternalSettings: (settings) => {
     settingsRevision += 1;
     const previousSettings = get().settings;
-    const operationalContextChanged =
-      previousSettings === null ||
-      previousSettings.selected_client !== settings.selected_client ||
-      previousSettings.v2rayn_path_mode !== settings.v2rayn_path_mode ||
-      previousSettings.v2rayn_path !== settings.v2rayn_path ||
-      previousSettings.happ_path !== settings.happ_path ||
-      previousSettings.happ_allow_ui_automation !==
-        settings.happ_allow_ui_automation ||
-      previousSettings.mock_mode_enabled !== settings.mock_mode_enabled;
+    const operationalContextChanged = activeClientOperationalContextChanged(
+      previousSettings,
+      settings,
+    );
     if (operationalContextChanged) {
       invalidateClientOperations();
     }

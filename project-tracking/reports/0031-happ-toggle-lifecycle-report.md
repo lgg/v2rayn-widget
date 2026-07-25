@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete. Exact-head verification and merge remain pending.
+Complete. Exact implementation head `bd0ac91787f90a2cc74495c980b65a47f49e865b` passed permanent Release Quality #377 (`30155372429`) and PR #23 was squash-merged into `main` as `f2ccc95ec3f457706c762e74f344b7e29b5b2e5d`.
 
 ## Audited baseline
 
@@ -10,7 +10,7 @@ Implementation complete. Exact-head verification and merge remain pending.
 
 ## Audit method
 
-The review rechecked all declared Main, Settings, Happ Setup, Debug Tools and external Diagnostics surfaces, then followed each visible action through frontend capability gating, Tauri command registration, selected-adapter dispatch, operation serialization, Windows process/window scoping, UI Automation classification, state ownership and error reporting.
+The review rechecked all declared Main, Settings, Happ Setup, Debug Tools and external Diagnostics surfaces, then followed each action through frontend capability gating, Tauri command registration, selected-adapter dispatch, operation serialization, Windows process/window scoping, UI Automation classification, state ownership and error reporting.
 
 The new findings were isolated to the experimental Happ control lifecycle. No unsupported or research-required capability was promoted.
 
@@ -73,21 +73,26 @@ No additional missing screen or inflated capability claim was found:
 - `docs/architecture.md`
 - task/report 0031.
 
-## Verification status
+## Final verification and merge evidence
 
-Pending on the final exact PR head:
+Exact implementation head `bd0ac91787f90a2cc74495c980b65a47f49e865b` passed permanent Release Quality #377 (`30155372429`) on the dedicated `[self-hosted, v2rayn-widget-ci]` Windows runner.
 
-- frontend dependency audit;
-- complete frontend tests;
-- production frontend build;
-- complete Rust formatting;
-- all Rust unit/integration tests;
-- strict all-targets Clippy;
-- strict release/no-default-features Clippy;
-- locked Rust check;
-- portable Windows release smoke build;
-- artifact and diagnostics upload;
-- cleanup and aggregate failure gates.
+- workflow contracts and immutable prerequisites: success;
+- frontend dependency audit: success;
+- complete frontend tests: success;
+- production frontend build: success;
+- complete Rust formatting: success;
+- Rust suites: 120 unit/integration and 7 product-surface tests, 127 passed and 0 failed;
+- strict all-targets Clippy: success;
+- strict release/no-default-features Clippy: success;
+- locked Rust check: success;
+- portable Windows release smoke build: success;
+- frontend and Rust artifact/diagnostics upload: success;
+- cleanup and aggregate failure gates: success.
+
+The first otherwise-clean permanent run exposed only three canonical Rust formatting differences. The exact rustfmt output was applied and the complete exact-head gate was rerun successfully rather than bypassed.
+
+PR #23 was squash-merged into `main` as `f2ccc95ec3f457706c762e74f344b7e29b5b2e5d`.
 
 ## Residual limits
 
@@ -98,3 +103,7 @@ Pending on the final exact PR head:
 ## Redaction review
 
 Complete. No private paths, endpoint values, subscription contents, credentials, window text or unredacted UI Automation node data were introduced.
+
+## Completion
+
+Task 0031 is complete. No repository-controlled implementation, capability claim, screen, lifecycle or documentation item identified by this audit remains open. Future work is limited to explicitly experimental client-version and desktop-session compatibility testing.

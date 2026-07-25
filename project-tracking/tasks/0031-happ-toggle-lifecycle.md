@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete on `audit/0031-happ-toggle-lifecycle`. Final exact-head Release Quality verification and merge remain pending. The first otherwise-clean permanent run exposed only three canonical rustfmt differences; the exact formatter output has been applied and will be verified by a complete rerun.
+Complete. Exact implementation head `bd0ac91787f90a2cc74495c980b65a47f49e865b` passed permanent Release Quality #377 (`30155372429`) and PR #23 was squash-merged into `main` as `f2ccc95ec3f457706c762e74f344b7e29b5b2e5d`.
 
 ## Audited baseline
 
@@ -63,10 +63,28 @@ Make Happ experimental control a single, deterministic lifecycle:
 - [x] Confirmation failures restore the original minimized state before returning.
 - [x] Post-action status refresh avoids blocking on external IP and latency requests.
 - [x] Pure readiness/visibility tests and a source-order lifecycle contract are present.
-- [ ] Frontend audit, tests and production build pass on the exact PR head.
-- [ ] Rust formatting, all tests, both strict Clippy passes, locked check and portable build pass on the exact PR head.
-- [ ] Artifact, diagnostics, cleanup and aggregate gates pass.
-- [ ] PR is squash-merged into `main` and final evidence is recorded.
+- [x] Frontend audit, tests and production build pass on the exact PR head.
+- [x] Rust formatting, all tests, both strict Clippy passes, locked check and portable build pass on the exact PR head.
+- [x] Artifact, diagnostics, cleanup and aggregate gates pass.
+- [x] PR is squash-merged into `main` and final evidence is recorded.
+
+## Final verification evidence
+
+Exact implementation head `bd0ac91787f90a2cc74495c980b65a47f49e865b` passed Release Quality #377 (`30155372429`) on the dedicated `[self-hosted, v2rayn-widget-ci]` Windows runner.
+
+- workflow contracts and immutable prerequisites: success;
+- frontend dependency audit, complete tests and production build: success;
+- complete Rust formatting: success;
+- Rust suites: 120 unit/integration and 7 product-surface tests, 127 passed and 0 failed;
+- strict all-targets Clippy: success;
+- strict release/no-default-features Clippy: success;
+- locked Rust build: success;
+- portable release smoke artifact and diagnostics: success;
+- cleanup and aggregate failure gates: clean.
+
+The preceding otherwise-clean run exposed only three canonical rustfmt differences. The exact formatter output was applied and the complete gate was rerun successfully rather than bypassed.
+
+PR #23 was squash-merged into `main` as `f2ccc95ec3f457706c762e74f344b7e29b5b2e5d`.
 
 ## Safety decisions
 
@@ -75,6 +93,12 @@ Make Happ experimental control a single, deterministic lifecycle:
 - The click scan is stricter than the read scan and always requires onscreen interaction.
 - No retry may perform a second click. Readiness polling occurs before the single click; confirmation polling is read-only.
 - Restoration failure is surfaced without hiding the successful or failed action result.
+
+## Residual limits
+
+- Happ UI Automation remains version-sensitive and experimental.
+- Readiness and confirmation are each bounded to five seconds and fail explicitly rather than click ambiguously or wait indefinitely.
+- Multi-version Happ and Windows/RDP validation remains empirical compatibility work rather than a repository-controlled missing implementation.
 
 ## Related report
 

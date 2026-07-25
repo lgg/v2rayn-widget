@@ -1,0 +1,41 @@
+name: Apply 0031 Happ lifecycle patch
+
+on:
+  push:
+    branches:
+      - audit/0031-happ-toggle-lifecycle
+    paths:
+      - .github/workflows/apply-0031-happ-toggle-lifecycle.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: [self-hosted, v2rayn-widget-ci]
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: audit/0031-happ-toggle-lifecycle
+          fetch-depth: 1
+
+      - name: Apply exact source replacements
+        shell: powershell
+        run: ./scripts/apply-0031-happ-toggle-lifecycle.ps1
+
+      - name: Remove one-shot patch machinery
+        shell: powershell
+        run: |
+          Remove-Item scripts/apply-0031-happ-toggle-lifecycle.ps1
+          Remove-Item .github/workflows/apply-0031-happ-toggle-lifecycle.yml
+
+      - name: Commit patched source
+        shell: powershell
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "0031: harden Happ toggle readiness and confirmation"
+          git push origin HEAD:audit/0031-happ-toggle-lifecycle

@@ -23,6 +23,47 @@ struct AppStateInner {
     client_epoch: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveClientContextChange {
+    None,
+    SelectedClient,
+    V2raynPath,
+    V2raynMockMode,
+    HappControl,
+}
+
+fn active_client_context_change(
+    previous: &AppSettings,
+    next: &AppSettings,
+) -> ActiveClientContextChange {
+    if previous.selected_client != next.selected_client {
+        return ActiveClientContextChange::SelectedClient;
+    }
+
+    match next.selected_client {
+        ProxyClientId::V2rayn => {
+            if previous.mock_mode_enabled != next.mock_mode_enabled {
+                ActiveClientContextChange::V2raynMockMode
+            } else if previous.v2rayn_path_mode != next.v2rayn_path_mode
+                || previous.v2rayn_path != next.v2rayn_path
+            {
+                ActiveClientContextChange::V2raynPath
+            } else {
+                ActiveClientContextChange::None
+            }
+        }
+        ProxyClientId::Happ => {
+            if previous.happ_path != next.happ_path
+                || previous.happ_allow_ui_automation != next.happ_allow_ui_automation
+            {
+                ActiveClientContextChange::HappControl
+            } else {
+                ActiveClientContextChange::None
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct AppState {
     inner: Mutex<AppStateInner>,
@@ -111,9 +152,25 @@ impl AppState {
         status: DashboardStatus,
     ) -> u64 {
         let mut guard = self.inner.lock().expect("AppState lock poisoned");
+        let context_change = active_client_context_change(&guard.settings, &settings);
+
+        if context_change == ActiveClientContextChange::None {
+            // A caller may use this path for a general settings save, but changing
+            // appearance, diagnostics, polling, or an inactive adapter must not
+            // cancel the active client's operation or replace its current status.
+            guard.settings = settings;
+            return guard.client_epoch;
+        }
+
         guard.client_epoch = guard.client_epoch.wrapping_add(1);
         guard.settings = settings;
-        guard.status = status;
+        guard.status = if context_change == ActiveClientContextChange::V2raynPath
+            && !guard.settings.mock_mode_enabled
+        {
+            DashboardStatus::default()
+        } else {
+            status
+        };
         guard.client_epoch
     }
 
@@ -141,6 +198,17 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::status::ConnectionState;
+
+    fn connected_status() -> DashboardStatus {
+        DashboardStatus {
+            status: ConnectionState::Connected,
+            connection_state: ConnectionState::Connected,
+            tun_enabled: true,
+            active_profile_name: Some("demo".to_owned()),
+            ..DashboardStatus::default()
+        }
+    }
 
     #[test]
     fn stale_status_is_rejected_after_client_switch() {
@@ -174,6 +242,102 @@ mod tests {
             original.client_epoch,
             DashboardStatus::default(),
         ));
+    }
+
+    #[test]
+    fn unrelated_general_settings_preserve_active_context_and_status() {
+        let state = AppState::new(AppSettings::default(), connected_status());
+        let before = state.snapshot();
+        let mut settings = before.settings.clone();
+        settings.autostart_with_windows = true;
+        settings.poll_interval_sec = 60;
+        settings.diagnostics_enabled = true;
+
+        state.replace_settings_and_status_invalidating_context(
+            settings,
+            DashboardStatus::default(),
+        );
+
+        let after = state.snapshot();
+        assert_eq!(after.client_epoch, before.client_epoch);
+        assert_eq!(after.status.connection_state, ConnectionState::Connected);
+        assert_eq!(after.status.active_profile_name.as_deref(), Some("demo"));
+    }
+
+    #[test]
+    fn inactive_happ_settings_preserve_v2rayn_context_and_status() {
+        let state = AppState::new(AppSettings::default(), connected_status());
+        let before = state.snapshot();
+        let mut settings = before.settings.clone();
+        settings.happ_path = Some("C:\\Apps\\Happ\\Happ.exe".to_owned());
+        settings.happ_allow_ui_automation = true;
+
+        state.replace_settings_and_status_invalidating_context(
+            settings,
+            DashboardStatus::default(),
+        );
+
+        let after = state.snapshot();
+        assert_eq!(after.client_epoch, before.client_epoch);
+        assert_eq!(after.status.connection_state, ConnectionState::Connected);
+    }
+
+    #[test]
+    fn inactive_v2rayn_mock_setting_preserves_happ_context_and_status() {
+        let settings = AppSettings {
+            selected_client: ProxyClientId::Happ,
+            ..AppSettings::default()
+        };
+        let state = AppState::new(settings.clone(), connected_status());
+        let before = state.snapshot();
+        let next = AppSettings {
+            mock_mode_enabled: true,
+            v2rayn_path: Some("C:\\Apps\\v2rayN".to_owned()),
+            ..settings
+        };
+
+        state.replace_settings_and_status_invalidating_context(
+            next,
+            DashboardStatus::default(),
+        );
+
+        let after = state.snapshot();
+        assert_eq!(after.client_epoch, before.client_epoch);
+        assert_eq!(after.status.connection_state, ConnectionState::Connected);
+    }
+
+    #[test]
+    fn active_v2rayn_path_change_invalidates_context_and_clears_stale_status() {
+        let state = AppState::new(AppSettings::default(), connected_status());
+        let before = state.snapshot();
+        let mut settings = before.settings.clone();
+        settings.v2rayn_path_mode = crate::models::settings::V2RayNPathMode::Manual;
+        settings.v2rayn_path = Some("C:\\Apps\\v2rayN".to_owned());
+
+        state.replace_settings_and_status_invalidating_context(settings, connected_status());
+
+        let after = state.snapshot();
+        assert_ne!(after.client_epoch, before.client_epoch);
+        assert_eq!(after.status.connection_state, ConnectionState::Unknown);
+        assert!(!after.status.tun_enabled);
+    }
+
+    #[test]
+    fn active_v2rayn_mock_change_uses_the_supplied_mock_status() {
+        let state = AppState::new(AppSettings::default(), connected_status());
+        let before = state.snapshot();
+        let mut settings = before.settings.clone();
+        settings.mock_mode_enabled = true;
+        let supplied = DashboardStatus {
+            last_event: Some("mock enabled".to_owned()),
+            ..connected_status()
+        };
+
+        state.replace_settings_and_status_invalidating_context(settings, supplied);
+
+        let after = state.snapshot();
+        assert_ne!(after.client_epoch, before.client_epoch);
+        assert_eq!(after.status.last_event.as_deref(), Some("mock enabled"));
     }
 
     #[tokio::test]

@@ -204,11 +204,16 @@ The controller in `services/happ_ui.rs`:
 5. accepts only explicit English/Russian Connect or Disconnect actions;
 6. rejects Auto connect, Reconnect and connection-settings labels;
 7. requires a high confidence score;
-8. clicks through Invoke, Toggle, LegacyAccessible or native button fallback;
-9. refreshes status after the action;
-10. fails without clicking when identification is ambiguous.
+8. waits for a unique high-confidence action after a cold process start;
+9. restores a previously minimized window for one onscreen click;
+10. keeps the window restored while confirming the expected state;
+11. performs a fast local status refresh without blocking on network diagnostics;
+12. restores the original minimized state after confirmation or failure;
+13. fails without clicking when identification is ambiguous.
 
-Connection state is inferred from the visible action:
+A read-only probe may classify an exact enabled action while the top-level Happ window itself is minimized. The click path still requires an enabled onscreen control, so hidden controls in a normal window are not promoted into actionable state.
+
+Connection state is inferred from the reliable action:
 
 - visible Disconnect action → currently Connected;
 - visible Connect action → currently Disconnected;

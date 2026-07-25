@@ -60,6 +60,7 @@ let refreshInFlight = false;
 let manualRefreshQueued = false;
 let clientGeneration = 0;
 let settingsRevision = 0;
+let catalogRequestRevision = 0;
 
 function invalidateClientOperations(): number {
   clientGeneration += 1;
@@ -286,6 +287,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       return;
     }
 
+    const previousClientId = current.selected_client;
     const previousStatus = get().status;
     const previousProfiles = get().profiles;
     const generation = invalidateClientOperations();
@@ -302,6 +304,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       applyLanguage(settings.language);
       applyVisualSettings(settings);
 
+      const catalogRequest = ++catalogRequestRevision;
       const [status, profiles, clients] = await Promise.all([
         refreshSelectedClientStartup().catch(() => defaultStatus()),
         listSelectedClientItems().catch(() => []),
@@ -312,28 +315,40 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         return;
       }
 
+      const latestSettings = get().settings;
+      const resolvedSettings = latestSettings?.selected_client === clientId
+        ? latestSettings
+        : settings;
       set({
-        settings,
-        clients,
+        settings: resolvedSettings,
+        clients:
+          catalogRequest === catalogRequestRevision ? clients : get().clients,
         status,
         profiles,
         actionLoading: false,
-        pathNoticeKey: pathNoticeFor(settings),
+        pathNoticeKey: pathNoticeFor(resolvedSettings),
       });
     } catch (error) {
       if (!clientOperationIsCurrent(generation, clientId)) {
         return;
       }
-      set({
-        settings: current,
-        status: previousStatus,
-        profiles: previousProfiles,
-        actionLoading: false,
-        error: error instanceof Error ? error.message : "select_client_failed",
-        notice: buildNoticeFromError(
-          error,
-          i18n.t("errors.clientSwitchFailed"),
-        ),
+      set((previous) => {
+        const latestSettings = previous.settings;
+        const restoredSettings = latestSettings
+          ? { ...latestSettings, selected_client: previousClientId }
+          : current;
+        return {
+          settings: restoredSettings,
+          status: previousStatus,
+          profiles: previousProfiles,
+          actionLoading: false,
+          pathNoticeKey: pathNoticeFor(restoredSettings),
+          error: error instanceof Error ? error.message : "select_client_failed",
+          notice: buildNoticeFromError(
+            error,
+            i18n.t("errors.clientSwitchFailed"),
+          ),
+        };
       });
     }
   },
@@ -508,6 +523,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   applyExternalSettings: (settings) => {
     settingsRevision += 1;
+    const settingsEventRevision = settingsRevision;
     const previousSettings = get().settings;
     const operationalContextChanged = activeClientOperationalContextChanged(
       previousSettings,
@@ -530,9 +546,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     });
 
     const generation = clientGeneration;
+    const catalogRequest = ++catalogRequestRevision;
     void getClientCatalog()
       .then((clients) => {
-        if (generation === clientGeneration) {
+        if (
+          generation === clientGeneration &&
+          settingsEventRevision === settingsRevision &&
+          catalogRequest === catalogRequestRevision
+        ) {
           set({ clients });
         }
       })

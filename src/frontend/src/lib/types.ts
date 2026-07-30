@@ -148,6 +148,16 @@ export interface UiNotice {
   action?: UiNoticeAction;
 }
 
+export interface TrayStatusUpdate {
+  client_id: ProxyClientId;
+  status: DashboardStatus;
+}
+
+export interface TrayOperationError {
+  operation: "refresh" | "open_client";
+  message: string;
+}
+
 export interface PrivilegeDiagnostics {
   widget_is_admin: boolean;
   v2rayn_pid: number | null;

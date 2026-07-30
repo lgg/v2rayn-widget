@@ -12,7 +12,12 @@ import { setMainWindowHeight } from "@/lib/api";
 import { bindTauriListener } from "@/lib/tauri-listener";
 import { cn } from "@/lib/cn";
 import { selectedProfileIdForStatus } from "@/lib/profile-selection";
-import type { AppSettings, CapabilityState } from "@/lib/types";
+import type {
+  AppSettings,
+  CapabilityState,
+  TrayOperationError,
+  TrayStatusUpdate,
+} from "@/lib/types";
 
 function capabilityAvailable(value: CapabilityState | undefined): boolean {
   return value === "supported" || value === "experimental";
@@ -46,7 +51,9 @@ export function App(): JSX.Element {
     relaunchAsAdmin,
     showNotice,
     clearNotice,
-    applyExternalSettings
+    applyExternalSettings,
+    applyExternalStatus,
+    applyExternalOperationError
   } = useDashboardStore();
   const operationalRefreshKey = activeClientOperationalRefreshKey(settings);
 
@@ -97,6 +104,22 @@ export function App(): JSX.Element {
         applyExternalSettings(event.payload);
       }),
     [applyExternalSettings],
+  );
+
+  useEffect(
+    () =>
+      bindTauriListener<TrayStatusUpdate>("tray-status-updated", (event) => {
+        applyExternalStatus(event.payload);
+      }),
+    [applyExternalStatus],
+  );
+
+  useEffect(
+    () =>
+      bindTauriListener<TrayOperationError>("tray-operation-error", (event) => {
+        applyExternalOperationError(event.payload);
+      }),
+    [applyExternalOperationError],
   );
 
   const showInfoPanel = useMemo(() => {

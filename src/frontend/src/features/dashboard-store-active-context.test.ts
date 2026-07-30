@@ -246,6 +246,41 @@ describe("dashboard active-client context", () => {
     expect(useDashboardStore.getState().settings?.show_clock).toBe(false);
   });
 
+  it("keeps a newer tray status over an older in-flight frontend refresh", async () => {
+    const request = deferred<DashboardStatus>();
+    apiMocks.refreshSelectedClient.mockReturnValueOnce(request.promise);
+
+    const refresh = useDashboardStore.getState().refresh();
+    useDashboardStore.getState().applyExternalStatus({
+      client_id: "v2rayn",
+      status: connectedStatus("2026-07-31T00:00:02.000Z"),
+    });
+
+    request.resolve(connectedStatus("2026-07-31T00:00:01.000Z"));
+    await refresh;
+
+    expect(useDashboardStore.getState().status?.updated_at).toBe(
+      "2026-07-31T00:00:02.000Z",
+    );
+    expect(useDashboardStore.getState().actionLoading).toBe(false);
+  });
+
+  it("ignores tray status for an inactive client and surfaces tray errors", () => {
+    useDashboardStore.getState().applyExternalStatus({
+      client_id: "happ",
+      status: connectedStatus("2026-07-31T00:00:03.000Z"),
+    });
+    expect(useDashboardStore.getState().status?.updated_at).toBe("initial");
+
+    useDashboardStore.getState().applyExternalOperationError({
+      operation: "open_client",
+      message: "open failed from tray",
+    });
+    expect(useDashboardStore.getState().notice?.message).toBe(
+      "open failed from tray",
+    );
+  });
+
   it("rolls back only the selected client after a failed switch", async () => {
     const request = deferred<AppSettings>();
     apiMocks.selectClient.mockReturnValueOnce(request.promise);

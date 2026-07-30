@@ -26,6 +26,8 @@ import type {
   DashboardStatus,
   ProfileSummary,
   ProxyClientId,
+  TrayOperationError,
+  TrayStatusUpdate,
   UiNotice,
 } from "@/lib/types";
 
@@ -51,6 +53,8 @@ interface DashboardState {
   openHappSetup: () => Promise<void>;
   relaunchAsAdmin: () => Promise<void>;
   applyExternalSettings: (settings: AppSettings) => void;
+  applyExternalStatus: (payload: TrayStatusUpdate) => void;
+  applyExternalOperationError: (payload: TrayOperationError) => void;
   showNotice: (notice: Omit<UiNotice, "id">) => void;
   clearNotice: () => void;
 }
@@ -109,6 +113,23 @@ function applyVisualSettings(settings: AppSettings): void {
     "widget-effect-disabled",
     !settings.window_effect_enabled,
   );
+}
+
+function statusIsAtLeastAsFresh(
+  candidate: DashboardStatus,
+  current: DashboardStatus | null,
+): boolean {
+  if (!current) {
+    return true;
+  }
+
+  const candidateTime = Date.parse(candidate.updated_at);
+  const currentTime = Date.parse(current.updated_at);
+  if (!Number.isFinite(candidateTime) || !Number.isFinite(currentTime)) {
+    return true;
+  }
+
+  return candidateTime >= currentTime;
 }
 
 function pathNoticeFor(settings: AppSettings): string | null {
@@ -204,15 +225,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         return;
       }
 
-      set({
+      set((previous) => ({
         settings,
         clients,
-        status,
+        status: statusIsAtLeastAsFresh(status, previous.status)
+          ? status
+          : previous.status,
         profiles,
         pathNoticeKey: pathNoticeFor(settings),
         loading: false,
         error: null,
-      });
+      }));
     } catch (error) {
       if (generation !== clientGeneration || revision !== settingsRevision) {
         return;
@@ -256,11 +279,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         return;
       }
 
-      set((prev) => ({
-        status,
-        profiles,
-        actionLoading: background ? prev.actionLoading : false,
-      }));
+      set((prev) => {
+        const accept = statusIsAtLeastAsFresh(status, prev.status);
+        return {
+          status: accept ? status : prev.status,
+          profiles: accept ? profiles : prev.profiles,
+          actionLoading: background ? prev.actionLoading : false,
+        };
+      });
     } catch (error) {
       if (!clientOperationIsCurrent(generation, clientId)) {
         return;
@@ -319,14 +345,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const resolvedSettings = latestSettings?.selected_client === clientId
         ? latestSettings
         : settings;
-      set({
-        settings: resolvedSettings,
-        clients:
-          catalogRequest === catalogRequestRevision ? clients : get().clients,
-        status,
-        profiles,
-        actionLoading: false,
-        pathNoticeKey: pathNoticeFor(resolvedSettings),
+      set((previous) => {
+        const accept = statusIsAtLeastAsFresh(status, previous.status);
+        return {
+          settings: resolvedSettings,
+          clients:
+            catalogRequest === catalogRequestRevision ? clients : get().clients,
+          status: accept ? status : previous.status,
+          profiles: accept ? profiles : previous.profiles,
+          actionLoading: false,
+          pathNoticeKey: pathNoticeFor(resolvedSettings),
+        };
       });
     } catch (error) {
       if (!clientOperationIsCurrent(generation, clientId)) {
@@ -362,7 +391,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       if (!clientOperationIsCurrent(generation, clientId)) {
         return;
       }
-      set({ status, actionLoading: false });
+      set((previous) => ({
+        status: statusIsAtLeastAsFresh(status, previous.status)
+          ? status
+          : previous.status,
+        actionLoading: false,
+      }));
 
       if (postRouteRefreshTimer !== null) {
         window.clearTimeout(postRouteRefreshTimer);
@@ -377,10 +411,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
             if (!clientOperationIsCurrent(generation, clientId)) {
               return;
             }
-            set((prev) => ({
-              status: refreshedStatus,
-              profiles: profiles.length > 0 ? profiles : prev.profiles,
-            }));
+            set((prev) => {
+              const accept = statusIsAtLeastAsFresh(refreshedStatus, prev.status);
+              return {
+                status: accept ? refreshedStatus : prev.status,
+                profiles:
+                  accept && profiles.length > 0 ? profiles : prev.profiles,
+              };
+            });
           } catch {
             // Keep fast route-change UX even if delayed network refresh fails.
           } finally {
@@ -417,7 +455,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       if (!clientOperationIsCurrent(generation, clientId)) {
         return;
       }
-      set({ status, profiles, actionLoading: false });
+      set((previous) => {
+        const accept = statusIsAtLeastAsFresh(status, previous.status);
+        return {
+          status: accept ? status : previous.status,
+          profiles: accept ? profiles : previous.profiles,
+          actionLoading: false,
+        };
+      });
 
       if (postRouteRefreshTimer !== null) {
         window.clearTimeout(postRouteRefreshTimer);
@@ -434,13 +479,16 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
             if (!clientOperationIsCurrent(generation, clientId)) {
               return;
             }
-            set((prev) => ({
-              status: refreshedStatus,
-              profiles:
-                refreshedProfiles.length > 0
-                  ? refreshedProfiles
-                  : prev.profiles,
-            }));
+            set((prev) => {
+              const accept = statusIsAtLeastAsFresh(refreshedStatus, prev.status);
+              return {
+                status: accept ? refreshedStatus : prev.status,
+                profiles:
+                  accept && refreshedProfiles.length > 0
+                    ? refreshedProfiles
+                    : prev.profiles,
+              };
+            });
           } catch {
             // Keep fast item-switch UX even if delayed network refresh fails.
           } finally {
@@ -519,6 +567,27 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     } catch (error) {
       set({ notice: buildNoticeFromError(error, i18n.t("errors.relaunchFailed")) });
     }
+  },
+
+  applyExternalStatus: (payload) => {
+    if (get().settings?.selected_client !== payload.client_id) {
+      return;
+    }
+
+    set((previous) =>
+      statusIsAtLeastAsFresh(payload.status, previous.status)
+        ? { status: payload.status }
+        : {},
+    );
+  },
+
+  applyExternalOperationError: (payload) => {
+    const fallback = payload.operation === "refresh"
+      ? i18n.t("errors.refreshFailed")
+      : i18n.t("errors.openFailed");
+    set({
+      notice: buildNoticeFromError(new Error(payload.message), fallback),
+    });
   },
 
   applyExternalSettings: (settings) => {

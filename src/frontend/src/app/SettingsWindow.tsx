@@ -123,6 +123,7 @@ export function SettingsWindow(): JSX.Element {
   const draftDirtyRef = useRef(false);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const uiSettingsQueueRef = useRef(new SerializedTaskQueue());
+  const saveInProgressRef = useRef(false);
 
   const updateDraftDirty = (value: boolean): void => {
     draftDirtyRef.current = value;
@@ -205,7 +206,7 @@ export function SettingsWindow(): JSX.Element {
   const pathIsManual = settings?.v2rayn_path_mode === "manual";
 
   const applyUi = async (patch: UiSettingsPatch): Promise<void> => {
-    if (!settings) {
+    if (!settings || saveInProgressRef.current) {
       return;
     }
 
@@ -229,10 +230,11 @@ export function SettingsWindow(): JSX.Element {
   };
 
   const onSave = async (): Promise<void> => {
-    if (!settings) {
+    if (!settings || saveInProgressRef.current) {
       return;
     }
 
+    saveInProgressRef.current = true;
     setBusy(true);
     setSaveError(null);
     setPollError(null);
@@ -279,13 +281,14 @@ export function SettingsWindow(): JSX.Element {
         v2rayn_path: settings.v2rayn_path_mode === "manual" ? normalizedPath : null
       };
 
-      const saved = await updateSettings(next);
+      const saved = await uiSettingsQueueRef.current.enqueue(() => updateSettings(next));
       setSettings(saved);
       updateDraftDirty(false);
       await closeSettingsWindow();
     } catch {
       setSaveError(t("errors.settingsSaveFailed"));
     } finally {
+      saveInProgressRef.current = false;
       setBusy(false);
     }
   };

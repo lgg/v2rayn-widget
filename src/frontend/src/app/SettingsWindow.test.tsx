@@ -211,6 +211,38 @@ describe("SettingsWindow", () => {
     });
   });
 
+  it("serializes the full save after pending live UI writes", async () => {
+    let resolveLiveWrite!: (value: AppSettings) => void;
+    apiMocks.applyUiSettings.mockImplementationOnce(
+      () => new Promise<AppSettings>((resolve) => {
+        resolveLiveWrite = resolve;
+      }),
+    );
+
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Always on top"));
+    fireEvent.click(screen.getByLabelText("Autostart with Windows"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(apiMocks.applyUiSettings).toHaveBeenCalledTimes(1));
+    expect(apiMocks.updateSettings).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveLiveWrite({ ...baseSettings, always_on_top: true });
+    });
+
+    await waitFor(() => expect(apiMocks.updateSettings).toHaveBeenCalledTimes(1));
+    expect(apiMocks.updateSettings.mock.calls[0][0]).toMatchObject({
+      always_on_top: true,
+      autostart_with_windows: true,
+    });
+    expect(apiMocks.applyUiSettings.mock.invocationCallOrder[0]).toBeLessThan(
+      apiMocks.updateSettings.mock.invocationCallOrder[0],
+    );
+  });
+
   it("leaves the loading state and shows an error when settings cannot load", async () => {
     apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
     render(<SettingsWindow />);

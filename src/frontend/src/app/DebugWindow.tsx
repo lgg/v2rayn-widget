@@ -7,14 +7,16 @@ import {
   debugSelectProfileViaUi,
   debugToggleViaConfigOnly,
   debugToggleViaUiOnly,
+  getSettings,
   openV2RayN,
   refreshStatus,
   relaunchWidgetAsAdmin,
   runUiDebugProbe,
   toggleTunViaUi
 } from "@/lib/api";
+import { applySurfaceSettings } from "@/lib/surface-settings";
 import { bindTauriListener } from "@/lib/tauri-listener";
-import type { DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
+import type { AppSettings, DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
 
 async function closeDebugWindow(): Promise<void> {
   await closeWindow("debug");
@@ -96,6 +98,24 @@ export function DebugWindow(): JSX.Element {
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    let active = true;
+    void getSettings()
+      .then((settings) => (active ? applySurfaceSettings(settings) : undefined))
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(
+    () =>
+      bindTauriListener<AppSettings>("settings-updated", (event) => {
+        void applySurfaceSettings(event.payload);
+      }),
+    [],
+  );
 
   useEffect(() => {
     void run(

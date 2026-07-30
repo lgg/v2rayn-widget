@@ -9,6 +9,7 @@ import {
   updateHappSettings,
   validateHappPath
 } from "@/lib/api";
+import { applySurfaceSettings } from "@/lib/surface-settings";
 import { bindTauriListener } from "@/lib/tauri-listener";
 import type { AppSettings, ClientDiagnostics, StatusLevel, TransportMode } from "@/lib/types";
 
@@ -60,7 +61,11 @@ export function HappSetupWindow(): JSX.Element {
     setLoading(true);
     setError(null);
     void getSettings()
-      .then((loaded) => {
+      .then(async (loaded) => {
+        if (!active) {
+          return;
+        }
+        await applySurfaceSettings(loaded);
         if (!active) {
           return;
         }
@@ -87,6 +92,21 @@ export function HappSetupWindow(): JSX.Element {
       active = false;
     };
   }, [i18n, loadAttempt]);
+
+  useEffect(
+    () =>
+      bindTauriListener<AppSettings>("settings-updated", (event) => {
+        setSettings(event.payload);
+        if (!dirtyRef.current) {
+          setPath(event.payload.happ_path ?? "");
+          setAllowUiAutomation(event.payload.happ_allow_ui_automation);
+          setDiagnostics(null);
+          setProbedCandidate(null);
+        }
+        void applySurfaceSettings(event.payload);
+      }),
+    [],
+  );
 
   const dirty = settings !== null
     && (candidateKey(path) !== candidateKey(settings.happ_path)

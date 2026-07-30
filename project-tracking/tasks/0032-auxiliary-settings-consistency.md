@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation in progress on `audit/0032-auxiliary-settings-consistency`.
+Implementation complete on `audit/0032-auxiliary-settings-consistency`. The first exact-head run passed all functional tests, both strict Clippy passes, locked build and portable build, and exposed only one canonical rustfmt difference in the new Rust ownership assertion. The exact formatter output is applied; a complete verification rerun remains pending.
 
 ## Audited baseline
 

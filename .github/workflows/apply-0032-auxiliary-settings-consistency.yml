@@ -1,0 +1,41 @@
+name: Apply 0032 auxiliary settings consistency
+
+on:
+  push:
+    branches:
+      - audit/0032-auxiliary-settings-consistency
+    paths:
+      - .github/workflows/apply-0032-auxiliary-settings-consistency.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: [self-hosted, v2rayn-widget-ci]
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: audit/0032-auxiliary-settings-consistency
+          fetch-depth: 1
+
+      - name: Apply exact source replacements
+        shell: powershell
+        run: node scripts/apply-0032-auxiliary-settings-consistency.mjs
+
+      - name: Remove one-shot patch machinery
+        shell: powershell
+        run: |
+          Remove-Item scripts/apply-0032-auxiliary-settings-consistency.mjs
+          Remove-Item .github/workflows/apply-0032-auxiliary-settings-consistency.yml
+
+      - name: Commit patched source
+        shell: powershell
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "0032: synchronize auxiliary surfaces and settings saves"
+          git push origin HEAD:audit/0032-auxiliary-settings-consistency

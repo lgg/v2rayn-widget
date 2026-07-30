@@ -1440,7 +1440,10 @@ mod tests {
         assert_eq!(merged.show_action_buttons, current.show_action_buttons);
         assert_eq!(merged.show_profile_selector, current.show_profile_selector);
         assert_eq!(merged.window_effect_enabled, current.window_effect_enabled);
-        assert_eq!(merged.window_opacity_percent, current.window_opacity_percent);
+        assert_eq!(
+            merged.window_opacity_percent,
+            current.window_opacity_percent
+        );
         assert!(merged.autostart_with_windows);
         assert_eq!(merged.poll_interval_sec, 45);
     }

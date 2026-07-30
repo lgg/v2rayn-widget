@@ -183,7 +183,7 @@ fn preferred_window_geometry_matches_native_declarations() {
 fn tray_runtime_is_localized_and_reports_native_operation_results() {
     let main = include_str!("../src/main.rs");
     assert!(main.contains("tray_menu::labels(&settings.language)"));
-    assert!(main.contains("app_handle.emit("tray-status-updated", payload)"));
+    assert!(main.contains("app_handle.emit(\"tray-status-updated\", payload)"));
     assert!(main.contains("emit_tray_operation_error("));
 
     let commands = include_str!("../src/commands/mod.rs");
@@ -191,8 +191,12 @@ fn tray_runtime_is_localized_and_reports_native_operation_results() {
     assert!(commands.contains("tray_menu::apply_language(app, &previous.language)"));
 
     let app = include_str!("../../frontend/src/app/App.tsx");
-    assert!(app.contains("bindTauriListener<TrayStatusUpdate>("tray-status-updated""));
-    assert!(app.contains("bindTauriListener<TrayOperationError>("tray-operation-error""));
+    assert!(app.contains(
+        "bindTauriListener<TrayStatusUpdate>(\"tray-status-updated\""
+    ));
+    assert!(app.contains(
+        "bindTauriListener<TrayOperationError>(\"tray-operation-error\""
+    ));
 }
 
 #[test]

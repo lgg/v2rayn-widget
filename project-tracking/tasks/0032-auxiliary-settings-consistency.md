@@ -14,6 +14,7 @@ Implementation in progress on `audit/0032-auxiliary-settings-consistency`.
 2. Debug Tools started from browser language/default DOM styling and likewise ignored persisted and live application settings.
 3. Full Settings persistence bypassed the serialized live-patch queue, allowing a pending older `apply_ui_settings` request to complete after `update_settings` and roll back one live field.
 4. Settings, Happ Setup and Debug Tools could accept a newer `settings-updated` event while their initial `getSettings()` request was pending, then overwrite it with the late stale response.
+5. Backend `update_settings` still accepted live UI fields from the full draft payload, so another window's newer language/theme/visibility update could be rolled back even when frontend request ordering was correct.
 
 ## Objective
 
@@ -32,6 +33,7 @@ Make all native React surfaces honor one persisted application appearance/langua
 - [x] Pending live-patch error recovery completes before a queued full save begins.
 - [x] Happ path/consent dirty state is updated synchronously and editable controls are disabled during probe/save.
 - [x] Settings controls and close action are disabled while a full save is in progress.
+- [x] Backend full-save merge preserves authoritative live UI fields while applying draft-owned fields.
 - [x] Regression tests cover auxiliary surfaces, stale initialization and live-patch/full-save ordering.
 - [ ] Exact-head frontend and Rust Release Quality gates pass.
 - [ ] PR is squash-merged and final evidence is recorded.

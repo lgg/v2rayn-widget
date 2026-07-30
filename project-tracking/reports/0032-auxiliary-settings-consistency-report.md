@@ -14,6 +14,7 @@ The audit rechecked Main, Settings, Happ Setup, Debug Tools and Diagnostics from
 2. **Debug Tools appearance/language drift.** The screen did not fetch application settings at all and remained on browser-language/default DOM styling.
 3. **Non-linearizable Settings save.** Live UI patches were serialized with each other, but the full save bypassed that queue. A slower older patch could therefore persist after the full save and roll back one field.
 4. **Stale initialization could beat a newer event.** Settings, Happ Setup and Debug Tools had no request revision guard around their initial settings fetch, so a late old response could overwrite a newer `settings-updated` event.
+5. **Backend ownership still allowed stale live-field rollback.** The full-save merge preserved adapter/window fields but still copied live UI fields from the draft payload instead of authoritative backend state.
 
 ## Corrections implemented
 
@@ -26,6 +27,8 @@ The audit rechecked Main, Settings, Happ Setup, Debug Tools and Diagnostics from
 - blocked new live-patch submission and form edits after the full save starts;
 - updated Happ dirty state synchronously and disabled path edits during probe/save;
 - added settings-event revision guards to all three affected initial loads;
+- rebased every live UI field from authoritative backend state during full-save merge while retaining draft-owned general/v2rayN fields;
+- added a Rust ownership regression test for stale live fields versus fresh draft fields;
 - added regression coverage for persisted/live auxiliary settings, stale initialization and save ordering.
 
 ## Screen and capability audit

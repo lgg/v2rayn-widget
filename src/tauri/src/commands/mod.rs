@@ -996,10 +996,25 @@ pub(crate) fn resolve_v2rayn_base_path(settings: &AppSettings) -> Option<PathBuf
 fn merge_general_settings_payload(payload: AppSettings, current: &AppSettings) -> AppSettings {
     let mut settings = normalize_settings(payload);
 
-    // This payload is owned by the general settings window. Preserve fields that
-    // are managed by client selection, Happ setup, or live window tracking so a
-    // stale draft cannot overwrite newer state from another window.
+    // Full Settings saves own only fields that are intentionally draft-based.
+    // Live UI fields are persisted independently through apply_ui_settings and
+    // must be rebased from authoritative state so a stale full draft cannot roll
+    // back a newer patch or another window's settings event. Client selection,
+    // Happ setup and live window position are likewise owned elsewhere.
     settings.selected_client = current.selected_client;
+    settings.language = current.language.clone();
+    settings.theme = current.theme.clone();
+    settings.always_on_top = current.always_on_top;
+    settings.time_format = current.time_format.clone();
+    settings.show_clock = current.show_clock;
+    settings.show_info_status = current.show_info_status;
+    settings.show_external_ip = current.show_external_ip;
+    settings.show_latency = current.show_latency;
+    settings.mock_mode_enabled = current.mock_mode_enabled;
+    settings.show_action_buttons = current.show_action_buttons;
+    settings.show_profile_selector = current.show_profile_selector;
+    settings.window_effect_enabled = current.window_effect_enabled;
+    settings.window_opacity_percent = current.window_opacity_percent;
     settings.happ_path = current.happ_path.clone();
     settings.happ_allow_ui_automation = current.happ_allow_ui_automation;
     settings.window_position = current.window_position.clone();
@@ -1370,6 +1385,64 @@ mod tests {
         assert_eq!(merged.happ_path, current.happ_path);
         assert!(merged.happ_allow_ui_automation);
         assert_eq!(merged.window_position, current.window_position);
+    }
+
+    #[test]
+    fn general_settings_payload_rebases_live_ui_fields_and_applies_draft_fields() {
+        let current = AppSettings {
+            language: "ru".to_owned(),
+            theme: crate::models::settings::ThemeMode::Light,
+            always_on_top: true,
+            time_format: crate::models::settings::TimeFormat::H12,
+            show_clock: false,
+            show_info_status: false,
+            show_external_ip: false,
+            show_latency: false,
+            mock_mode_enabled: true,
+            show_action_buttons: false,
+            show_profile_selector: false,
+            window_effect_enabled: false,
+            window_opacity_percent: 61,
+            autostart_with_windows: false,
+            poll_interval_sec: 10,
+            ..AppSettings::default()
+        };
+        let stale_payload = AppSettings {
+            language: "en".to_owned(),
+            theme: crate::models::settings::ThemeMode::Dark,
+            always_on_top: false,
+            time_format: crate::models::settings::TimeFormat::H24,
+            show_clock: true,
+            show_info_status: true,
+            show_external_ip: true,
+            show_latency: true,
+            mock_mode_enabled: false,
+            show_action_buttons: true,
+            show_profile_selector: true,
+            window_effect_enabled: true,
+            window_opacity_percent: 92,
+            autostart_with_windows: true,
+            poll_interval_sec: 45,
+            ..AppSettings::default()
+        };
+
+        let merged = merge_general_settings_payload(stale_payload, &current);
+
+        assert_eq!(merged.language, current.language);
+        assert_eq!(merged.theme, current.theme);
+        assert_eq!(merged.always_on_top, current.always_on_top);
+        assert_eq!(merged.time_format, current.time_format);
+        assert_eq!(merged.show_clock, current.show_clock);
+        assert_eq!(merged.show_info_status, current.show_info_status);
+        assert_eq!(merged.show_external_ip, current.show_external_ip);
+        assert_eq!(merged.show_latency, current.show_latency);
+        assert_eq!(merged.mock_mode_enabled, current.mock_mode_enabled);
+        assert_eq!(merged.show_action_buttons, current.show_action_buttons);
+        assert_eq!(merged.show_profile_selector, current.show_profile_selector);
+        assert_eq!(merged.window_effect_enabled, current.window_effect_enabled);
+        assert_eq!(merged.window_opacity_percent, current.window_opacity_percent);
+        assert!(merged.autostart_with_windows);
+        assert_eq!(merged.poll_interval_sec, 45);
     }
 
     #[test]

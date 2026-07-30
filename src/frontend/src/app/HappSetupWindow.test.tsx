@@ -87,6 +87,9 @@ describe("HappSetupWindow", () => {
 
   afterEach(async () => {
     await i18n.changeLanguage("en");
+    document.documentElement.classList.remove("dark");
+    document.documentElement.style.removeProperty("--widget-opacity");
+    document.body.classList.remove("widget-effect-disabled");
   });
 
   it("probes and persists explicit experimental control consent for the current candidate", async () => {
@@ -134,8 +137,10 @@ describe("HappSetupWindow", () => {
 
   it("warns before native close when the setup draft changed", async () => {
     let closeHandler: (() => void) | undefined;
-    eventMocks.listen.mockImplementation(async (_event: string, handler: () => void) => {
-      closeHandler = handler;
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: () => void) => {
+      if (eventName === "happ-setup-close-requested") {
+        closeHandler = handler;
+      }
       return () => undefined;
     });
 
@@ -180,6 +185,99 @@ describe("HappSetupWindow", () => {
 
     await waitFor(() => expect(pathInput.value).toBe("C:\\Draft\\Happ.exe"));
     expect(apiMocks.getSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies saved surface settings and preserves a dirty draft across external updates", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") {
+        settingsHandler = handler;
+      }
+      return () => undefined;
+    });
+    apiMocks.getSettings.mockResolvedValueOnce({
+      ...settings,
+      language: "ru",
+      theme: "light",
+      window_effect_enabled: false,
+      window_opacity_percent: 73,
+    });
+
+    render(<HappSetupWindow />);
+    await waitFor(() => expect(i18n.language).toBe("ru"));
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(document.documentElement.style.getPropertyValue("--widget-opacity")).toBe("0.73");
+    expect(document.body.classList.contains("widget-effect-disabled")).toBe(true);
+
+    const pathInput = screen.getByLabelText("Путь к исполняемому файлу") as HTMLInputElement;
+    fireEvent.change(pathInput, { target: { value: "C:\\Draft\\Happ.exe" } });
+
+    await act(async () => {
+      settingsHandler?.({
+        payload: {
+          ...settings,
+          language: "en",
+          theme: "dark",
+          happ_path: "C:\\External\\Happ.exe",
+        },
+      });
+    });
+
+    await waitFor(() => expect(i18n.language).toBe("en"));
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(pathInput.value).toBe("C:\\Draft\\Happ.exe");
+  });
+
+  it("marks a path draft immediately before an external settings event", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      return () => undefined;
+    });
+
+    render(<HappSetupWindow />);
+    await screen.findByRole("heading", { name: "Happ adapter setup" });
+    const pathInput = screen.getByLabelText("Executable path") as HTMLInputElement;
+
+    fireEvent.change(pathInput, { target: { value: "C:\Draft\Happ.exe" } });
+    await act(async () => {
+      settingsHandler?.({ payload: { ...settings, happ_path: "C:\External\Happ.exe" } });
+    });
+
+    expect(pathInput.value).toBe("C:\Draft\Happ.exe");
+  });
+
+  it("does not let a stale initial load overwrite a newer settings event", async () => {
+    let resolveSettings!: (value: AppSettings) => void;
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockImplementationOnce(
+      () => new Promise<AppSettings>((resolve) => {
+        resolveSettings = resolve;
+      }),
+    );
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") {
+        settingsHandler = handler;
+      }
+      return () => undefined;
+    });
+
+    render(<HappSetupWindow />);
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+
+    const external = {
+      ...settings,
+      theme: "light" as const,
+      happ_path: "C:\\External\\Happ.exe",
+    };
+    await act(async () => {
+      settingsHandler?.({ payload: external });
+      resolveSettings(settings);
+    });
+
+    await screen.findByRole("heading", { name: "Happ adapter setup" });
+    expect((screen.getByLabelText("Executable path") as HTMLInputElement).value).toBe(external.happ_path);
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 
   it("leaves loading and shows an error when settings cannot load", async () => {

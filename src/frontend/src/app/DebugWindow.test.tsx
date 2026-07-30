@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 import { act, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
-import "@/lib/i18n";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AppSettings, DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
+import i18n from "@/lib/i18n";
 
 const listenerMocks = vi.hoisted(() => ({ bindTauriListener: vi.fn() }));
 const apiMocks = vi.hoisted(() => ({
@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   debugSelectProfileViaUi: vi.fn(),
   debugToggleViaConfigOnly: vi.fn(),
   debugToggleViaUiOnly: vi.fn(),
+  getSettings: vi.fn(),
   openV2RayN: vi.fn(),
   refreshStatus: vi.fn(),
   relaunchWidgetAsAdmin: vi.fn(),
@@ -24,6 +25,36 @@ vi.mock("@/lib/api", () => apiMocks);
 vi.mock("@/lib/tauri-listener", () => listenerMocks);
 
 import { DebugWindow } from "@/app/DebugWindow";
+
+const settings: AppSettings = {
+  selected_client: "v2rayn",
+  language: "en",
+  theme: "dark",
+  always_on_top: false,
+  autostart_with_windows: false,
+  allow_restart_fallback: false,
+  poll_interval_sec: 10,
+  time_format: "24h",
+  show_clock: true,
+  show_info_status: true,
+  show_external_ip: true,
+  show_latency: true,
+  mock_mode_enabled: false,
+  show_action_buttons: true,
+  show_profile_selector: true,
+  window_effect_enabled: true,
+  window_opacity_percent: 92,
+  diagnostics_enabled: false,
+  diagnostics_url: "https://ipleak.net/",
+  latency_mode: "active",
+  connectivity_endpoints: [],
+  ip_endpoints: [],
+  v2rayn_path_mode: "auto",
+  v2rayn_path: null,
+  happ_path: null,
+  happ_allow_ui_automation: false,
+  window_position: null,
+};
 
 const snapshot: DebugRuntimeSnapshot = {
   enable_tun: false,
@@ -57,12 +88,80 @@ const report: UiDebugReport = {
 };
 
 describe("DebugWindow", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    await i18n.changeLanguage("en");
+    document.documentElement.classList.remove("dark");
+    document.documentElement.style.removeProperty("--widget-opacity");
+    document.body.classList.remove("widget-effect-disabled");
     listenerMocks.bindTauriListener.mockReturnValue(() => undefined);
     apiMocks.closeWindow.mockResolvedValue(true);
+    apiMocks.getSettings.mockResolvedValue(settings);
     apiMocks.debugCaptureRuntimeSnapshot.mockResolvedValue(snapshot);
     apiMocks.runUiDebugProbe.mockResolvedValue(report);
+  });
+
+  afterEach(async () => {
+    await i18n.changeLanguage("en");
+    document.documentElement.classList.remove("dark");
+    document.documentElement.style.removeProperty("--widget-opacity");
+    document.body.classList.remove("widget-effect-disabled");
+  });
+
+  it("applies persisted settings and reacts to settings-updated events", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") {
+        settingsHandler = handler;
+      }
+      return () => undefined;
+    });
+    apiMocks.getSettings.mockResolvedValueOnce({
+      ...settings,
+      language: "ru",
+      theme: "light",
+      window_effect_enabled: false,
+      window_opacity_percent: 64,
+    });
+
+    render(<DebugWindow />);
+    await waitFor(() => expect(i18n.language).toBe("ru"));
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(document.documentElement.style.getPropertyValue("--widget-opacity")).toBe("0.64");
+    expect(document.body.classList.contains("widget-effect-disabled")).toBe(true);
+
+    await act(async () => {
+      settingsHandler?.({ payload: { ...settings, language: "en", theme: "dark" } });
+    });
+
+    await waitFor(() => expect(i18n.language).toBe("en"));
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+  });
+
+  it("does not let a stale initial load overwrite a newer settings event", async () => {
+    let resolveSettings!: (value: AppSettings) => void;
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockImplementationOnce(
+      () => new Promise<AppSettings>((resolve) => {
+        resolveSettings = resolve;
+      }),
+    );
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") {
+        settingsHandler = handler;
+      }
+      return () => undefined;
+    });
+
+    render(<DebugWindow />);
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+
+    await act(async () => {
+      settingsHandler?.({ payload: { ...settings, theme: "dark" } });
+      resolveSettings({ ...settings, theme: "light" });
+    });
+
+    await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(true));
   });
 
   it("routes a native close request through the shared safe close API", async () => {

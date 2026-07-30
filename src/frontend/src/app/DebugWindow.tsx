@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   closeWindow,
@@ -7,14 +7,16 @@ import {
   debugSelectProfileViaUi,
   debugToggleViaConfigOnly,
   debugToggleViaUiOnly,
+  getSettings,
   openV2RayN,
   refreshStatus,
   relaunchWidgetAsAdmin,
   runUiDebugProbe,
   toggleTunViaUi
 } from "@/lib/api";
+import { applySurfaceSettings } from "@/lib/surface-settings";
 import { bindTauriListener } from "@/lib/tauri-listener";
-import type { DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
+import type { AppSettings, DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
 
 async function closeDebugWindow(): Promise<void> {
   await closeWindow("debug");
@@ -37,6 +39,7 @@ export function DebugWindow(): JSX.Element {
   const [probeError, setProbeError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [profileNameInput, setProfileNameInput] = useState("");
+  const settingsRevisionRef = useRef(0);
 
   const append = (line: string): void => {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 220));
@@ -96,6 +99,30 @@ export function DebugWindow(): JSX.Element {
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    let active = true;
+    const revision = settingsRevisionRef.current;
+    void getSettings()
+      .then((settings) =>
+        active && revision === settingsRevisionRef.current
+          ? applySurfaceSettings(settings)
+          : undefined,
+      )
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(
+    () =>
+      bindTauriListener<AppSettings>("settings-updated", (event) => {
+        settingsRevisionRef.current += 1;
+        void applySurfaceSettings(event.payload);
+      }),
+    [],
+  );
 
   useEffect(() => {
     void run(

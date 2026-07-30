@@ -211,6 +211,93 @@ describe("SettingsWindow", () => {
     });
   });
 
+  it("serializes the full save after pending live UI writes", async () => {
+    let resolveLiveWrite!: (value: AppSettings) => void;
+    apiMocks.applyUiSettings.mockImplementationOnce(
+      () => new Promise<AppSettings>((resolve) => {
+        resolveLiveWrite = resolve;
+      }),
+    );
+
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Always on top"));
+    fireEvent.click(screen.getByLabelText("Autostart with Windows"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(apiMocks.applyUiSettings).toHaveBeenCalledTimes(1));
+    expect(apiMocks.updateSettings).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveLiveWrite({ ...baseSettings, always_on_top: true });
+    });
+
+    await waitFor(() => expect(apiMocks.updateSettings).toHaveBeenCalledTimes(1));
+    expect(apiMocks.updateSettings.mock.calls[0][0]).toMatchObject({
+      always_on_top: true,
+      autostart_with_windows: true,
+    });
+    expect(apiMocks.applyUiSettings.mock.invocationCallOrder[0]).toBeLessThan(
+      apiMocks.updateSettings.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("waits for failed live-patch recovery before starting the full save", async () => {
+    let resolveRecovery!: (value: AppSettings) => void;
+    apiMocks.applyUiSettings.mockRejectedValueOnce(new Error("write failed"));
+    apiMocks.getSettings
+      .mockResolvedValueOnce(baseSettings)
+      .mockImplementationOnce(
+        () => new Promise<AppSettings>((resolve) => {
+          resolveRecovery = resolve;
+        }),
+      );
+
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Always on top"));
+    fireEvent.click(screen.getByLabelText("Autostart with Windows"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(apiMocks.getSettings).toHaveBeenCalledTimes(2));
+    expect(apiMocks.updateSettings).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRecovery(baseSettings);
+    });
+
+    await waitFor(() => expect(apiMocks.updateSettings).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not let a stale initial load overwrite a newer settings event", async () => {
+    let resolveSettings!: (value: AppSettings) => void;
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockImplementationOnce(
+      () => new Promise<AppSettings>((resolve) => {
+        resolveSettings = resolve;
+      }),
+    );
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") {
+        settingsHandler = handler;
+      }
+      return () => undefined;
+    });
+
+    render(<SettingsWindow />);
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+
+    await act(async () => {
+      settingsHandler?.({ payload: { ...baseSettings, theme: "light" } });
+      resolveSettings(baseSettings);
+    });
+
+    await screen.findByRole("heading", { name: "Settings" });
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
   it("leaves the loading state and shows an error when settings cannot load", async () => {
     apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
     render(<SettingsWindow />);

@@ -248,6 +248,9 @@ Key responsibilities:
 - gate controls using capabilities;
 - additionally require persisted Happ UIA consent before enabling connect;
 - render Settings, Debug and Happ Setup windows;
+- bootstrap persisted language/theme/visual settings in every native React surface and subscribe auxiliary surfaces to later settings events;
+- preserve Happ Setup path/consent drafts while applying external language and visual updates;
+- serialize the full Settings save behind complete pending live UI workflows and rebase its live fields from authoritative backend state so neither an older patch nor a stale draft can roll back newer settings;
 - dispose asynchronous Tauri event registrations safely;
 - serialize live UI-setting writes and reject stale client operations;
 - expose explicit bootstrap/load/probe failure states and draft-aware native close handling;

@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete on `audit/0032-auxiliary-settings-consistency`. The first exact-head run passed all functional tests, both strict Clippy passes, locked build and portable build, and exposed only one canonical rustfmt difference in the new Rust ownership assertion. The exact formatter output is applied; a complete verification rerun remains pending.
+Complete. Exact implementation head `58f71b4718f0d4c0ea034985b1ca22bf8f92c0b5` passed permanent Release Quality #398 (`30588781512`) and PR #25 was squash-merged into `main` as `2f25bc30b5a70497f1a166afa032c37c95d5e32c`.
 
 ## Audited baseline
 
@@ -35,5 +35,23 @@ Make all native React surfaces honor one persisted application appearance/langua
 - [x] Settings controls and close action are disabled while a full save is in progress.
 - [x] Backend full-save merge preserves authoritative live UI fields while applying draft-owned fields.
 - [x] Regression tests cover auxiliary surfaces, stale initialization and live-patch/full-save ordering.
-- [ ] Exact-head frontend and Rust Release Quality gates pass.
-- [ ] PR is squash-merged and final evidence is recorded.
+- [x] Exact-head frontend and Rust Release Quality gates pass.
+- [x] PR is squash-merged and final evidence is recorded.
+
+## Final verification evidence
+
+Exact implementation head `58f71b4718f0d4c0ea034985b1ca22bf8f92c0b5` passed Release Quality #398 (`30588781512`) on the dedicated `[self-hosted, v2rayn-widget-ci]` Windows runner.
+
+- workflow contracts and immutable prerequisites: success;
+- frontend dependency audit, complete tests and production build: success;
+- complete Rust formatting: success;
+- Rust suites: 121 unit/integration and 7 product-surface tests, 128 passed and 0 failed;
+- strict all-targets Clippy: success;
+- strict release/no-default-features Clippy: success;
+- locked Rust build: success;
+- portable release smoke artifact and diagnostics: success;
+- cleanup and aggregate failure gates: clean.
+
+The preceding otherwise-clean run exposed only one canonical rustfmt difference in the new ownership assertion. The exact formatter output was applied and the complete gate was rerun successfully rather than bypassed.
+
+PR #25 was squash-merged into `main` as `2f25bc30b5a70497f1a166afa032c37c95d5e32c`.

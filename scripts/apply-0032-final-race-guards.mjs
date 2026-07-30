@@ -93,20 +93,8 @@ replaceExact(
 
 replaceExact(
   "src/frontend/src/app/HappSetupWindow.tsx",
-  "                    setAllowUiAutomation(false);\n",
-  "                    updateConsentDraft(false);\n",
-);
-
-replaceExact(
-  "src/frontend/src/app/HappSetupWindow.tsx",
   "                onChange={(event) => setAllowUiAutomation(event.target.checked)}\n",
   "                onChange={(event) => updateConsentDraft(event.target.checked)}\n",
-);
-
-replaceExact(
-  "src/frontend/src/app/DebugWindow.tsx",
-  "      .catch(() => undefined);\n",
-  "      .catch(() => undefined);\n",
 );
 
 replaceExact(
@@ -118,7 +106,7 @@ replaceExact(
 replaceExact(
   "src/frontend/src/app/HappSetupWindow.test.tsx",
   "  it(\"does not let a stale initial load overwrite a newer settings event\", async () => {\n",
-  `  it("marks a path draft immediately before an external settings event", async () => {\n    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;\n    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {\n      if (eventName === "settings-updated") settingsHandler = handler;\n      return () => undefined;\n    });\n\n    render(<HappSetupWindow />);\n    await screen.findByRole("heading", { name: "Happ adapter setup" });\n    const pathInput = screen.getByLabelText("Executable path") as HTMLInputElement;\n\n    fireEvent.change(pathInput, { target: { value: "C:\\\\Draft\\\\Happ.exe" } });\n    await act(async () => {\n      settingsHandler?.({ payload: { ...settings, happ_path: "C:\\\\External\\\\Happ.exe" } });\n    });\n\n    expect(pathInput.value).toBe("C:\\\\Draft\\\\Happ.exe");\n  });\n\n  it("does not let a stale initial load overwrite a newer settings event", async () => {\n`,
+  `  it("marks a path draft immediately before an external settings event", async () => {\n    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;\n    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {\n      if (eventName === "settings-updated") settingsHandler = handler;\n      return () => undefined;\n    });\n\n    render(<HappSetupWindow />);\n    await screen.findByRole("heading", { name: "Happ adapter setup" });\n    const pathInput = screen.getByLabelText("Executable path") as HTMLInputElement;\n\n    fireEvent.change(pathInput, { target: { value: "C:\\Draft\\Happ.exe" } });\n    await act(async () => {\n      settingsHandler?.({ payload: { ...settings, happ_path: "C:\\External\\Happ.exe" } });\n    });\n\n    expect(pathInput.value).toBe("C:\\Draft\\Happ.exe");\n  });\n\n  it("does not let a stale initial load overwrite a newer settings event", async () => {\n`,
 );
 
 replaceExact(

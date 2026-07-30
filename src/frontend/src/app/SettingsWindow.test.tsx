@@ -243,6 +243,33 @@ describe("SettingsWindow", () => {
     );
   });
 
+  it("does not let a stale initial load overwrite a newer settings event", async () => {
+    let resolveSettings!: (value: AppSettings) => void;
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockImplementationOnce(
+      () => new Promise<AppSettings>((resolve) => {
+        resolveSettings = resolve;
+      }),
+    );
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") {
+        settingsHandler = handler;
+      }
+      return () => undefined;
+    });
+
+    render(<SettingsWindow />);
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+
+    await act(async () => {
+      settingsHandler?.({ payload: { ...baseSettings, theme: "light" } });
+      resolveSettings(baseSettings);
+    });
+
+    await screen.findByRole("heading", { name: "Settings" });
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
   it("leaves the loading state and shows an error when settings cannot load", async () => {
     apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
     render(<SettingsWindow />);

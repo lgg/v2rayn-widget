@@ -13,6 +13,7 @@ The audit rechecked Main, Settings, Happ Setup, Debug Tools and Diagnostics from
 1. **Happ Setup appearance/language drift.** The window fetched settings only to populate Happ fields; it never applied persisted theme/language/opacity/effect values and did not subscribe to settings updates.
 2. **Debug Tools appearance/language drift.** The screen did not fetch application settings at all and remained on browser-language/default DOM styling.
 3. **Non-linearizable Settings save.** Live UI patches were serialized with each other, but the full save bypassed that queue. A slower older patch could therefore persist after the full save and roll back one field.
+4. **Stale initialization could beat a newer event.** Settings, Happ Setup and Debug Tools had no request revision guard around their initial settings fetch, so a late old response could overwrite a newer `settings-updated` event.
 
 ## Corrections implemented
 
@@ -23,7 +24,8 @@ The audit rechecked Main, Settings, Happ Setup, Debug Tools and Diagnostics from
 - synchronized clean Happ Setup input to authoritative external changes;
 - queued the full Settings save behind prior live patches;
 - blocked new live-patch submission after the full save starts;
-- added regression coverage for persisted/live auxiliary settings and save ordering.
+- added settings-event revision guards to all three affected initial loads;
+- added regression coverage for persisted/live auxiliary settings, stale initialization and save ordering.
 
 ## Screen and capability audit
 

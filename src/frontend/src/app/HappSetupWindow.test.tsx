@@ -228,6 +228,39 @@ describe("HappSetupWindow", () => {
     expect(pathInput.value).toBe("C:\\Draft\\Happ.exe");
   });
 
+  it("does not let a stale initial load overwrite a newer settings event", async () => {
+    let resolveSettings!: (value: AppSettings) => void;
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockImplementationOnce(
+      () => new Promise<AppSettings>((resolve) => {
+        resolveSettings = resolve;
+      }),
+    );
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") {
+        settingsHandler = handler;
+      }
+      return () => undefined;
+    });
+
+    render(<HappSetupWindow />);
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+
+    const external = {
+      ...settings,
+      theme: "light" as const,
+      happ_path: "C:\\External\\Happ.exe",
+    };
+    await act(async () => {
+      settingsHandler?.({ payload: external });
+      resolveSettings(settings);
+    });
+
+    await screen.findByRole("heading", { name: "Happ adapter setup" });
+    expect((screen.getByLabelText("Executable path") as HTMLInputElement).value).toBe(external.happ_path);
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
   it("leaves loading and shows an error when settings cannot load", async () => {
     apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
     render(<HappSetupWindow />);

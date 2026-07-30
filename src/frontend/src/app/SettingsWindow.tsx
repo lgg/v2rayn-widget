@@ -124,6 +124,7 @@ export function SettingsWindow(): JSX.Element {
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const uiSettingsQueueRef = useRef(new SerializedTaskQueue());
   const saveInProgressRef = useRef(false);
+  const settingsRevisionRef = useRef(0);
 
   const updateDraftDirty = (value: boolean): void => {
     draftDirtyRef.current = value;
@@ -132,6 +133,7 @@ export function SettingsWindow(): JSX.Element {
 
   useEffect(() => {
     let active = true;
+    const revision = settingsRevisionRef.current;
 
     const load = async (): Promise<void> => {
       setLoading(true);
@@ -142,7 +144,7 @@ export function SettingsWindow(): JSX.Element {
           getAvailableLocales(),
           getVersion().catch(() => null)
         ]);
-        if (!active) {
+        if (!active || revision !== settingsRevisionRef.current) {
           return;
         }
         setSettings(nextSettings);
@@ -173,6 +175,7 @@ export function SettingsWindow(): JSX.Element {
   useEffect(
     () =>
       bindTauriListener<AppSettings>("settings-updated", (event) => {
+        settingsRevisionRef.current += 1;
         setSettings((prev) => {
           if (!prev) {
             return event.payload;

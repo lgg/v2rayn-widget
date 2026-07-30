@@ -13,6 +13,7 @@ Implementation in progress on `audit/0032-auxiliary-settings-consistency`.
 1. Happ Setup loaded adapter values but did not apply persisted language, theme, opacity or visual-effect settings and did not react to later settings events.
 2. Debug Tools started from browser language/default DOM styling and likewise ignored persisted and live application settings.
 3. Full Settings persistence bypassed the serialized live-patch queue, allowing a pending older `apply_ui_settings` request to complete after `update_settings` and roll back one live field.
+4. Settings, Happ Setup and Debug Tools could accept a newer `settings-updated` event while their initial `getSettings()` request was pending, then overwrite it with the late stale response.
 
 ## Objective
 
@@ -27,6 +28,7 @@ Make all native React surfaces honor one persisted application appearance/langua
 - [x] Debug Tools reacts to settings-updated events.
 - [x] Full Settings save waits behind all previously queued live UI writes.
 - [x] Live UI writes are not enqueued after a full save begins.
-- [x] Regression tests cover both auxiliary surfaces and the live-patch/full-save ordering.
+- [x] Initial settings loads on all three native settings-aware auxiliary surfaces reject stale responses after a newer event.
+- [x] Regression tests cover auxiliary surfaces, stale initialization and live-patch/full-save ordering.
 - [ ] Exact-head frontend and Rust Release Quality gates pass.
 - [ ] PR is squash-merged and final evidence is recorded.

@@ -55,18 +55,20 @@ export function HappSetupWindow(): JSX.Element {
   const [probedCandidate, setProbedCandidate] = useState<string | null>(null);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const dirtyRef = useRef(false);
+  const settingsRevisionRef = useRef(0);
 
   useEffect(() => {
     let active = true;
+    const revision = settingsRevisionRef.current;
     setLoading(true);
     setError(null);
     void getSettings()
       .then(async (loaded) => {
-        if (!active) {
+        if (!active || revision !== settingsRevisionRef.current) {
           return;
         }
         await applySurfaceSettings(loaded);
-        if (!active) {
+        if (!active || revision !== settingsRevisionRef.current) {
           return;
         }
         setSettings(loaded);
@@ -96,6 +98,7 @@ export function HappSetupWindow(): JSX.Element {
   useEffect(
     () =>
       bindTauriListener<AppSettings>("settings-updated", (event) => {
+        settingsRevisionRef.current += 1;
         setSettings(event.payload);
         if (!dirtyRef.current) {
           setPath(event.payload.happ_path ?? "");

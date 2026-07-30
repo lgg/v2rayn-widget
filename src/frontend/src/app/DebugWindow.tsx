@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   closeWindow,
@@ -39,6 +39,7 @@ export function DebugWindow(): JSX.Element {
   const [probeError, setProbeError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [profileNameInput, setProfileNameInput] = useState("");
+  const settingsRevisionRef = useRef(0);
 
   const append = (line: string): void => {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 220));
@@ -101,8 +102,13 @@ export function DebugWindow(): JSX.Element {
 
   useEffect(() => {
     let active = true;
+    const revision = settingsRevisionRef.current;
     void getSettings()
-      .then((settings) => (active ? applySurfaceSettings(settings) : undefined))
+      .then((settings) =>
+        active && revision === settingsRevisionRef.current
+          ? applySurfaceSettings(settings)
+          : undefined,
+      )
       .catch(() => undefined);
     return () => {
       active = false;
@@ -112,6 +118,7 @@ export function DebugWindow(): JSX.Element {
   useEffect(
     () =>
       bindTauriListener<AppSettings>("settings-updated", (event) => {
+        settingsRevisionRef.current += 1;
         void applySurfaceSettings(event.payload);
       }),
     [],

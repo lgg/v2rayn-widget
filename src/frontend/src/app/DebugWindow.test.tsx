@@ -138,6 +138,32 @@ describe("DebugWindow", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 
+  it("does not let a stale initial load overwrite a newer settings event", async () => {
+    let resolveSettings!: (value: AppSettings) => void;
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockImplementationOnce(
+      () => new Promise<AppSettings>((resolve) => {
+        resolveSettings = resolve;
+      }),
+    );
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") {
+        settingsHandler = handler;
+      }
+      return () => undefined;
+    });
+
+    render(<DebugWindow />);
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+
+    await act(async () => {
+      settingsHandler?.({ payload: { ...settings, theme: "dark" } });
+      resolveSettings({ ...settings, theme: "light" });
+    });
+
+    await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(true));
+  });
+
   it("routes a native close request through the shared safe close API", async () => {
     let nativeCloseHandler: (() => void) | undefined;
     listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: () => void) => {

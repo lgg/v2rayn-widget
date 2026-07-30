@@ -28,7 +28,10 @@ Make all native React surfaces honor one persisted application appearance/langua
 - [x] Debug Tools reacts to settings-updated events.
 - [x] Full Settings save waits behind all previously queued live UI writes.
 - [x] Live UI writes are not enqueued after a full save begins.
-- [x] Initial settings loads on all three native settings-aware auxiliary surfaces reject stale responses after a newer event.
+- [x] Initial settings loads on all three native settings-aware auxiliary surfaces reject stale responses and stale load errors after a newer event.
+- [x] Pending live-patch error recovery completes before a queued full save begins.
+- [x] Happ path/consent dirty state is updated synchronously and editable controls are disabled during probe/save.
+- [x] Settings controls and close action are disabled while a full save is in progress.
 - [x] Regression tests cover auxiliary surfaces, stale initialization and live-patch/full-save ordering.
 - [ ] Exact-head frontend and Rust Release Quality gates pass.
 - [ ] PR is squash-merged and final evidence is recorded.

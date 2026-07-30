@@ -76,7 +76,7 @@ export function HappSetupWindow(): JSX.Element {
         setAllowUiAutomation(loaded.happ_allow_ui_automation);
       })
       .catch((cause) => {
-        if (active) {
+        if (active && revision === settingsRevisionRef.current) {
           setError(backendMessage(
             cause,
             i18n.t("happSetup.loadFailed"),
@@ -116,6 +116,20 @@ export function HappSetupWindow(): JSX.Element {
       || allowUiAutomation !== settings.happ_allow_ui_automation);
   dirtyRef.current = dirty;
 
+  const updatePathDraft = (value: string): void => {
+    dirtyRef.current = settings !== null
+      && (candidateKey(value) !== candidateKey(settings.happ_path)
+        || allowUiAutomation !== settings.happ_allow_ui_automation);
+    setPath(value);
+  };
+
+  const updateConsentDraft = (value: boolean): void => {
+    dirtyRef.current = settings !== null
+      && (candidateKey(path) !== candidateKey(settings.happ_path)
+        || value !== settings.happ_allow_ui_automation);
+    setAllowUiAutomation(value);
+  };
+
   useEffect(
     () =>
       bindTauriListener("happ-setup-close-requested", () => {
@@ -142,7 +156,7 @@ export function HappSetupWindow(): JSX.Element {
     try {
       const detected = await detectHappPath();
       if (detected) {
-        setPath(detected);
+        updatePathDraft(detected);
         setProbedCandidate(null);
         setMessage(t("happSetup.pathDetected"));
       } else {
@@ -187,6 +201,7 @@ export function HappSetupWindow(): JSX.Element {
         happ_path: normalizedPath,
         happ_allow_ui_automation: allowUiAutomation
       });
+      dirtyRef.current = false;
       setSettings(saved);
       setPath(saved.happ_path ?? "");
       setAllowUiAutomation(saved.happ_allow_ui_automation);
@@ -216,7 +231,7 @@ export function HappSetupWindow(): JSX.Element {
           return;
         }
         normalizedPath = validation.normalized_path;
-        setPath(normalizedPath);
+        updatePathDraft(normalizedPath);
       }
 
       const result = await probeHappCandidate(normalizedPath);
@@ -289,7 +304,8 @@ export function HappSetupWindow(): JSX.Element {
           <button
             type="button"
             aria-label={t("common.close")}
-            className="no-drag rounded-lg p-2 hover:bg-white/50 dark:hover:bg-slate-800"
+            disabled={busy}
+            className="no-drag rounded-lg p-2 hover:bg-white/50 disabled:opacity-60 dark:hover:bg-slate-800"
             onClick={() => void requestClose()}
           >
             <X className="h-4 w-4" />
@@ -317,9 +333,10 @@ export function HappSetupWindow(): JSX.Element {
               aria-label={t("happSetup.pathLabel")}
               className="w-full rounded-xl border bg-white/90 px-3 py-2 dark:bg-slate-900/90"
               value={path}
+              disabled={busy}
               placeholder={t("happSetup.pathPlaceholder")}
               onChange={(event) => {
-                setPath(event.target.value);
+                updatePathDraft(event.target.value);
                 setDiagnostics(null);
                 setProbedCandidate(null);
                 if (!settings.happ_allow_ui_automation) {
@@ -342,7 +359,7 @@ export function HappSetupWindow(): JSX.Element {
                 disabled={busy}
                 className="rounded-lg border px-2 py-1"
                 onClick={() => {
-                  setPath("");
+                  updatePathDraft("");
                   setDiagnostics(null);
                   setProbedCandidate(null);
                   if (!settings.happ_allow_ui_automation) {
@@ -368,7 +385,7 @@ export function HappSetupWindow(): JSX.Element {
                 className="mt-1"
                 checked={allowUiAutomation}
                 disabled={busy || (!allowUiAutomation && !probeReady)}
-                onChange={(event) => setAllowUiAutomation(event.target.checked)}
+                onChange={(event) => updateConsentDraft(event.target.checked)}
               />
               <span>{t("happSetup.enableUiAutomation")}</span>
             </label>

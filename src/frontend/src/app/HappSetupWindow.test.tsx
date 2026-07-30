@@ -228,6 +228,25 @@ describe("HappSetupWindow", () => {
     expect(pathInput.value).toBe("C:\\Draft\\Happ.exe");
   });
 
+  it("marks a path draft immediately before an external settings event", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      return () => undefined;
+    });
+
+    render(<HappSetupWindow />);
+    await screen.findByRole("heading", { name: "Happ adapter setup" });
+    const pathInput = screen.getByLabelText("Executable path") as HTMLInputElement;
+
+    fireEvent.change(pathInput, { target: { value: "C:\Draft\Happ.exe" } });
+    await act(async () => {
+      settingsHandler?.({ payload: { ...settings, happ_path: "C:\External\Happ.exe" } });
+    });
+
+    expect(pathInput.value).toBe("C:\Draft\Happ.exe");
+  });
+
   it("does not let a stale initial load overwrite a newer settings event", async () => {
     let resolveSettings!: (value: AppSettings) => void;
     let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;

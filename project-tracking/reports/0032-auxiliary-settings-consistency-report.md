@@ -22,8 +22,9 @@ The audit rechecked Main, Settings, Happ Setup, Debug Tools and Diagnostics from
 - subscribed both auxiliary surfaces to settings-updated events;
 - preserved Happ Setup local path/consent input while a draft is dirty;
 - synchronized clean Happ Setup input to authoritative external changes;
-- queued the full Settings save behind prior live patches;
-- blocked new live-patch submission after the full save starts;
+- queued the complete live-patch workflow, including failure recovery, and placed the full Settings save behind it;
+- blocked new live-patch submission and form edits after the full save starts;
+- updated Happ dirty state synchronously and disabled path edits during probe/save;
 - added settings-event revision guards to all three affected initial loads;
 - added regression coverage for persisted/live auxiliary settings, stale initialization and save ordering.
 

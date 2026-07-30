@@ -156,7 +156,7 @@ export function SettingsWindow(): JSX.Element {
         applyVisual(nextSettings);
         await i18n.changeLanguage(nextSettings.language);
       } catch {
-        if (active) {
+        if (active && revision === settingsRevisionRef.current) {
           setLoadError(i18n.t("errors.settingsLoadFailed"));
         }
       } finally {
@@ -214,22 +214,27 @@ export function SettingsWindow(): JSX.Element {
     }
 
     setSaveError(null);
-    try {
-      const saved = await uiSettingsQueueRef.current.enqueue(() => applyUiSettings(patch));
-      setSettings((prev) => (prev ? mergeUiFields(prev, saved) : saved));
-      applyTheme(saved.theme);
-      applyVisual(saved);
-      await i18n.changeLanguage(saved.language);
-    } catch {
-      setSaveError(t("errors.settingsSaveFailed"));
-      const authoritative = await getSettings().catch(() => null);
-      if (authoritative) {
-        setSettings((prev) => (prev ? mergeUiFields(prev, authoritative) : authoritative));
-        applyTheme(authoritative.theme);
-        applyVisual(authoritative);
-        await i18n.changeLanguage(authoritative.language);
+    await uiSettingsQueueRef.current.enqueue(async () => {
+      const revision = settingsRevisionRef.current;
+      try {
+        const saved = await applyUiSettings(patch);
+        if (revision === settingsRevisionRef.current) {
+          setSettings((prev) => (prev ? mergeUiFields(prev, saved) : saved));
+          applyTheme(saved.theme);
+          applyVisual(saved);
+          await i18n.changeLanguage(saved.language);
+        }
+      } catch {
+        setSaveError(t("errors.settingsSaveFailed"));
+        const authoritative = await getSettings().catch(() => null);
+        if (authoritative && revision === settingsRevisionRef.current) {
+          setSettings((prev) => (prev ? mergeUiFields(prev, authoritative) : authoritative));
+          applyTheme(authoritative.theme);
+          applyVisual(authoritative);
+          await i18n.changeLanguage(authoritative.language);
+        }
       }
-    }
+    });
   };
 
   const onSave = async (): Promise<void> => {
@@ -350,14 +355,16 @@ export function SettingsWindow(): JSX.Element {
           <button
             type="button"
             aria-label={t("common.close")}
-            className="no-drag rounded-lg p-2 hover:bg-white/50 dark:hover:bg-slate-800"
+            disabled={busy}
+            className="no-drag rounded-lg p-2 hover:bg-white/50 disabled:opacity-60 dark:hover:bg-slate-800"
             onClick={() => void requestClose()}
           >
             <X className="h-4 w-4" />
           </button>
         </header>
 
-        <div className="no-drag min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <fieldset disabled={busy} className="contents">
+          <div className="no-drag min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {confirmDiscardOpen && (
             <section
               role="alert"
@@ -813,7 +820,8 @@ export function SettingsWindow(): JSX.Element {
               </button>
             </div>
           </section>
-        </div>
+          </div>
+        </fieldset>
 
         <footer className="no-drag mt-3">
           {saveError && <p role="alert" className="mb-2 text-center text-xs text-rose-300">{saveError}</p>}

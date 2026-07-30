@@ -243,6 +243,34 @@ describe("SettingsWindow", () => {
     );
   });
 
+  it("waits for failed live-patch recovery before starting the full save", async () => {
+    let resolveRecovery!: (value: AppSettings) => void;
+    apiMocks.applyUiSettings.mockRejectedValueOnce(new Error("write failed"));
+    apiMocks.getSettings
+      .mockResolvedValueOnce(baseSettings)
+      .mockImplementationOnce(
+        () => new Promise<AppSettings>((resolve) => {
+          resolveRecovery = resolve;
+        }),
+      );
+
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+
+    fireEvent.click(screen.getByLabelText("Always on top"));
+    fireEvent.click(screen.getByLabelText("Autostart with Windows"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(apiMocks.getSettings).toHaveBeenCalledTimes(2));
+    expect(apiMocks.updateSettings).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRecovery(baseSettings);
+    });
+
+    await waitFor(() => expect(apiMocks.updateSettings).toHaveBeenCalledTimes(1));
+  });
+
   it("does not let a stale initial load overwrite a newer settings event", async () => {
     let resolveSettings!: (value: AppSettings) => void;
     let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;

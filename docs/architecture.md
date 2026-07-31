@@ -278,6 +278,8 @@ The tray menu is initialized from the persisted application language and retains
 
 Tray Refresh executes the selected adapter's backend refresh and emits a typed client-scoped status event to Main. Main ignores inactive-client status and error events, compares backend timestamps so an older in-flight frontend response cannot overwrite a newer tray result, and accepts status/profile pairs atomically. Refresh and Open Client failures use the same visible notice/UIPI handling as equivalent Main actions.
 
+Release Quality selects the local filesystem drive with the most free space above a fail-closed threshold for an isolated per-run Cargo target. The portable executable is copied back to a stable artifact path, and both the external target and workspace copy are removed in the always-run cleanup. This keeps the validation-only self-hosted runner reliable even when its system drive is constrained.
+
 ## Window lifecycle and geometry
 
 Main is the recovery surface for Settings, Debug and Happ Setup. Auxiliary React surfaces never call native `.hide()` directly.

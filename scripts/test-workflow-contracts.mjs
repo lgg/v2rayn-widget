@@ -153,6 +153,10 @@ function verifyQualityWorkflow() {
     ['Join-Path $env:RUNNER_TEMP "npm-cache"', "npm cache cleanup"],
     ["Cleanup frontend workspace and cache", "frontend cleanup"],
     ["Cleanup Rust workspace", "Rust cleanup"],
+    ["Configure isolated Rust target directory", "isolated Rust target"],
+    ["Get-PSDrive -PSProvider FileSystem", "spacious drive selection"],
+    ["CARGO_TARGET_DIR", "external Cargo target"],
+    ["src/tauri/portable-release/v2rayn-widget.exe", "stable portable artifact path"],
   ]) requireText(text, needle, label);
 
   rejectText(text, "pull_request_target:", "quality events");

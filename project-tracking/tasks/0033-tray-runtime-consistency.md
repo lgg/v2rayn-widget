@@ -16,6 +16,7 @@ main commit cd467b087cdcea13adda28dec4ff290cc23615d7.
 4. Direct tray results needed selected-client scoping and freshness ordering so they could not cross client contexts or be overwritten by older frontend requests.
 5. Native titles for Main, Settings, Debug, Happ Setup and late-created Diagnostics remained hardcoded in English.
 6. The new freshness layer could reject a stale bootstrap status while still accepting its stale profile list; status/profile pairs and tray errors needed atomic client-scoped acceptance.
+7. Release Quality compiled every Rust phase inside the checkout workspace on the nearly full system drive even though spacious local drives were available, causing an infrastructure-only no-space failure before final verification.
 
 ## Objective
 
@@ -33,5 +34,6 @@ Make the complete native shell localized and make tray status, profile and error
 - [x] Tray Refresh and Open Client errors become visible only for the active client.
 - [x] Bootstrap accepts or rejects status and profiles atomically.
 - [x] Pure native-label tests, frontend ordering tests and product-surface contracts cover the behavior.
+- [x] Release Quality selects an isolated spacious-drive Cargo target, publishes from a stable workspace path and removes both copies during cleanup.
 - [ ] Exact-head frontend and Rust Release Quality gates pass.
 - [ ] PR is squash-merged and final evidence is recorded.

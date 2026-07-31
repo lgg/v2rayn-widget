@@ -16,6 +16,7 @@ The audit treated the Windows tray and native window chrome as declared product 
 4. **Cross-channel status ordering was undefined.** Native results required selected-client scoping and timestamp freshness against frontend requests.
 5. **Native title drift.** Main, Settings, Debug, Happ Setup and Diagnostics titles remained English after a language change.
 6. **Related state could split across freshness decisions.** Bootstrap could reject stale status while accepting stale profiles, and tray errors lacked client identity.
+7. **Quality verification was bound to a constrained system drive.** Cargo used the checkout workspace on C: until rustc failed with no space despite E: and D: having ample capacity.
 
 ## Corrections implemented
 
@@ -30,7 +31,10 @@ The audit treated the Windows tray and native window chrome as declared product 
 - preserved the freshest valid backend timestamp across tray and frontend channels;
 - accepted bootstrap status and profile pairs atomically;
 - reused existing visible notice and UIPI-aware error construction;
-- added Rust, frontend and source-contract regression coverage.
+- added Rust, frontend and source-contract regression coverage;
+- made Release Quality choose the spacious local drive dynamically for an isolated per-run Cargo target;
+- copied the release executable to a stable artifact path and removed external/workspace build copies in always-run cleanup;
+- extended workflow contracts so storage isolation cannot regress.
 
 ## Screen and capability audit
 

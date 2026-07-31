@@ -280,6 +280,12 @@ Tray Refresh executes the selected adapter's backend refresh and emits a typed c
 
 Release Quality selects the local filesystem drive with the most free space above a fail-closed threshold for an isolated per-run Cargo target. The portable executable is copied back to a stable artifact path, and both the external target and workspace copy are removed in the always-run cleanup. This keeps the validation-only self-hosted runner reliable even when its system drive is constrained.
 
+## Async native consistency
+
+Native tray operations capture selected client and epoch once inside the backend command boundary. Results are emitted only while that exact context remains current. Frontend status ordering parses the full RFC3339 fractional precision emitted by Chrono. Settings-aware webviews register authoritative listeners before requesting snapshots, and an event that supersedes Main bootstrap starts a replacement startup refresh.
+
+Release Quality selects only ready fixed local drives for isolated Cargo output and verifies every generated path is absent after cleanup.
+
 ## Window lifecycle and geometry
 
 Main is the recovery surface for Settings, Debug and Happ Setup. Auxiliary React surfaces never call native `.hide()` directly.

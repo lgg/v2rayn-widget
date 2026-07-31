@@ -206,6 +206,26 @@ fn tray_runtime_is_localized_and_reports_native_operation_results() {
 }
 
 #[test]
+fn async_native_results_are_owned_and_listener_first() {
+    let main = include_str!("../src/main.rs");
+    assert!(main.contains("refresh_selected_client_from_tray"));
+    assert!(main.contains("open_selected_client_from_tray"));
+    assert!(main.contains("suppressed stale tray refresh result"));
+
+    let commands = include_str!("../src/client_commands.rs");
+    assert!(commands.contains("pub context_current: bool"));
+    assert!(
+        commands.contains("let context_current = state.context_matches(client_id, client_epoch)")
+    );
+
+    let app = include_str!("../../frontend/src/app/App.tsx");
+    assert!(app.contains("if (eventListenersSettled) void bootstrap()"));
+    let store = include_str!("../../frontend/src/features/dashboard-store.ts");
+    assert!(store.contains("if (previousSettings === null)"));
+    assert!(store.contains("refreshSelectedClientStartup().catch"));
+}
+
+#[test]
 fn happ_toggle_confirms_before_restoring_the_original_minimized_state() {
     let adapter = include_str!("../src/adapters/happ.rs");
     let confirmation = adapter

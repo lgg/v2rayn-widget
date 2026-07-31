@@ -330,4 +330,27 @@ describe("dashboard active-client context", () => {
     expect(useDashboardStore.getState().settings?.show_clock).toBe(false);
     expect(useDashboardStore.getState().settings?.diagnostics_enabled).toBe(true);
   });
+
+  it("refreshes the initial client when a settings event supersedes bootstrap", async () => {
+    useDashboardStore.setState({ settings: null, status: null, profiles: [], loading: true });
+    apiMocks.refreshSelectedClientStartup.mockResolvedValueOnce(
+      connectedStatus("2026-07-31T00:00:05.123456789Z"),
+    );
+    apiMocks.listSelectedClientItems.mockResolvedValueOnce([
+      { id: "initial", name: "initial-profile" },
+    ]);
+
+    useDashboardStore.getState().applyExternalSettings(baseSettings);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useDashboardStore.getState().status?.updated_at).toBe(
+      "2026-07-31T00:00:05.123456789Z",
+    );
+    expect(useDashboardStore.getState().profiles).toEqual([
+      { id: "initial", name: "initial-profile" },
+    ]);
+  });
+
 });

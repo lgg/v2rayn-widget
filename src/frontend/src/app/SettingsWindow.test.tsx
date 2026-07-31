@@ -329,4 +329,21 @@ describe("SettingsWindow", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Could not save settings");
     expect(apiMocks.closeWindow).not.toHaveBeenCalled();
   });
+
+  it("registers settings events before loading and leaves loading on an authoritative event", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockReturnValueOnce(new Promise<AppSettings>(() => undefined));
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      return () => undefined;
+    });
+
+    render(<SettingsWindow />);
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+    await act(async () => settingsHandler?.({ payload: { ...baseSettings, theme: "light" } }));
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).not.toBeNull();
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
 });

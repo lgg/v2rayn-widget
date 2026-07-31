@@ -56,8 +56,10 @@ export function HappSetupWindow(): JSX.Element {
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const dirtyRef = useRef(false);
   const settingsRevisionRef = useRef(0);
+  const [settingsListenerSettled, setSettingsListenerSettled] = useState(false);
 
   useEffect(() => {
+    if (!settingsListenerSettled) return;
     let active = true;
     const revision = settingsRevisionRef.current;
     setLoading(true);
@@ -93,12 +95,14 @@ export function HappSetupWindow(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [i18n, loadAttempt]);
+  }, [i18n, loadAttempt, settingsListenerSettled]);
 
-  useEffect(
-    () =>
-      bindTauriListener<AppSettings>("settings-updated", (event) => {
+  useEffect(() => {
+    setSettingsListenerSettled(false);
+    return bindTauriListener<AppSettings>("settings-updated", (event) => {
         settingsRevisionRef.current += 1;
+        setLoading(false);
+        setError(null);
         setSettings(event.payload);
         if (!dirtyRef.current) {
           setPath(event.payload.happ_path ?? "");
@@ -107,9 +111,11 @@ export function HappSetupWindow(): JSX.Element {
           setProbedCandidate(null);
         }
         void applySurfaceSettings(event.payload);
-      }),
-    [],
-  );
+      },
+      () => setSettingsListenerSettled(true),
+      () => setSettingsListenerSettled(true),
+    );
+  }, []);
 
   const dirty = settings !== null
     && (candidateKey(path) !== candidateKey(settings.happ_path)

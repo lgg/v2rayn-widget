@@ -94,7 +94,10 @@ describe("DebugWindow", () => {
     document.documentElement.classList.remove("dark");
     document.documentElement.style.removeProperty("--widget-opacity");
     document.body.classList.remove("widget-effect-disabled");
-    listenerMocks.bindTauriListener.mockReturnValue(() => undefined);
+    listenerMocks.bindTauriListener.mockImplementation((_eventName: string, _handler: unknown, _onError?: unknown, onReady?: () => void) => {
+      onReady?.();
+      return () => undefined;
+    });
     apiMocks.closeWindow.mockResolvedValue(true);
     apiMocks.getSettings.mockResolvedValue(settings);
     apiMocks.debugCaptureRuntimeSnapshot.mockResolvedValue(snapshot);
@@ -110,10 +113,9 @@ describe("DebugWindow", () => {
 
   it("applies persisted settings and reacts to settings-updated events", async () => {
     let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
-    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void) => {
-      if (eventName === "settings-updated") {
-        settingsHandler = handler;
-      }
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void, _onError?: unknown, onReady?: () => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      onReady?.();
       return () => undefined;
     });
     apiMocks.getSettings.mockResolvedValueOnce({
@@ -146,10 +148,9 @@ describe("DebugWindow", () => {
         resolveSettings = resolve;
       }),
     );
-    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void) => {
-      if (eventName === "settings-updated") {
-        settingsHandler = handler;
-      }
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void, _onError?: unknown, onReady?: () => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      onReady?.();
       return () => undefined;
     });
 
@@ -166,10 +167,9 @@ describe("DebugWindow", () => {
 
   it("routes a native close request through the shared safe close API", async () => {
     let nativeCloseHandler: (() => void) | undefined;
-    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: () => void) => {
-      if (eventName === "debug-close-requested") {
-        nativeCloseHandler = handler;
-      }
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: () => void, _onError?: unknown, onReady?: () => void) => {
+      if (eventName === "debug-close-requested") nativeCloseHandler = handler;
+      onReady?.();
       return () => undefined;
     });
 
@@ -183,4 +183,19 @@ describe("DebugWindow", () => {
 
     expect(apiMocks.closeWindow).toHaveBeenCalledWith("debug");
   });
+
+  it("does not request settings before the settings listener is registered", async () => {
+    let ready: (() => void) | undefined;
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, _handler: unknown, _onError?: unknown, onReady?: () => void) => {
+      if (eventName === "settings-updated") ready = onReady;
+      else onReady?.();
+      return () => undefined;
+    });
+
+    render(<DebugWindow />);
+    expect(apiMocks.getSettings).not.toHaveBeenCalled();
+    await act(async () => ready?.());
+    await waitFor(() => expect(apiMocks.getSettings).toHaveBeenCalledOnce());
+  });
+
 });

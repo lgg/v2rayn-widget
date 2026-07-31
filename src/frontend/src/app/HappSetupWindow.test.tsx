@@ -298,4 +298,20 @@ describe("HappSetupWindow", () => {
     expect(await screen.findByRole("heading", { name: "Happ adapter setup" })).toBeTruthy();
     expect(apiMocks.getSettings).toHaveBeenCalledTimes(2);
   });
+
+  it("leaves loading when an authoritative event supersedes a hanging initial load", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockReturnValueOnce(new Promise<AppSettings>(() => undefined));
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      return () => undefined;
+    });
+
+    render(<HappSetupWindow />);
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+    await act(async () => settingsHandler?.({ payload: settings }));
+
+    expect(await screen.findByRole("heading", { name: "Happ adapter setup" })).not.toBeNull();
+  });
+
 });

@@ -125,6 +125,7 @@ export function SettingsWindow(): JSX.Element {
   const uiSettingsQueueRef = useRef(new SerializedTaskQueue());
   const saveInProgressRef = useRef(false);
   const settingsRevisionRef = useRef(0);
+  const [settingsListenerSettled, setSettingsListenerSettled] = useState(false);
 
   const updateDraftDirty = (value: boolean): void => {
     draftDirtyRef.current = value;
@@ -132,6 +133,7 @@ export function SettingsWindow(): JSX.Element {
   };
 
   useEffect(() => {
+    if (!settingsListenerSettled) return;
     let active = true;
     const revision = settingsRevisionRef.current;
 
@@ -170,12 +172,14 @@ export function SettingsWindow(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [i18n, loadAttempt]);
+  }, [i18n, loadAttempt, settingsListenerSettled]);
 
-  useEffect(
-    () =>
-      bindTauriListener<AppSettings>("settings-updated", (event) => {
+  useEffect(() => {
+    setSettingsListenerSettled(false);
+    return bindTauriListener<AppSettings>("settings-updated", (event) => {
         settingsRevisionRef.current += 1;
+        setLoading(false);
+        setLoadError(null);
         setSettings((prev) => {
           if (!prev) {
             return event.payload;
@@ -190,9 +194,11 @@ export function SettingsWindow(): JSX.Element {
         applyTheme(event.payload.theme);
         applyVisual(event.payload);
         void i18n.changeLanguage(event.payload.language);
-      }),
-    [i18n],
-  );
+      },
+      () => setSettingsListenerSettled(true),
+      () => setSettingsListenerSettled(true),
+    );
+  }, [i18n]);
 
   useEffect(
     () =>

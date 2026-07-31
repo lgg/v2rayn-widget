@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Globe, RefreshCcw, Settings, SquareArrowOutUpRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ClientSelector } from "@/components/client-selector";
@@ -28,6 +28,7 @@ export function App(): JSX.Element {
   const panelRef = useRef<HTMLElement | null>(null);
   const lastMeasuredHeight = useRef<number>(0);
   const skippedInitialOperationalRefresh = useRef(false);
+  const [eventListenersSettled, setEventListenersSettled] = useState(false);
 
   const {
     bootstrap,
@@ -58,8 +59,45 @@ export function App(): JSX.Element {
   const operationalRefreshKey = activeClientOperationalRefreshKey(settings);
 
   useEffect(() => {
-    void bootstrap();
-  }, [bootstrap]);
+    let active = true;
+    let settled = 0;
+    const markSettled = (): void => {
+      if (!active) return;
+      settled += 1;
+      if (settled === 3) setEventListenersSettled(true);
+    };
+
+    setEventListenersSettled(false);
+    const disposers = [
+      bindTauriListener<AppSettings>(
+        "settings-updated",
+        (event) => applyExternalSettings(event.payload),
+        markSettled,
+        markSettled,
+      ),
+      bindTauriListener<TrayStatusUpdate>(
+        "tray-status-updated",
+        (event) => applyExternalStatus(event.payload),
+        markSettled,
+        markSettled,
+      ),
+      bindTauriListener<TrayOperationError>(
+        "tray-operation-error",
+        (event) => applyExternalOperationError(event.payload),
+        markSettled,
+        markSettled,
+      ),
+    ];
+
+    return () => {
+      active = false;
+      for (const dispose of disposers) dispose();
+    };
+  }, [applyExternalOperationError, applyExternalSettings, applyExternalStatus]);
+
+  useEffect(() => {
+    if (eventListenersSettled) void bootstrap();
+  }, [bootstrap, eventListenersSettled]);
 
   useEffect(() => {
     if (!settings) {
@@ -97,30 +135,6 @@ export function App(): JSX.Element {
 
     return () => window.clearTimeout(timer);
   }, [notice, clearNotice]);
-
-  useEffect(
-    () =>
-      bindTauriListener<AppSettings>("settings-updated", (event) => {
-        applyExternalSettings(event.payload);
-      }),
-    [applyExternalSettings],
-  );
-
-  useEffect(
-    () =>
-      bindTauriListener<TrayStatusUpdate>("tray-status-updated", (event) => {
-        applyExternalStatus(event.payload);
-      }),
-    [applyExternalStatus],
-  );
-
-  useEffect(
-    () =>
-      bindTauriListener<TrayOperationError>("tray-operation-error", (event) => {
-        applyExternalOperationError(event.payload);
-      }),
-    [applyExternalOperationError],
-  );
 
   const showInfoPanel = useMemo(() => {
     if (!settings) {

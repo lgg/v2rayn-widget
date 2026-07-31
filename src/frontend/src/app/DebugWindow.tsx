@@ -40,6 +40,7 @@ export function DebugWindow(): JSX.Element {
   const [log, setLog] = useState<string[]>([]);
   const [profileNameInput, setProfileNameInput] = useState("");
   const settingsRevisionRef = useRef(0);
+  const [settingsListenerSettled, setSettingsListenerSettled] = useState(false);
 
   const append = (line: string): void => {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 220));
@@ -101,6 +102,7 @@ export function DebugWindow(): JSX.Element {
   };
 
   useEffect(() => {
+    if (!settingsListenerSettled) return;
     let active = true;
     const revision = settingsRevisionRef.current;
     void getSettings()
@@ -113,16 +115,20 @@ export function DebugWindow(): JSX.Element {
     return () => {
       active = false;
     };
-  }, []);
+  }, [settingsListenerSettled]);
 
-  useEffect(
-    () =>
-      bindTauriListener<AppSettings>("settings-updated", (event) => {
+  useEffect(() => {
+    setSettingsListenerSettled(false);
+    return bindTauriListener<AppSettings>(
+      "settings-updated",
+      (event) => {
         settingsRevisionRef.current += 1;
         void applySurfaceSettings(event.payload);
-      }),
-    [],
-  );
+      },
+      () => setSettingsListenerSettled(true),
+      () => setSettingsListenerSettled(true),
+    );
+  }, []);
 
   useEffect(() => {
     void run(

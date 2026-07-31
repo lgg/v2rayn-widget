@@ -1,0 +1,54 @@
+name: Apply 0035 audited patch
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - ready_for_review
+      - synchronize
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-0035-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'audit/0035-final-declared-surface-audit'
+    runs-on: [self-hosted, v2rayn-widget-ci]
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: audit/0035-final-declared-surface-audit
+          fetch-depth: 2
+      - name: Apply exact patch
+        shell: pwsh
+        run: node scripts/apply-0035.mjs
+      - name: Keep workflow mutations for workflow-scoped API
+        shell: pwsh
+        run: git checkout HEAD -- .github/workflows
+      - name: Verify frontend
+        working-directory: src/frontend
+        shell: pwsh
+        run: |
+          $env:NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+          $env:NPM_CONFIG_CACHE = Join-Path $env:RUNNER_TEMP "npm-0035-cache"
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          npm run build
+      - name: Publish clean implementation
+        shell: pwsh
+        run: |
+          Remove-Item scripts/apply-0035.mjs -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git reset .github/workflows/apply-0035.yml
+          git diff --cached --check
+          git commit -m "0035: harden declared product surfaces"
+          git push origin HEAD:audit/0035-final-declared-surface-audit

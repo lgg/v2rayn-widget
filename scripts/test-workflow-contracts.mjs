@@ -19,7 +19,7 @@ const PREREQUISITES = "scripts/assert-ci-prerequisites.ps1";
 const OFFICIAL_ACTION_PINS = new Map([
   ["checkout", "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"],
   ["upload-artifact", "b7c566a772e6b6bfb58ed0dc250532a479d7789f"],
-  ["download-artifact", "37930b1c2abaa49bbe596cd826c3c89aef350131"],
+  ["download-artifact", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"],
 ]);
 
 function fail(message) {

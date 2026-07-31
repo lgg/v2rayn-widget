@@ -26,6 +26,25 @@ jobs:
         with:
           ref: audit/0035-final-declared-surface-audit
           fetch-depth: 2
+      - name: Escape nested TypeScript template literals
+        shell: pwsh
+        run: |
+          $path = "scripts/apply-0035-review.mjs"
+          $script = [System.IO.File]::ReadAllText($path)
+          $expressions = @(
+            'new Date().toLocaleTimeString()',
+            'line',
+            'label',
+            'formatSnapshot(snapshot)',
+            'error instanceof Error ? error.message : String(error)',
+            'title',
+            'typeof result === "string" ? result : "done"',
+            'message'
+          )
+          foreach ($expression in $expressions) {
+            $script = $script.Replace('${' + $expression + '}', '\${' + $expression + '}')
+          }
+          [System.IO.File]::WriteAllText($path, $script)
       - name: Apply review corrections
         shell: pwsh
         run: node scripts/apply-0035-review.mjs

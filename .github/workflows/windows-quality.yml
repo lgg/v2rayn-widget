@@ -53,6 +53,7 @@ jobs:
             "function read(path) { return fs.readFileSync(path, 'utf8'); }",
             "function read(path) { return fs.readFileSync(path, 'utf8').replace(/\r\n/g, '\n'); }"
           )
+          $script = $script.Replace('  if (source.indexOf(before, first + before.length) >= 0) throw new Error(`Expected unique block in ${path}`);', '')
           [System.IO.File]::WriteAllText($scriptPath, $script)
 
       - name: Apply audited changes

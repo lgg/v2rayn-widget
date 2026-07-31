@@ -2,11 +2,11 @@
 
 ## Status
 
-Implementation complete; exact-head verification pending.
+Complete. Implementation PR #27 was squash-merged into `main` as `13bb2657f01e03b9e530290bedbd10683a53f63d` after exact-head Release Quality passed.
 
 ## Audit method
 
-The audit treated the Windows tray and native window chrome as declared product surfaces and traced startup settings, live language persistence, menu commands, selected-adapter dispatch, backend status commits, Tauri events, Main store ordering and late Diagnostics creation.
+The audit treated the Windows tray and native window chrome as declared product surfaces and traced startup settings, live language persistence, menu commands, selected-adapter dispatch, backend status commits, Tauri events, Main store ordering, late Diagnostics creation and the reliability of the permanent Windows validation pipeline.
 
 ## Confirmed defects
 
@@ -31,15 +31,41 @@ The audit treated the Windows tray and native window chrome as declared product 
 - preserved the freshest valid backend timestamp across tray and frontend channels;
 - accepted bootstrap status and profile pairs atomically;
 - reused existing visible notice and UIPI-aware error construction;
-- added Rust, frontend and source-contract regression coverage;
-- made Release Quality choose the spacious local drive dynamically for an isolated per-run Cargo target;
+- added Rust, frontend and product-surface regression coverage;
+- made Release Quality dynamically choose the spacious local drive for an isolated per-run Cargo target;
 - copied the release executable to a stable artifact path and removed external/workspace build copies in always-run cleanup;
-- extended workflow contracts so storage isolation cannot regress.
+- added workflow and Rust storage contracts so the constrained-system-drive failure cannot silently regress.
 
 ## Screen and capability audit
 
-No adapter capability was changed. Tray operations continue to dispatch through the selected adapter and existing backend capability enforcement. Main, Settings, Debug, Happ Setup and Diagnostics now share the same native language state without expanding IPC permissions.
+No adapter capability was changed. Tray operations continue to dispatch through the selected adapter and existing backend capability enforcement. Main, Settings, Debug, Happ Setup and Diagnostics now share the same native language state without expanding command registration, settings schema or IPC permissions. The external Diagnostics webview remains outside the default Tauri IPC capability.
 
-## Verification status
+## Verification evidence
 
-Pending exact-head Release Quality.
+Implementation head `8276a83f7090cf89d6c87289d941de2725fcc7fe` passed permanent Release Quality #419, run `30625480840`.
+
+- workflow, security, installer-boundary and immutable-toolchain contracts: success;
+- frontend dependency audit, complete tests and production build: success;
+- complete Rust formatting: success;
+- 123 unit/integration tests: passed;
+- 8 product-surface tests: passed;
+- 1 quality-storage contract: passed;
+- total: 132 passed, 0 failed;
+- strict all-targets Clippy: success;
+- strict release/no-default-features Clippy: success;
+- locked Rust build: success;
+- portable release smoke artifact: success;
+- diagnostics artifacts: success;
+- isolated target selected on `E:` with 2779.62 GB free;
+- external target and stable workspace artifact copy were both removed by cleanup;
+- aggregate failure gates: clean.
+
+## Merge evidence
+
+PR #27, `0033: localize native shell and synchronize tray results`, was squash-merged into `main` as `13bb2657f01e03b9e530290bedbd10683a53f63d`.
+
+## Residual limits
+
+- Native localization currently intentionally covers the repository-supported English and Russian locales; unknown locales fall back to English.
+- Actual Windows tray rendering remains operating-system-controlled, while labels, titles, event payloads, ordering, persistence and rollback are repository-tested.
+- Happ UI Automation remains experimental and version-sensitive as documented by the preceding audits; task 0033 did not broaden that capability.

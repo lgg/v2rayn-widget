@@ -1,0 +1,44 @@
+name: Materialize warning-free artifact download
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-download-v8-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    if: github.event.pull_request.head.ref == 'audit/0035-final-declared-surface-audit'
+    runs-on: [self-hosted, v2rayn-widget-ci]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: audit/0035-final-declared-surface-audit
+          fetch-depth: 2
+      - name: Materialize and verify
+        shell: pwsh
+        run: |
+          node scripts/materialize-download-v8.mjs
+          node scripts/test-workflow-contracts.mjs
+      - name: Restore workflow for ordinary-file commit
+        shell: pwsh
+        run: git checkout HEAD -- .github/workflows/windows-quality.yml
+      - name: Publish contract and workflow copy
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/test-workflow-contracts.mjs scripts/windows-quality-download-v8.yml
+          git diff --cached --check
+          git commit -m "0035: materialize warning-free artifact download"
+          git push origin HEAD:audit/0035-final-declared-surface-audit

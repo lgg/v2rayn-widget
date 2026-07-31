@@ -265,7 +265,30 @@ describe("dashboard active-client context", () => {
     expect(useDashboardStore.getState().actionLoading).toBe(false);
   });
 
-  it("ignores tray status for an inactive client and surfaces tray errors", () => {
+  it("keeps bootstrap status and profiles atomic when its response is stale", async () => {
+    useDashboardStore.setState({
+      status: connectedStatus("2026-07-31T00:00:04.000Z"),
+      profiles: [{ id: "fresh", name: "fresh-profile" }],
+    });
+    apiMocks.getSettings.mockResolvedValueOnce(baseSettings);
+    apiMocks.refreshSelectedClientStartup.mockResolvedValueOnce(
+      connectedStatus("2026-07-31T00:00:03.000Z"),
+    );
+    apiMocks.listSelectedClientItems.mockResolvedValueOnce([
+      { id: "stale", name: "stale-profile" },
+    ]);
+
+    await useDashboardStore.getState().bootstrap();
+
+    expect(useDashboardStore.getState().status?.updated_at).toBe(
+      "2026-07-31T00:00:04.000Z",
+    );
+    expect(useDashboardStore.getState().profiles).toEqual([
+      { id: "fresh", name: "fresh-profile" },
+    ]);
+  });
+
+  it("ignores inactive-client tray status and errors", () => {
     useDashboardStore.getState().applyExternalStatus({
       client_id: "happ",
       status: connectedStatus("2026-07-31T00:00:03.000Z"),
@@ -273,6 +296,14 @@ describe("dashboard active-client context", () => {
     expect(useDashboardStore.getState().status?.updated_at).toBe("initial");
 
     useDashboardStore.getState().applyExternalOperationError({
+      client_id: "happ",
+      operation: "open_client",
+      message: "stale Happ error",
+    });
+    expect(useDashboardStore.getState().notice).toBeNull();
+
+    useDashboardStore.getState().applyExternalOperationError({
+      client_id: "v2rayn",
       operation: "open_client",
       message: "open failed from tray",
     });

@@ -154,6 +154,7 @@ export interface TrayStatusUpdate {
 }
 
 export interface TrayOperationError {
+  client_id: ProxyClientId;
   operation: "refresh" | "open_client";
   message: string;
 }

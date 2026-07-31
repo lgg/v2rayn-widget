@@ -604,7 +604,7 @@ pub async fn open_diagnostics_window(
     }
 
     let window = WebviewWindowBuilder::new(&app, "diagnostics", WebviewUrl::External(url))
-        .title("Diagnostics")
+        .title(tray_menu::labels(&settings.language).diagnostics_title)
         .inner_size(1100.0, 780.0)
         .min_inner_size(760.0, 520.0)
         .resizable(true)

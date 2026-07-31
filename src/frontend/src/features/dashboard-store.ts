@@ -225,17 +225,18 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         return;
       }
 
-      set((previous) => ({
-        settings,
-        clients,
-        status: statusIsAtLeastAsFresh(status, previous.status)
-          ? status
-          : previous.status,
-        profiles,
-        pathNoticeKey: pathNoticeFor(settings),
-        loading: false,
-        error: null,
-      }));
+      set((previous) => {
+        const accept = statusIsAtLeastAsFresh(status, previous.status);
+        return {
+          settings,
+          clients,
+          status: accept ? status : previous.status,
+          profiles: accept ? profiles : previous.profiles,
+          pathNoticeKey: pathNoticeFor(settings),
+          loading: false,
+          error: null,
+        };
+      });
     } catch (error) {
       if (generation !== clientGeneration || revision !== settingsRevision) {
         return;
@@ -582,6 +583,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   applyExternalOperationError: (payload) => {
+    if (get().settings?.selected_client !== payload.client_id) {
+      return;
+    }
+
     const fallback = payload.operation === "refresh"
       ? i18n.t("errors.refreshFailed")
       : i18n.t("errors.openFailed");

@@ -150,10 +150,15 @@ fn restore_visible_aux_windows(app: &tauri::AppHandle, context: &str) {
 
 fn emit_tray_operation_error(
     app: &tauri::AppHandle,
+    client_id: crate::models::client::ProxyClientId,
     operation: TrayOperation,
     message: String,
 ) {
-    let payload = TrayOperationError { operation, message };
+    let payload = TrayOperationError {
+        client_id,
+        operation,
+        message,
+    };
     if let Err(error) = app.emit("tray-operation-error", payload) {
         warn!(?error, "failed to emit tray-operation-error event");
     }
@@ -238,6 +243,7 @@ fn main() {
                                     error!(?error, "refresh from tray failed");
                                     emit_tray_operation_error(
                                         &app_handle,
+                                        client_id,
                                         TrayOperation::Refresh,
                                         error,
                                     );
@@ -249,10 +255,12 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
+                            let client_id = state.snapshot().settings.selected_client;
                             if let Err(error) = client_commands::open_selected_client(state).await {
                                 error!(?error, "open selected client from tray failed");
                                 emit_tray_operation_error(
                                     &app_handle,
+                                    client_id,
                                     TrayOperation::OpenClient,
                                     error,
                                 );
@@ -286,6 +294,10 @@ fn main() {
                 open_item,
                 exit_item,
             ));
+
+            if let Err(error) = tray_menu::apply_language(&app_handle, &settings.language) {
+                warn!(?error, "failed to apply initial native shell language");
+            }
 
             if let Some(main_window) = app_handle.get_webview_window("main") {
                 show_unminimize_focus(&main_window, "startup");

@@ -11,6 +11,7 @@ pub enum TrayOperation {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TrayOperationError {
+    pub client_id: ProxyClientId,
     pub operation: TrayOperation,
     pub message: String,
 }

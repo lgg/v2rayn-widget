@@ -274,9 +274,9 @@ Key files:
 
 ## Native tray runtime
 
-The tray menu is initialized from the persisted application language and retains live menu-item/tray handles so a successful language patch updates every label and tooltip immediately. Runtime language changes participate in the same apply/persist/rollback transaction as always-on-top and autostart.
+The tray menu is initialized from the persisted application language and retains live menu-item/tray handles so a successful language patch updates every label, tooltip and native window title immediately. Runtime language changes participate in the same apply/persist/rollback transaction as always-on-top and autostart. Diagnostics uses the current language when its external webview is created later.
 
-Tray Refresh executes the selected adapter's backend refresh and emits a typed client-scoped status event to Main. Main ignores inactive-client events and compares backend timestamps so an older in-flight frontend response cannot overwrite a newer tray result. Refresh and Open Client failures emit typed operation errors and use the same visible notice/UIPI handling as equivalent Main actions.
+Tray Refresh executes the selected adapter's backend refresh and emits a typed client-scoped status event to Main. Main ignores inactive-client status and error events, compares backend timestamps so an older in-flight frontend response cannot overwrite a newer tray result, and accepts status/profile pairs atomically. Refresh and Open Client failures use the same visible notice/UIPI handling as equivalent Main actions.
 
 ## Window lifecycle and geometry
 

@@ -1,85 +1,101 @@
-name: Apply 0034 async native audit
+name: Materialize 0034 permanent workflow
 
 on:
   pull_request:
     branches:
       - main
     types:
-      - ready_for_review
       - synchronize
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-0034-${{ github.event.pull_request.number }}
+  group: materialize-0034-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  apply:
+  materialize:
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, v2rayn-widget-ci]
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
-      - name: Checkout exact audit branch
+      - name: Checkout audit branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: audit/0034-async-native-consistency
           fetch-depth: 2
 
-      - name: Restore permanent Release Quality source
+      - name: Build hardened permanent workflow source
         shell: pwsh
         run: |
           git fetch origin main --depth=1
-          git checkout origin/main -- .github/workflows/windows-quality.yml
+          $source = (git show "origin/main:.github/workflows/windows-quality.yml" | Out-String).Replace("`r`n", "`n")
 
-      - name: Expand assertion-backed patch
-        shell: pwsh
+          $oldDrive = @'
+          $drive = Get-PSDrive -PSProvider FileSystem |
+            Where-Object { $_.Root -and $_.Free -ge $minimumFreeBytes } |
+            Sort-Object Free -Descending |
+            Select-Object -First 1
+'@
+          $newDrive = @'
+          $drive = [System.IO.DriveInfo]::GetDrives() |
+            Where-Object {
+              $_.IsReady -and
+              $_.DriveType -eq [System.IO.DriveType]::Fixed -and
+              $_.AvailableFreeSpace -ge $minimumFreeBytes
+            } |
+            Sort-Object AvailableFreeSpace -Descending |
+            Select-Object -First 1
+'@
+          if (-not $source.Contains($oldDrive)) { throw "Drive selection block not found" }
+          $source = $source.Replace($oldDrive, $newDrive)
+          $source = $source.Replace('$projectTargetRoot = Join-Path $drive.Root "github-ci-targets\v2rayn-widget"', '$projectTargetRoot = Join-Path $drive.RootDirectory.FullName "github-ci-targets\v2rayn-widget"')
+          $source = $source.Replace('$freeGb = [math]::Round($drive.Free / 1GB, 2)', '$freeGb = [math]::Round($drive.AvailableFreeSpace / 1GB, 2)')
+          $source = $source.Replace('Write-Host "Rust target directory: $targetDirectory on drive $($drive.Name): with $freeGb GB free"', 'Write-Host "Rust target directory: $targetDirectory on fixed drive $($drive.Name) with $freeGb GB free"')
+
+          $oldCleanup = @'
         run: |
-          $input = [System.IO.File]::OpenRead("scripts/apply-0034.mjs.gz")
-          try {
-            $gzip = [System.IO.Compression.GZipStream]::new($input, [System.IO.Compression.CompressionMode]::Decompress)
-            try {
-              $output = [System.IO.File]::Create("scripts/apply-0034.mjs")
-              try { $gzip.CopyTo($output) } finally { $output.Dispose() }
-            } finally { $gzip.Dispose() }
-          } finally { $input.Dispose() }
-          $scriptPath = "scripts/apply-0034.mjs"
-          $script = [System.IO.File]::ReadAllText($scriptPath)
-          $script = $script.Replace(
-            "function read(path) { return fs.readFileSync(path, 'utf8'); }",
-            "function read(path) { return fs.readFileSync(path, 'utf8').replace(/\r\n/g, '\n'); }"
+          Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/tauri/portable-release" -Recurse -Force -ErrorAction SilentlyContinue
+          if ($env:CARGO_TARGET_DIR) {
+            Remove-Item $env:CARGO_TARGET_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          }
+'@
+          $newCleanup = @'
+        run: |
+          $paths = @(
+            "src/frontend/dist",
+            "src/tauri/target",
+            "src/tauri/portable-release"
           )
-          $script = $script.Replace('  if (source.indexOf(before, first + before.length) >= 0) throw new Error(`Expected unique block in ${path}`);', '')
-          [System.IO.File]::WriteAllText($scriptPath, $script)
+          if ($env:CARGO_TARGET_DIR) { $paths += $env:CARGO_TARGET_DIR }
 
-      - name: Apply audited changes
-        shell: pwsh
-        run: node scripts/apply-0034.mjs
+          $failures = @()
+          foreach ($path in $paths) {
+            Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
+            if (Test-Path $path) { $failures += $path }
+          }
+          if ($failures.Count -gt 0) {
+            throw "Rust cleanup left generated paths: $($failures -join ', ')"
+          }
+'@
+          if (-not $source.Contains($oldCleanup)) { throw "Cleanup block not found" }
+          $source = $source.Replace($oldCleanup, $newCleanup)
 
-      - name: Format Rust workspace
-        working-directory: src/tauri
-        shell: pwsh
-        run: |
-          . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
-          cargo fmt --all
+          New-Item -ItemType Directory -Path scripts -Force | Out-Null
+          [System.IO.File]::WriteAllText("scripts/windows-quality-0034.yml", $source)
 
-      - name: Remove one-shot patch payload
-        shell: pwsh
-        run: |
-          Remove-Item scripts/apply-0034.mjs -Force
-          Remove-Item scripts/apply-0034.mjs.gz -Force
-
-      - name: Commit clean implementation without workflow mutation
+      - name: Commit materialized source
         shell: pwsh
         run: |
-          git checkout origin/audit/0034-async-native-consistency -- .github/workflows/windows-quality.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add scripts/windows-quality-0034.yml
           git diff --cached --check
-          git commit -m "0034: harden async native consistency"
+          git commit -m "0034: materialize permanent quality workflow"
           git push origin HEAD:audit/0034-async-native-consistency

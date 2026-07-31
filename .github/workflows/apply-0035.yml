@@ -28,7 +28,9 @@ jobs:
           fetch-depth: 2
       - name: Apply exact patch
         shell: pwsh
-        run: node scripts/apply-0035.mjs
+        run: |
+          node scripts/apply-0035.mjs
+          node scripts/apply-0035-fix.mjs
       - name: Keep workflow mutations for workflow-scoped API
         shell: pwsh
         run: git checkout HEAD -- .github/workflows
@@ -45,6 +47,7 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item scripts/apply-0035.mjs -Force
+          Remove-Item scripts/apply-0035-fix.mjs -Force
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
@@ -52,3 +55,10 @@ jobs:
           git diff --cached --check
           git commit -m "0035: harden declared product surfaces"
           git push origin HEAD:audit/0035-final-declared-surface-audit
+      - name: Cleanup one-shot frontend files
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item "src/frontend/node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:RUNNER_TEMP "npm-0035-cache") -Recurse -Force -ErrorAction SilentlyContinue

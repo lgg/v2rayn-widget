@@ -34,7 +34,7 @@ use crate::{
         settings_normalization::{
             normalize_diagnostics_url, normalize_optional_path, normalize_settings,
         },
-        settings_store, window_position,
+        settings_store, tray_menu, window_position,
     },
 };
 
@@ -604,7 +604,7 @@ pub async fn open_diagnostics_window(
     }
 
     let window = WebviewWindowBuilder::new(&app, "diagnostics", WebviewUrl::External(url))
-        .title("Diagnostics")
+        .title(tray_menu::labels(&settings.language).diagnostics_title)
         .inner_size(1100.0, 780.0)
         .min_inner_size(760.0, 520.0)
         .resizable(true)
@@ -1285,6 +1285,7 @@ fn apply_runtime_settings_delta(
 ) -> Result<(), String> {
     let always_on_top_changed = previous.always_on_top != next.always_on_top;
     let autostart_changed = previous.autostart_with_windows != next.autostart_with_windows;
+    let language_changed = previous.language != next.language;
 
     if always_on_top_changed {
         set_all_windows_always_on_top(app, next.always_on_top).inspect_err(|_| {
@@ -1298,6 +1299,19 @@ fn apply_runtime_settings_delta(
                 let _ = set_all_windows_always_on_top(app, previous.always_on_top);
             }
             return Err(error.to_string());
+        }
+    }
+
+    if language_changed {
+        if let Err(error) = tray_menu::apply_language(app, &next.language) {
+            let _ = tray_menu::apply_language(app, &previous.language);
+            if autostart_changed {
+                let _ = autostart::apply_autostart(previous.autostart_with_windows);
+            }
+            if always_on_top_changed {
+                let _ = set_all_windows_always_on_top(app, previous.always_on_top);
+            }
+            return Err(error);
         }
     }
 
@@ -1319,6 +1333,15 @@ fn rollback_runtime_settings_delta(app: &AppHandle, applied: &AppSettings, previ
             warn!(
                 ?error,
                 "failed to roll back autostart after settings persistence failure"
+            );
+        }
+    }
+
+    if applied.language != previous.language {
+        if let Err(error) = tray_menu::apply_language(app, &previous.language) {
+            warn!(
+                ?error,
+                "failed to roll back tray language after settings persistence failure"
             );
         }
     }

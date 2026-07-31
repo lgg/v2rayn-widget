@@ -16,10 +16,14 @@ use tauri::{
 use tracing::{error, info, warn};
 
 use crate::{
-    models::{settings::WindowPosition, status::DashboardStatus},
+    models::{
+        settings::WindowPosition,
+        status::DashboardStatus,
+        tray::{TrayOperation, TrayOperationError, TrayStatusUpdate},
+    },
     services::privilege,
     state::app_state::AppState,
-    utils::{logger, settings_store, window_position, window_visuals},
+    utils::{logger, settings_store, tray_menu, window_position, window_visuals},
 };
 
 fn configure_webview2_user_data_dir() {
@@ -144,6 +148,22 @@ fn restore_visible_aux_windows(app: &tauri::AppHandle, context: &str) {
     }
 }
 
+fn emit_tray_operation_error(
+    app: &tauri::AppHandle,
+    client_id: crate::models::client::ProxyClientId,
+    operation: TrayOperation,
+    message: String,
+) {
+    let payload = TrayOperationError {
+        client_id,
+        operation,
+        message,
+    };
+    if let Err(error) = app.emit("tray-operation-error", payload) {
+        warn!(?error, "failed to emit tray-operation-error event");
+    }
+}
+
 fn main() {
     configure_webview2_user_data_dir();
 
@@ -163,12 +183,15 @@ fn main() {
     tauri::Builder::default()
         .manage(state)
         .setup(move |app| {
-            let show_item = MenuItemBuilder::with_id("show", "Show Widget").build(app)?;
-            let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
-            let refresh_item = MenuItemBuilder::with_id("refresh", "Refresh Status").build(app)?;
+            let tray_labels = tray_menu::labels(&settings.language);
+            let show_item = MenuItemBuilder::with_id("show", tray_labels.show).build(app)?;
+            let settings_item =
+                MenuItemBuilder::with_id("settings", tray_labels.settings).build(app)?;
+            let refresh_item =
+                MenuItemBuilder::with_id("refresh", tray_labels.refresh).build(app)?;
             let open_item =
-                MenuItemBuilder::with_id("open_client", "Open Selected Client").build(app)?;
-            let exit_item = MenuItemBuilder::with_id("exit", "Exit").build(app)?;
+                MenuItemBuilder::with_id("open_client", tray_labels.open_client).build(app)?;
+            let exit_item = MenuItemBuilder::with_id("exit", tray_labels.exit).build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&show_item)
@@ -182,7 +205,7 @@ fn main() {
             let app_handle = app.handle().clone();
 
             let mut tray_builder = TrayIconBuilder::new()
-                .tooltip("Proxy Client Widget")
+                .tooltip(tray_labels.tooltip)
                 .menu(&menu);
             if let Some(icon) = app.default_window_icon().cloned() {
                 tray_builder = tray_builder.icon(icon);
@@ -205,10 +228,26 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
-                            if let Ok(status) =
-                                client_commands::refresh_selected_client(state).await
-                            {
-                                info!(?status.connection_state, "refresh from tray succeeded");
+                            let client_id = state.snapshot().settings.selected_client;
+                            match client_commands::refresh_selected_client(state).await {
+                                Ok(status) => {
+                                    info!(?status.connection_state, "refresh from tray succeeded");
+                                    let payload = TrayStatusUpdate { client_id, status };
+                                    if let Err(error) =
+                                        app_handle.emit("tray-status-updated", payload)
+                                    {
+                                        warn!(?error, "failed to emit tray-status-updated event");
+                                    }
+                                }
+                                Err(error) => {
+                                    error!(?error, "refresh from tray failed");
+                                    emit_tray_operation_error(
+                                        &app_handle,
+                                        client_id,
+                                        TrayOperation::Refresh,
+                                        error,
+                                    );
+                                }
                             }
                         });
                     }
@@ -216,8 +255,15 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
+                            let client_id = state.snapshot().settings.selected_client;
                             if let Err(error) = client_commands::open_selected_client(state).await {
                                 error!(?error, "open selected client from tray failed");
+                                emit_tray_operation_error(
+                                    &app_handle,
+                                    client_id,
+                                    TrayOperation::OpenClient,
+                                    error,
+                                );
                             }
                         });
                     }
@@ -240,7 +286,18 @@ fn main() {
                 })
                 .build(app)?;
 
-            app.manage(tray);
+            app.manage(tray_menu::TrayMenuState::new(
+                tray,
+                show_item,
+                settings_item,
+                refresh_item,
+                open_item,
+                exit_item,
+            ));
+
+            if let Err(error) = tray_menu::apply_language(&app_handle, &settings.language) {
+                warn!(?error, "failed to apply initial native shell language");
+            }
 
             if let Some(main_window) = app_handle.get_webview_window("main") {
                 show_unminimize_focus(&main_window, "startup");

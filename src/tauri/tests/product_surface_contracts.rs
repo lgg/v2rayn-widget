@@ -180,6 +180,32 @@ fn preferred_window_geometry_matches_native_declarations() {
 }
 
 #[test]
+fn tray_runtime_is_localized_and_reports_native_operation_results() {
+    let main = include_str!("../src/main.rs");
+    assert!(main.contains("tray_menu::labels(&settings.language)"));
+    assert!(main.contains("tray_menu::apply_language(&app_handle, &settings.language)"));
+    assert!(main.contains("app_handle.emit(\"tray-status-updated\", payload)"));
+    assert!(main.contains("emit_tray_operation_error("));
+
+    let commands = include_str!("../src/commands/mod.rs");
+    assert!(commands.contains("tray_menu::apply_language(app, &next.language)"));
+    assert!(commands.contains("tray_menu::apply_language(app, &previous.language)"));
+    assert!(commands.contains(".title(tray_menu::labels(&settings.language).diagnostics_title)"));
+
+    let tray = include_str!("../src/utils/tray_menu.rs");
+    assert!(tray.contains("window.set_title(title)"));
+    assert!(tray.contains("app.state::<TrayMenuState>().apply_labels(labels)?"));
+
+    let app = include_str!("../../frontend/src/app/App.tsx");
+    assert!(app.contains("bindTauriListener<TrayStatusUpdate>(\"tray-status-updated\""));
+    assert!(app.contains("bindTauriListener<TrayOperationError>(\"tray-operation-error\""));
+
+    let store = include_str!("../../frontend/src/features/dashboard-store.ts");
+    assert!(store.contains("get().settings?.selected_client !== payload.client_id"));
+    assert!(store.contains("profiles: accept ? profiles : previous.profiles"));
+}
+
+#[test]
 fn happ_toggle_confirms_before_restoring_the_original_minimized_state() {
     let adapter = include_str!("../src/adapters/happ.rs");
     let confirmation = adapter

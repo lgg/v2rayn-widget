@@ -187,6 +187,33 @@ jobs:
         shell: pwsh
         run: ./scripts/assert-ci-prerequisites.ps1 -RequireRust
 
+      - name: Configure isolated Rust target directory
+        shell: pwsh
+        run: |
+          $minimumFreeBytes = 12GB
+          $drive = Get-PSDrive -PSProvider FileSystem |
+            Where-Object { $_.Root -and $_.Free -ge $minimumFreeBytes } |
+            Sort-Object Free -Descending |
+            Select-Object -First 1
+          if (-not $drive) {
+            throw "No local filesystem drive has at least 12 GB free for the Rust target directory"
+          }
+
+          $projectTargetRoot = Join-Path $drive.Root "github-ci-targets\v2rayn-widget"
+          New-Item -ItemType Directory -Path $projectTargetRoot -Force | Out-Null
+          Get-ChildItem $projectTargetRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTimeUtc -lt [DateTime]::UtcNow.AddDays(-1) } |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+          $targetDirectory = Join-Path $projectTargetRoot "${{ github.run_id }}-${{ github.run_attempt }}"
+          Remove-Item $targetDirectory -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
+          "CARGO_TARGET_DIR=$targetDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CARGO_INCREMENTAL=0" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $freeGb = [math]::Round($drive.Free / 1GB, 2)
+          Write-Host "Rust target directory: $targetDirectory on drive $($drive.Name): with $freeGb GB free"
+
       - name: Check all Rust formatting
         id: rust_format
         continue-on-error: true
@@ -246,17 +273,24 @@ jobs:
           . "$env:GITHUB_WORKSPACE/scripts/rust-env.ps1" -UseGlobalHomes
           cargo build --release --locked 2>&1 | Tee-Object -FilePath rust-release-output.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "target/release/v2rayn-widget.exe")) {
-            Write-Error "Release executable was not produced"
+
+          $releaseExecutable = Join-Path $env:CARGO_TARGET_DIR "release\v2rayn-widget.exe"
+          if (-not (Test-Path $releaseExecutable)) {
+            Write-Error "Release executable was not produced at $releaseExecutable"
             exit 1
           }
+
+          $portableDirectory = Join-Path $env:GITHUB_WORKSPACE "src\tauri\portable-release"
+          Remove-Item $portableDirectory -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $portableDirectory -Force | Out-Null
+          Copy-Item $releaseExecutable (Join-Path $portableDirectory "v2rayn-widget.exe") -Force
 
       - name: Upload portable release smoke artifact
         if: steps.rust_release.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: portable-release-smoke
-          path: src/tauri/target/release/v2rayn-widget.exe
+          path: src/tauri/portable-release/v2rayn-widget.exe
           if-no-files-found: error
           retention-days: 1
 
@@ -286,3 +320,7 @@ jobs:
         run: |
           Remove-Item "src/frontend/dist" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "src/tauri/target" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "src/tauri/portable-release" -Recurse -Force -ErrorAction SilentlyContinue
+          if ($env:CARGO_TARGET_DIR) {
+            Remove-Item $env:CARGO_TARGET_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          }

@@ -25,7 +25,7 @@ Implementation and verification in progress.
 
 ## Verification evidence
 
-Pending exact-head Release Quality.
+Pending exact-head Release Quality. A draft-only synchronize event is used to cancel the staging quality run before the one-shot implementation verification.
 
 ## Residual external validation
 

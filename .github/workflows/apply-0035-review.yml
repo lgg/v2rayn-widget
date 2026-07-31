@@ -26,7 +26,7 @@ jobs:
         with:
           ref: audit/0035-final-declared-surface-audit
           fetch-depth: 2
-      - name: Escape nested TypeScript template literals
+      - name: Prepare nested review patch literals
         shell: pwsh
         run: |
           $path = "scripts/apply-0035-review.mjs"
@@ -44,6 +44,10 @@ jobs:
           foreach ($expression in $expressions) {
             $script = $script.Replace('${' + $expression + '}', '\${' + $expression + '}')
           }
+          $needle = 'return "probe complete";'
+          $index = $script.LastIndexOf($needle)
+          if ($index -lt 0) { throw "Could not find the manual probe return assertion" }
+          $script = $script.Substring(0, $index) + 'return result.note;' + $script.Substring($index + $needle.Length)
           [System.IO.File]::WriteAllText($path, $script)
       - name: Apply review corrections
         shell: pwsh

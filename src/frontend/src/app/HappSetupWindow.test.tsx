@@ -93,7 +93,9 @@ describe("HappSetupWindow", () => {
   });
 
   afterEach(async () => {
-    await i18n.changeLanguage("en");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
     document.documentElement.classList.remove("dark");
     document.documentElement.style.removeProperty("--widget-opacity");
     document.body.classList.remove("widget-effect-disabled");

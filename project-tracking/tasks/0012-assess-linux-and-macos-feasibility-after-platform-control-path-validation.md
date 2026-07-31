@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Open |
+| Status | Deferred |
 | Priority | P3 |
 | Type | decision |
 | Source | Beads `v2rayn-4r5` |
@@ -47,12 +47,12 @@ Out of scope:
 
 ## Acceptance Criteria
 
-- [ ] A feasibility decision documents platform control path.
-- [ ] Decision documents limitations and risks.
-- [ ] Decision states whether to proceed, defer or reject Linux/macOS support.
-- [ ] Follow-up tasks exist if support proceeds.
-- [ ] No local system paths, private configs, real logs, endpoints or personal data are committed.
-- [ ] Public task/report materials do not contain secrets, private URLs, local system paths or personal data.
+- [x] A feasibility decision documents that no validated non-Windows client/control path is currently available.
+- [x] Decision documents limitations and risks.
+- [x] Decision defers Linux/macOS support.
+- [x] No implementation follow-up is created until a supported client/control contract and real target systems exist.
+- [x] No local system paths, private configs, real logs, endpoints or personal data are committed.
+- [x] Public task/report materials do not contain secrets, private URLs, local system paths or personal data.
 
 ## Verification Plan
 

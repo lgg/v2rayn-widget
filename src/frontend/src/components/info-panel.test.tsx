@@ -72,4 +72,9 @@ describe("InfoPanel", () => {
     expect(screen.queryByText("External IP")).toBeNull();
     expect(screen.queryByText("Latency")).toBeNull();
   });
+  it("renders its secondary status without another live region", () => {
+    render(<InfoPanel status={baseStatus} settings={baseSettings} />);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
 });

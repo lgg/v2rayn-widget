@@ -10,13 +10,13 @@ const toneClasses: Record<StatusLevel, string> = {
   Connecting: "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300"
 };
 
-export function StatusBadge({ status }: { status: StatusLevel }): JSX.Element {
+export function StatusBadge({ status, announce = true }: { status: StatusLevel; announce?: boolean }): JSX.Element {
   const { t } = useTranslation();
 
   return (
     <span
-      role="status"
-      aria-live="polite"
+      role={announce ? "status" : undefined}
+      aria-live={announce ? "polite" : undefined}
       className={cn(
         "inline-flex rounded-full px-3 py-1 text-xs font-semibold tracking-wide",
         toneClasses[status]

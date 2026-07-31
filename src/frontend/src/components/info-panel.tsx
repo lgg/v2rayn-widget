@@ -49,7 +49,7 @@ export function InfoPanel({ status, settings }: { status: DashboardStatus; setti
         <div
           className={`mb-3 flex items-center ${settings.show_info_status ? "justify-between" : "justify-end"}`}
         >
-          {settings.show_info_status && <StatusBadge status={status.status} />}
+          {settings.show_info_status && <StatusBadge status={status.status} announce={false} />}
           {settings.show_clock && <span className="text-xs text-muted">{displayTime}</span>}
         </div>
       )}

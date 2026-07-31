@@ -9,4 +9,8 @@ export class SerializedTaskQueue {
     );
     return run;
   }
+
+  waitForIdle(): Promise<void> {
+    return this.tail;
+  }
 }

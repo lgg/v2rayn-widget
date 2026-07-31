@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation and verification in progress.
+Implementation complete; exact-head verification pending.
 
 ## Audit coverage
 
@@ -32,3 +32,12 @@ Pending exact-head Release Quality. A draft-only synchronize event is used to ca
 Task 0011 requires representative real subscription-driven v2rayN installations and cannot be truthfully completed through repository-only automation. It will remain explicitly blocked/deferred rather than being misrepresented as a completed product feature.
 
 Cross-platform implementation is not part of the current Windows product. Task 0012 will be resolved with an explicit defer decision until documented client/control contracts and real target systems exist.
+
+## Implemented corrections
+
+- Settings close now waits for the serialized live-write tail and fails visibly when persistence cannot be recovered.
+- Unrecoverable live-write failures rebase live UI fields to the last authoritative snapshot while preserving unrelated draft-only fields.
+- v2rayN Debug Tools are adapter-gated and react to authoritative client switches.
+- Main exposes one live status region and state-specific connection action names.
+- Official checkout/artifact actions are upgraded to immutable Node 24 revisions.
+- External-only task 0011 is explicitly blocked; task 0012 is resolved with a defer decision.

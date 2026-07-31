@@ -237,3 +237,13 @@ Runtime validation support:
 - Decision 0013 — multi-client adapter architecture.
 - Task/report 0029 — second independent safe-close and small-work-area audit.
 - Task/report 0030 — active selected-adapter context consistency audit.
+
+
+### Final consistency audits
+
+- 0030: active selected-adapter context consistency.
+- 0031: Happ toggle lifecycle hardening.
+- 0032: auxiliary settings consistency.
+- 0033: tray/native runtime consistency.
+- 0034: asynchronous native ownership and warning-free quality gates.
+- 0035: declared-surface, accessibility, Settings close ownership and Node 24 Actions audit.

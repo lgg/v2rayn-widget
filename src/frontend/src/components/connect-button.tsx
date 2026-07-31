@@ -34,6 +34,13 @@ export function ConnectButton({
 }): JSX.Element {
   const { t } = useTranslation();
   const textKey = resolveButtonText(status);
+  const actionKey = status === "Connected"
+    ? "actions.disconnect"
+    : status === "Disconnected"
+      ? "actions.connect"
+      : status === "Connecting"
+        ? "actions.connectionInProgress"
+        : "actions.toggleConnection";
 
   return (
     <button
@@ -48,7 +55,8 @@ export function ConnectButton({
         status === "Connected" && "shadow-glow",
         status === "Error" && "ring-4 ring-rose-300/40 dark:ring-rose-500/30"
       )}
-      aria-label={t("actions.toggle")}
+      aria-label={t(actionKey)}
+      aria-busy={status === "Connecting"}
     >
       <span className="absolute inset-2 rounded-full border border-white/40" />
       <span className="relative flex flex-col items-center gap-2">

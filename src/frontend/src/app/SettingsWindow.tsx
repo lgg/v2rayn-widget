@@ -119,12 +119,16 @@ export function SettingsWindow(): JSX.Element {
   const [pollError, setPollError] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
   const [diagnosticsUrlError, setDiagnosticsUrlError] = useState<string | null>(null);
-  const [draftDirty, setDraftDirty] = useState(false);
+  const [, setDraftDirty] = useState(false);
   const draftDirtyRef = useRef(false);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const uiSettingsQueueRef = useRef(new SerializedTaskQueue());
   const saveInProgressRef = useRef(false);
   const settingsRevisionRef = useRef(0);
+  const authoritativeSettingsRef = useRef<AppSettings | null>(null);
+  const liveWriteFailedRef = useRef(false);
+  const closingRef = useRef(false);
+  const [closing, setClosing] = useState(false);
   const [settingsListenerSettled, setSettingsListenerSettled] = useState(false);
 
   const updateDraftDirty = (value: boolean): void => {
@@ -149,6 +153,8 @@ export function SettingsWindow(): JSX.Element {
         if (!active || revision !== settingsRevisionRef.current) {
           return;
         }
+        authoritativeSettingsRef.current = nextSettings;
+        liveWriteFailedRef.current = false;
         setSettings(nextSettings);
         setLocales(nextLocales);
         setAppVersion(version);
@@ -178,8 +184,11 @@ export function SettingsWindow(): JSX.Element {
     setSettingsListenerSettled(false);
     return bindTauriListener<AppSettings>("settings-updated", (event) => {
         settingsRevisionRef.current += 1;
+        authoritativeSettingsRef.current = event.payload;
+        liveWriteFailedRef.current = false;
         setLoading(false);
         setLoadError(null);
+        setSaveError(null);
         setSettings((prev) => {
           if (!prev) {
             return event.payload;
@@ -203,11 +212,7 @@ export function SettingsWindow(): JSX.Element {
   useEffect(
     () =>
       bindTauriListener("settings-close-requested", () => {
-        if (draftDirtyRef.current) {
-          setConfirmDiscardOpen(true);
-        } else {
-          void closeSettingsWindow();
-        }
+        void requestClose();
       }),
     [],
   );
@@ -224,6 +229,8 @@ export function SettingsWindow(): JSX.Element {
       const revision = settingsRevisionRef.current;
       try {
         const saved = await applyUiSettings(patch);
+        authoritativeSettingsRef.current = saved;
+        liveWriteFailedRef.current = false;
         if (revision === settingsRevisionRef.current) {
           setSettings((prev) => (prev ? mergeUiFields(prev, saved) : saved));
           applyTheme(saved.theme);
@@ -237,10 +244,22 @@ export function SettingsWindow(): JSX.Element {
         setSaveError(t("errors.settingsSaveFailed"));
         const authoritative = await getSettings().catch(() => null);
         if (authoritative && revision === settingsRevisionRef.current) {
+          authoritativeSettingsRef.current = authoritative;
+          liveWriteFailedRef.current = false;
           setSettings((prev) => (prev ? mergeUiFields(prev, authoritative) : authoritative));
           applyTheme(authoritative.theme);
           applyVisual(authoritative);
           await i18n.changeLanguage(authoritative.language);
+          return;
+        }
+
+        liveWriteFailedRef.current = true;
+        const fallback = authoritativeSettingsRef.current;
+        if (fallback && revision === settingsRevisionRef.current) {
+          setSettings((prev) => (prev ? mergeUiFields(prev, fallback) : fallback));
+          applyTheme(fallback.theme);
+          applyVisual(fallback);
+          await i18n.changeLanguage(fallback.language);
         }
       }
     });
@@ -299,6 +318,8 @@ export function SettingsWindow(): JSX.Element {
       };
 
       const saved = await uiSettingsQueueRef.current.enqueue(() => updateSettings(next));
+      authoritativeSettingsRef.current = saved;
+      liveWriteFailedRef.current = false;
       setSettings(saved);
       updateDraftDirty(false);
       await closeSettingsWindow();
@@ -310,14 +331,30 @@ export function SettingsWindow(): JSX.Element {
     }
   };
 
-  const requestClose = async (): Promise<void> => {
-    if (draftDirty) {
-      setConfirmDiscardOpen(true);
+  async function requestClose(): Promise<void> {
+    if (closingRef.current) {
       return;
     }
 
-    await closeSettingsWindow();
-  };
+    closingRef.current = true;
+    setClosing(true);
+    try {
+      await uiSettingsQueueRef.current.waitForIdle();
+      if (liveWriteFailedRef.current) {
+        setSaveError(t("errors.settingsSaveFailed"));
+        return;
+      }
+      if (draftDirtyRef.current) {
+        setConfirmDiscardOpen(true);
+        return;
+      }
+
+      await closeSettingsWindow();
+    } finally {
+      closingRef.current = false;
+      setClosing(false);
+    }
+  }
 
   const discardAndClose = async (): Promise<void> => {
     if (await closeSettingsWindow()) {
@@ -364,7 +401,7 @@ export function SettingsWindow(): JSX.Element {
           <button
             type="button"
             aria-label={t("common.close")}
-            disabled={busy}
+            disabled={busy || closing}
             className="no-drag rounded-lg p-2 hover:bg-white/50 disabled:opacity-60 dark:hover:bg-slate-800"
             onClick={() => void requestClose()}
           >
@@ -372,7 +409,7 @@ export function SettingsWindow(): JSX.Element {
           </button>
         </header>
 
-        <fieldset disabled={busy} className="contents">
+        <fieldset disabled={busy || closing || confirmDiscardOpen} className="contents">
           <div className="no-drag min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {confirmDiscardOpen && (
             <section
@@ -834,7 +871,7 @@ export function SettingsWindow(): JSX.Element {
 
         <footer className="no-drag mt-3">
           {saveError && <p role="alert" className="mb-2 text-center text-xs text-rose-300">{saveError}</p>}
-          <button type="button" disabled={busy} className="w-full rounded-xl bg-accent px-3 py-2 font-medium text-white" onClick={() => void onSave()}>
+          <button type="button" disabled={busy || closing} className="w-full rounded-xl bg-accent px-3 py-2 font-medium text-white" onClick={() => void onSave()}>
             {t("common.save")}
           </button>
         </footer>

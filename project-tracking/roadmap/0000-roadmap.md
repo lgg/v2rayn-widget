@@ -79,7 +79,7 @@ Related tasks:
 
 ## Phase 4 - Diagnostics and Profile Validation
 
-Status: In Progress
+Status: Blocked on external manual QA
 
 Goals:
 
@@ -90,7 +90,7 @@ Goals:
 Related tasks:
 
 - `0010-add-optional-external-diagnostics-webview` - Done
-- `0011-build-subscription-mode-profile-switch-validation-matrix` - Open
+- `0011-build-subscription-mode-profile-switch-validation-matrix` - Blocked: representative real subscription-driven installations are required
 
 Current limitation:
 
@@ -169,7 +169,7 @@ Goals:
 
 ## Phase 9 - Cross-Platform Feasibility
 
-Status: Planned
+Status: Deferred
 
 Goals:
 
@@ -178,14 +178,14 @@ Goals:
 
 Related tasks:
 
-- `0012-assess-linux-and-macos-feasibility-after-platform-control-path-validation` - Open
+- `0012-assess-linux-and-macos-feasibility-after-platform-control-path-validation` - Deferred by decision 0012
 
 ## Current Open Work
 
 | ID | Task | Priority | Status | Notes |
 | --- | --- | --- | --- | --- |
-| 0011 | Build subscription-mode profile switch validation matrix | P2 | Open | QA matrix; subscriptions remain unsupported |
-| 0012 | Assess Linux and macOS feasibility after platform control path validation | P3 | Open | После стабилизации Windows adapters |
+| 0011 | Build subscription-mode profile switch validation matrix | P2 | Blocked | Requires representative real subscription-driven installations; subscriptions remain unsupported |
+| 0012 | Assess Linux and macOS feasibility after platform control path validation | P3 | Deferred | No validated non-Windows control contract or real-system evidence |
 | 0013 | Add proxy client adapters and Happ MVP | P1 | Done | Operational adapters, generic UI/API, v2rayN compatibility, Happ baseline and experimental opt-in control |
 | 0014 | Post-merge deep audit and hardening | P1 | Done | Exact merged-tree audit, state/config/network/dependency hardening and verified Windows release executable |
 

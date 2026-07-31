@@ -73,9 +73,10 @@ jobs:
           Remove-Item scripts/apply-0034.mjs -Force
           Remove-Item scripts/apply-0034.mjs.gz -Force
 
-      - name: Commit clean implementation
+      - name: Commit clean implementation without workflow mutation
         shell: pwsh
         run: |
+          git checkout origin/audit/0034-async-native-consistency -- .github/workflows/windows-quality.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A

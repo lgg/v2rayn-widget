@@ -18,6 +18,12 @@ use crate::{
 const CLIENT_CONTEXT_CHANGED: &str =
     "CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running";
 
+pub(crate) struct SelectedClientOperation<T> {
+    pub client_id: ProxyClientId,
+    pub context_current: bool,
+    pub result: Result<T, String>,
+}
+
 #[tauri::command]
 pub async fn get_client_catalog(
     state: State<'_, AppState>,
@@ -224,22 +230,40 @@ fn validate_happ_path_value(path: &str) -> Result<PathValidation, String> {
     })
 }
 
-async fn refresh_with_kind(
+async fn refresh_with_kind_owned(
     state: State<'_, AppState>,
     kind: RefreshKind,
-) -> Result<DashboardStatus, String> {
+) -> SelectedClientOperation<DashboardStatus> {
     let snapshot = state.snapshot();
     let client_id = snapshot.settings.selected_client;
     let client_epoch = snapshot.client_epoch;
     let result = adapters::adapter(client_id)
         .refresh(state.clone(), kind)
-        .await?;
+        .await;
+    let context_current = state.context_matches(client_id, client_epoch);
+    SelectedClientOperation {
+        client_id,
+        context_current,
+        result,
+    }
+}
 
-    if state.context_matches(client_id, client_epoch) {
-        Ok(result)
+async fn refresh_with_kind(
+    state: State<'_, AppState>,
+    kind: RefreshKind,
+) -> Result<DashboardStatus, String> {
+    let outcome = refresh_with_kind_owned(state, kind).await;
+    if outcome.context_current {
+        outcome.result
     } else {
         Err(CLIENT_CONTEXT_CHANGED.to_owned())
     }
+}
+
+pub(crate) async fn refresh_selected_client_from_tray(
+    state: State<'_, AppState>,
+) -> SelectedClientOperation<DashboardStatus> {
+    refresh_with_kind_owned(state, RefreshKind::Foreground).await
 }
 
 #[tauri::command]
@@ -318,10 +342,33 @@ pub async fn select_client_item(
     }
 }
 
+async fn open_selected_client_owned(state: State<'_, AppState>) -> SelectedClientOperation<()> {
+    let snapshot = state.snapshot();
+    let client_id = snapshot.settings.selected_client;
+    let client_epoch = snapshot.client_epoch;
+    let result = adapters::adapter(client_id).open(state.clone()).await;
+    let context_current = state.context_matches(client_id, client_epoch);
+    SelectedClientOperation {
+        client_id,
+        context_current,
+        result,
+    }
+}
+
+pub(crate) async fn open_selected_client_from_tray(
+    state: State<'_, AppState>,
+) -> SelectedClientOperation<()> {
+    open_selected_client_owned(state).await
+}
+
 #[tauri::command]
 pub async fn open_selected_client(state: State<'_, AppState>) -> Result<(), String> {
-    let client_id = state.snapshot().settings.selected_client;
-    adapters::adapter(client_id).open(state).await
+    let outcome = open_selected_client_owned(state).await;
+    if outcome.context_current {
+        outcome.result
+    } else {
+        Err(CLIENT_CONTEXT_CHANGED.to_owned())
+    }
 }
 
 #[cfg(test)]

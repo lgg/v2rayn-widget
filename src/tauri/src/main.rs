@@ -228,8 +228,13 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
-                            let client_id = state.snapshot().settings.selected_client;
-                            match client_commands::refresh_selected_client(state).await {
+                            let outcome = client_commands::refresh_selected_client_from_tray(state).await;
+                            if !outcome.context_current {
+                                info!(client_id = ?outcome.client_id, "suppressed stale tray refresh result");
+                                return;
+                            }
+                            let client_id = outcome.client_id;
+                            match outcome.result {
                                 Ok(status) => {
                                     info!(?status.connection_state, "refresh from tray succeeded");
                                     let payload = TrayStatusUpdate { client_id, status };
@@ -255,8 +260,13 @@ fn main() {
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
-                            let client_id = state.snapshot().settings.selected_client;
-                            if let Err(error) = client_commands::open_selected_client(state).await {
+                            let outcome = client_commands::open_selected_client_from_tray(state).await;
+                            if !outcome.context_current {
+                                info!(client_id = ?outcome.client_id, "suppressed stale tray open result");
+                                return;
+                            }
+                            let client_id = outcome.client_id;
+                            if let Err(error) = outcome.result {
                                 error!(?error, "open selected client from tray failed");
                                 emit_tray_operation_error(
                                     &app_handle,

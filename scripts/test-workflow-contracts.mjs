@@ -154,9 +154,12 @@ function verifyQualityWorkflow() {
     ["Cleanup frontend workspace and cache", "frontend cleanup"],
     ["Cleanup Rust workspace", "Rust cleanup"],
     ["Configure isolated Rust target directory", "isolated Rust target"],
-    ["Get-PSDrive -PSProvider FileSystem", "spacious drive selection"],
+    ["[System.IO.DriveInfo]::GetDrives()", "fixed drive enumeration"],
+    ["DriveType -eq [System.IO.DriveType]::Fixed", "fixed drive restriction"],
     ["CARGO_TARGET_DIR", "external Cargo target"],
     ["src/tauri/portable-release/v2rayn-widget.exe", "stable portable artifact path"],
+    ["Rust cleanup left generated paths", "verified Rust cleanup"],
+    ["Frontend tests emitted React act warnings", "warning-free React tests"],
   ]) requireText(text, needle, label);
 
   rejectText(text, "pull_request_target:", "quality events");

@@ -211,6 +211,35 @@ describe("SettingsWindow", () => {
     });
   });
 
+  it("ignores a stale live-save failure after authoritative settings arrive", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    let rejectLiveWrite!: (error: Error) => void;
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      return () => undefined;
+    });
+    apiMocks.applyUiSettings.mockImplementationOnce(
+      () => new Promise<AppSettings>((_resolve, reject) => {
+        rejectLiveWrite = reject;
+      }),
+    );
+
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+
+    fireEvent.click(screen.getByLabelText("Always on top"));
+    await waitFor(() => expect(apiMocks.applyUiSettings).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      settingsHandler?.({ payload: { ...baseSettings, theme: "light" } });
+      rejectLiveWrite(new Error("stale live failure"));
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.getSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("serializes the full save after pending live UI writes", async () => {
     let resolveLiveWrite!: (value: AppSettings) => void;
     apiMocks.applyUiSettings.mockImplementationOnce(
@@ -329,4 +358,21 @@ describe("SettingsWindow", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Could not save settings");
     expect(apiMocks.closeWindow).not.toHaveBeenCalled();
   });
+
+  it("registers settings events before loading and leaves loading on an authoritative event", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockReturnValueOnce(new Promise<AppSettings>(() => undefined));
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      return () => undefined;
+    });
+
+    render(<SettingsWindow />);
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+    await act(async () => settingsHandler?.({ payload: { ...baseSettings, theme: "light" } }));
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).not.toBeNull();
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
 });

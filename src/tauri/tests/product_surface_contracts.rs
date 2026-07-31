@@ -197,12 +197,34 @@ fn tray_runtime_is_localized_and_reports_native_operation_results() {
     assert!(tray.contains("app.state::<TrayMenuState>().apply_labels(labels)?"));
 
     let app = include_str!("../../frontend/src/app/App.tsx");
-    assert!(app.contains("bindTauriListener<TrayStatusUpdate>(\"tray-status-updated\""));
-    assert!(app.contains("bindTauriListener<TrayOperationError>(\"tray-operation-error\""));
+    assert!(app.contains("bindTauriListener<TrayStatusUpdate>("));
+    assert!(app.contains("\"tray-status-updated\","));
+    assert!(app.contains("bindTauriListener<TrayOperationError>("));
+    assert!(app.contains("\"tray-operation-error\","));
 
     let store = include_str!("../../frontend/src/features/dashboard-store.ts");
     assert!(store.contains("get().settings?.selected_client !== payload.client_id"));
     assert!(store.contains("profiles: accept ? profiles : previous.profiles"));
+}
+
+#[test]
+fn async_native_results_are_owned_and_listener_first() {
+    let main = include_str!("../src/main.rs");
+    assert!(main.contains("refresh_selected_client_from_tray"));
+    assert!(main.contains("open_selected_client_from_tray"));
+    assert!(main.contains("suppressed stale tray refresh result"));
+
+    let commands = include_str!("../src/client_commands.rs");
+    assert!(commands.contains("pub context_current: bool"));
+    assert!(
+        commands.contains("let context_current = state.context_matches(client_id, client_epoch)")
+    );
+
+    let app = include_str!("../../frontend/src/app/App.tsx");
+    assert!(app.contains("if (eventListenersSettled) void bootstrap()"));
+    let store = include_str!("../../frontend/src/features/dashboard-store.ts");
+    assert!(store.contains("if (previousSettings === null)"));
+    assert!(store.contains("refreshSelectedClientStartup().catch"));
 }
 
 #[test]

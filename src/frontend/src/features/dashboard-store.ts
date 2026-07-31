@@ -19,6 +19,7 @@ import {
   toggleSelectedClient,
 } from "@/lib/api";
 import { activeClientOperationalContextChanged } from "@/features/active-client-context";
+import { statusIsAtLeastAsFresh } from "@/features/status-freshness";
 import i18n from "@/lib/i18n";
 import type {
   AppSettings,
@@ -115,23 +116,6 @@ function applyVisualSettings(settings: AppSettings): void {
   );
 }
 
-function statusIsAtLeastAsFresh(
-  candidate: DashboardStatus,
-  current: DashboardStatus | null,
-): boolean {
-  if (!current) {
-    return true;
-  }
-
-  const candidateTime = Date.parse(candidate.updated_at);
-  const currentTime = Date.parse(current.updated_at);
-  if (!Number.isFinite(candidateTime) || !Number.isFinite(currentTime)) {
-    return true;
-  }
-
-  return candidateTime >= currentTime;
-}
-
 function pathNoticeFor(settings: AppSettings): string | null {
   if (settings.selected_client !== "v2rayn") {
     return null;
@@ -152,7 +136,7 @@ function defaultStatus(): DashboardStatus {
     latency_ms: null,
     last_error: null,
     last_event: null,
-    updated_at: new Date().toISOString(),
+    updated_at: "1970-01-01T00:00:00.000Z",
   };
 }
 
@@ -210,6 +194,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         getSettings(),
         getClientCatalog(),
       ]);
+      if (generation !== clientGeneration || revision !== settingsRevision) {
+        return;
+      }
       applyTheme(settings.theme);
       applyLanguage(settings.language);
       applyVisualSettings(settings);
@@ -618,6 +605,26 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         ? { status: defaultStatus(), profiles: [], actionLoading: false }
         : {}),
     });
+
+    if (previousSettings === null) {
+      const initialGeneration = clientGeneration;
+      const initialClientId = settings.selected_client;
+      void Promise.all([
+        refreshSelectedClientStartup().catch(() =>
+          getStatus().catch(() => defaultStatus()),
+        ),
+        listSelectedClientItems().catch(() => []),
+      ]).then(([status, profiles]) => {
+        if (!clientOperationIsCurrent(initialGeneration, initialClientId)) return;
+        set((previous) => {
+          const accept = statusIsAtLeastAsFresh(status, previous.status);
+          return {
+            status: accept ? status : previous.status,
+            profiles: accept ? profiles : previous.profiles,
+          };
+        });
+      });
+    }
 
     const generation = clientGeneration;
     const catalogRequest = ++catalogRequestRevision;

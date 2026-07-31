@@ -39,4 +39,23 @@ describe("bindTauriListener", () => {
 
     expect(dispose).toHaveBeenCalledOnce();
   });
+
+  it("signals readiness only after the listener is registered", async () => {
+    let resolveListen: ((dispose: () => void) => void) | undefined;
+    const onReady = vi.fn();
+    listenMock.mockReturnValue(
+      new Promise<() => void>((resolve) => {
+        resolveListen = resolve;
+      }),
+    );
+
+    const cleanup = bindTauriListener("event", () => undefined, undefined, onReady);
+    expect(onReady).not.toHaveBeenCalled();
+
+    resolveListen?.(() => undefined);
+    await Promise.resolve();
+    expect(onReady).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
 });

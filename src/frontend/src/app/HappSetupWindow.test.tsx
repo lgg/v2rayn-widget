@@ -20,6 +20,13 @@ vi.mock("@tauri-apps/api/event", () => eventMocks);
 
 import { HappSetupWindow } from "@/app/HappSetupWindow";
 
+async function renderHappSetupWindow(): Promise<void> {
+  await act(async () => {
+    render(<HappSetupWindow />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 const settings: AppSettings = {
   selected_client: "happ",
   language: "en",
@@ -86,14 +93,16 @@ describe("HappSetupWindow", () => {
   });
 
   afterEach(async () => {
-    await i18n.changeLanguage("en");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
     document.documentElement.classList.remove("dark");
     document.documentElement.style.removeProperty("--widget-opacity");
     document.body.classList.remove("widget-effect-disabled");
   });
 
   it("probes and persists explicit experimental control consent for the current candidate", async () => {
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
     await screen.findByRole("heading", { name: "Happ adapter setup" });
 
     fireEvent.change(screen.getByLabelText("Executable path"), {
@@ -114,7 +123,7 @@ describe("HappSetupWindow", () => {
   });
 
   it("shows adapter probe details", async () => {
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
     await screen.findByRole("heading", { name: "Happ adapter setup" });
 
     fireEvent.click(screen.getByRole("button", { name: "Run Happ probe" }));
@@ -144,7 +153,7 @@ describe("HappSetupWindow", () => {
       return () => undefined;
     });
 
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
     await screen.findByRole("heading", { name: "Happ adapter setup" });
     fireEvent.change(screen.getByLabelText("Executable path"), {
       target: { value: "C:\\Happ\\Happ.exe" }
@@ -159,7 +168,7 @@ describe("HappSetupWindow", () => {
 
   it("retains the setup draft and confirmation when safe discard close fails", async () => {
     apiMocks.closeWindow.mockResolvedValueOnce(false);
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
     await screen.findByRole("heading", { name: "Happ adapter setup" });
 
     const pathInput = screen.getByLabelText("Executable path") as HTMLInputElement;
@@ -173,7 +182,7 @@ describe("HappSetupWindow", () => {
   });
 
   it("preserves an unsaved setup draft when the application language changes", async () => {
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
     await screen.findByRole("heading", { name: "Happ adapter setup" });
 
     const pathInput = screen.getByLabelText("Executable path") as HTMLInputElement;
@@ -203,7 +212,7 @@ describe("HappSetupWindow", () => {
       window_opacity_percent: 73,
     });
 
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
     await waitFor(() => expect(i18n.language).toBe("ru"));
     expect(document.documentElement.classList.contains("dark")).toBe(false);
     expect(document.documentElement.style.getPropertyValue("--widget-opacity")).toBe("0.73");
@@ -235,7 +244,7 @@ describe("HappSetupWindow", () => {
       return () => undefined;
     });
 
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
     await screen.findByRole("heading", { name: "Happ adapter setup" });
     const pathInput = screen.getByLabelText("Executable path") as HTMLInputElement;
 
@@ -262,7 +271,7 @@ describe("HappSetupWindow", () => {
       return () => undefined;
     });
 
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
     await waitFor(() => expect(settingsHandler).toBeDefined());
 
     const external = {
@@ -282,7 +291,7 @@ describe("HappSetupWindow", () => {
 
   it("leaves loading and shows an error when settings cannot load", async () => {
     apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
 
     expect((await screen.findByRole("alert")).textContent).toContain("disk failure");
     expect(screen.queryByText("Loading...")).toBeNull();
@@ -290,7 +299,7 @@ describe("HappSetupWindow", () => {
 
   it("retries the initial settings load after an error", async () => {
     apiMocks.getSettings.mockRejectedValueOnce(new Error("disk failure"));
-    render(<HappSetupWindow />);
+    await renderHappSetupWindow();
 
     expect((await screen.findByRole("alert")).textContent).toContain("disk failure");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -298,4 +307,20 @@ describe("HappSetupWindow", () => {
     expect(await screen.findByRole("heading", { name: "Happ adapter setup" })).toBeTruthy();
     expect(apiMocks.getSettings).toHaveBeenCalledTimes(2);
   });
+
+  it("leaves loading when an authoritative event supersedes a hanging initial load", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    apiMocks.getSettings.mockReturnValueOnce(new Promise<AppSettings>(() => undefined));
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      return () => undefined;
+    });
+
+    await renderHappSetupWindow();
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+    await act(async () => settingsHandler?.({ payload: settings }));
+
+    expect(await screen.findByRole("heading", { name: "Happ adapter setup" })).not.toBeNull();
+  });
+
 });

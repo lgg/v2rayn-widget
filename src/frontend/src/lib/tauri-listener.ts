@@ -4,6 +4,7 @@ export function bindTauriListener<T>(
   eventName: string,
   handler: (event: Event<T>) => void,
   onError?: (error: unknown) => void,
+  onReady?: () => void,
 ): () => void {
   let active = true;
   let unlisten: UnlistenFn | null = null;
@@ -15,6 +16,7 @@ export function bindTauriListener<T>(
         return;
       }
       unlisten = dispose;
+      onReady?.();
     })
     .catch((error) => {
       if (active) {

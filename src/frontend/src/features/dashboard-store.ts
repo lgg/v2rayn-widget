@@ -136,7 +136,7 @@ function defaultStatus(): DashboardStatus {
     latency_ms: null,
     last_error: null,
     last_event: null,
-    updated_at: new Date().toISOString(),
+    updated_at: "1970-01-01T00:00:00.000Z",
   };
 }
 

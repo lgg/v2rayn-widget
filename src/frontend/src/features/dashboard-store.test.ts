@@ -181,7 +181,7 @@ describe("dashboard store refresh", () => {
       selected_client: "happ",
     });
     apiMocks.refreshSelectedClientStartup.mockResolvedValueOnce({
-      ...status("happ"),
+      ...status("2026-07-31T00:00:02.000000000Z"),
       status: "Disconnected",
       connection_state: "Disconnected",
       tun_enabled: false,
@@ -196,7 +196,9 @@ describe("dashboard store refresh", () => {
     await oldRefresh;
 
     expect(useDashboardStore.getState().settings?.selected_client).toBe("happ");
-    expect(useDashboardStore.getState().status?.updated_at).toBe("happ");
+    expect(useDashboardStore.getState().status?.updated_at).toBe(
+      "2026-07-31T00:00:02.000000000Z",
+    );
   });
 
   it("reloads dynamic capability descriptors after external settings change", async () => {

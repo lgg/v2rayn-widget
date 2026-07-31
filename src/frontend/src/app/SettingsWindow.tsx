@@ -231,6 +231,9 @@ export function SettingsWindow(): JSX.Element {
           await i18n.changeLanguage(saved.language);
         }
       } catch {
+        if (revision !== settingsRevisionRef.current) {
+          return;
+        }
         setSaveError(t("errors.settingsSaveFailed"));
         const authoritative = await getSettings().catch(() => null);
         if (authoritative && revision === settingsRevisionRef.current) {

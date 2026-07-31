@@ -34,12 +34,15 @@ jobs:
           $expressions = @(
             'new Date().toLocaleTimeString()',
             'line',
+            'line.trim()',
             'label',
             'formatSnapshot(snapshot)',
             'error instanceof Error ? error.message : String(error)',
             'title',
             'typeof result === "string" ? result : "done"',
-            'message'
+            'message',
+            'match[1]',
+            'expected'
           )
           foreach ($expression in $expressions) {
             $script = $script.Replace('${' + $expression + '}', '\${' + $expression + '}')

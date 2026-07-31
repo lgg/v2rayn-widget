@@ -5,6 +5,7 @@ on:
     branches:
       - main
     types:
+      - ready_for_review
       - synchronize
 
 permissions:
@@ -114,7 +115,7 @@ jobs:
 
       - name: Preserve hardened permanent workflow source
         shell: pwsh
-        run: git show HEAD^:.github/workflows/windows-quality.yml | Set-Content scripts/windows-quality-hardened.yml -Encoding utf8
+        run: git show HEAD~2:.github/workflows/windows-quality.yml | Set-Content scripts/windows-quality-hardened.yml -Encoding utf8
 
       - name: Commit correction without workflow mutation
         shell: pwsh

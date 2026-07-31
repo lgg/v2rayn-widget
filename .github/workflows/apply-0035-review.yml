@@ -5,6 +5,7 @@ on:
     branches:
       - main
     types:
+      - ready_for_review
       - synchronize
 
 permissions:
@@ -44,6 +45,7 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item scripts/apply-0035-review.mjs -Force
+          Remove-Item scripts/trigger-0035-review.txt -Force -ErrorAction SilentlyContinue
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A

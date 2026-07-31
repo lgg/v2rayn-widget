@@ -42,17 +42,35 @@ export function DebugWindow(): JSX.Element {
   const settingsRevisionRef = useRef(0);
   const [settingsListenerSettled, setSettingsListenerSettled] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ProxyClientId | null>(null);
+  const selectedClientRef = useRef<ProxyClientId | null>(null);
+  const clientRevisionRef = useRef(0);
+
+  const applySelectedClient = (client: ProxyClientId): void => {
+    if (selectedClientRef.current !== client) {
+      clientRevisionRef.current += 1;
+    }
+    selectedClientRef.current = client;
+    setSelectedClient(client);
+    if (client !== "v2rayn") {
+      setBusy(false);
+      setReport(null);
+      setProbeError(null);
+      setInitialProbePending(false);
+    }
+  };
 
   const append = (line: string): void => {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 220));
   };
 
-  const captureSnapshot = async (label: string): Promise<void> => {
+  const captureSnapshot = async (label: string, isCurrent: () => boolean): Promise<void> => {
     try {
       const snapshot = await debugCaptureRuntimeSnapshot();
-      append(`${label}: ${formatSnapshot(snapshot)}`);
+      if (isCurrent()) append(`${label}: ${formatSnapshot(snapshot)}`);
     } catch (error) {
-      append(`${label}: snapshot failed (${error instanceof Error ? error.message : String(error)})`);
+      if (isCurrent()) {
+        append(`${label}: snapshot failed (${error instanceof Error ? error.message : String(error)})`);
+      }
     }
   };
 
@@ -61,6 +79,11 @@ export function DebugWindow(): JSX.Element {
     fn: () => Promise<unknown>,
     options?: { captureSnapshot?: boolean; refreshProbe?: boolean; probeOperation?: boolean }
   ): Promise<boolean> => {
+    const operationRevision = clientRevisionRef.current;
+    const isCurrent = (): boolean =>
+      operationRevision === clientRevisionRef.current && selectedClientRef.current === "v2rayn";
+    if (!isCurrent()) return false;
+
     setBusy(true);
     const withSnapshot = options?.captureSnapshot ?? true;
     if (options?.probeOperation) {
@@ -71,34 +94,42 @@ export function DebugWindow(): JSX.Element {
     try {
       append(`RUN ${title}`);
       if (withSnapshot) {
-        await captureSnapshot("before");
+        await captureSnapshot("before", isCurrent);
       }
+      if (!isCurrent()) return false;
 
       const result = await fn();
+      if (!isCurrent()) return false;
       append(`OK ${title}: ${typeof result === "string" ? result : "done"}`);
+      if (options?.probeOperation) {
+        setReport(result as UiDebugReport);
+        setProbeError(null);
+      }
 
       if (withSnapshot) {
-        await captureSnapshot("after");
+        await captureSnapshot("after", isCurrent);
       }
 
       if (options?.refreshProbe) {
         const refreshed = await runUiDebugProbe();
+        if (!isCurrent()) return false;
         setReport(refreshed);
         setProbeError(null);
       }
       return true;
     } catch (error) {
+      if (!isCurrent()) return false;
       const message = error instanceof Error ? error.message : String(error);
       append(`ERR ${title}: ${message}`);
       if (options?.probeOperation || options?.refreshProbe) {
         setProbeError(message.trim() || t("debug.probeFailed"));
       }
       if (withSnapshot) {
-        await captureSnapshot("after_err");
+        await captureSnapshot("after_err", isCurrent);
       }
       return false;
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   };
 
@@ -109,7 +140,7 @@ export function DebugWindow(): JSX.Element {
     void getSettings()
       .then(async (settings) => {
         if (!active || revision !== settingsRevisionRef.current) return;
-        setSelectedClient(settings.selected_client);
+        applySelectedClient(settings.selected_client);
         await applySurfaceSettings(settings);
       })
       .catch(() => undefined);
@@ -124,7 +155,7 @@ export function DebugWindow(): JSX.Element {
       "settings-updated",
       (event) => {
         settingsRevisionRef.current += 1;
-        setSelectedClient(event.payload.selected_client);
+        applySelectedClient(event.payload.selected_client);
         void applySurfaceSettings(event.payload);
       },
       () => setSettingsListenerSettled(true),
@@ -141,16 +172,15 @@ export function DebugWindow(): JSX.Element {
       return;
     }
 
+    const operationRevision = clientRevisionRef.current;
     setInitialProbePending(true);
     void run(
       "probe",
-      async () => {
-        const result = await runUiDebugProbe();
-        setReport(result);
-        return "probe complete";
-      },
+      runUiDebugProbe,
       { captureSnapshot: true, probeOperation: true }
-    ).finally(() => setInitialProbePending(false));
+    ).finally(() => {
+      if (operationRevision === clientRevisionRef.current) setInitialProbePending(false);
+    });
   }, [selectedClient]);
 
   useEffect(
@@ -190,11 +220,7 @@ export function DebugWindow(): JSX.Element {
             onClick={() =>
               void run(
                 "probe",
-                async () => {
-                  const result = await runUiDebugProbe();
-                  setReport(result);
-                  return result.note;
-                },
+                runUiDebugProbe,
                 { captureSnapshot: true, probeOperation: true }
               )
             }

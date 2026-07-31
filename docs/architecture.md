@@ -347,8 +347,7 @@ Network diagnostics disable redirects and ambient proxy settings, resolve each c
 
 The Rust suite includes v2rayN resolver/config/log tests, strict-primary versus backup observation tests, schema-preserving and guarded config-update tests, serialized v2rayN/Happ operation tests, selected-process launch/window tests, settings normalization and debounced-position tests, exact fail-closed UI action/profile classifiers, network-target safety tests, product-surface/IPC contracts, window geometry contracts, active-client context transitions and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.
 
-
-### Final consistency audits
+## Final consistency audits
 
 - 0030: active selected-adapter context consistency.
 - 0031: Happ toggle lifecycle hardening.

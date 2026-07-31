@@ -254,8 +254,7 @@ Widget logs are written to the application config directory under:
 - eventual compatibility-field and legacy-command cleanup;
 - product/repository naming cleanup after release validation.
 
-
-### Final consistency audits
+## Final consistency audits
 
 - 0030: active selected-adapter context consistency.
 - 0031: Happ toggle lifecycle hardening.

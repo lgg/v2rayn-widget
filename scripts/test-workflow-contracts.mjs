@@ -16,6 +16,11 @@ const PATHS = {
 
 const SELF_HOSTED_RUNNER = "runs-on: [self-hosted, v2rayn-widget-ci]";
 const PREREQUISITES = "scripts/assert-ci-prerequisites.ps1";
+const OFFICIAL_ACTION_PINS = new Map([
+  ["checkout", "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"],
+  ["upload-artifact", "b7c566a772e6b6bfb58ed0dc250532a479d7789f"],
+  ["download-artifact", "37930b1c2abaa49bbe596cd826c3c89aef350131"],
+]);
 
 function fail(message) {
   throw new Error(message);
@@ -111,8 +116,13 @@ function verifyPinnedOfficialActions(text, label) {
   const actionLines = text.split(/\r?\n/).filter((line) => /^\s*uses:\s*actions\//.test(line));
   if (actionLines.length === 0) fail(`${label}: no official actions found to validate`);
   for (const line of actionLines) {
-    if (!/^\s*uses:\s*actions\/[^@\s]+@[0-9a-f]{40}(?:\s+#.*)?$/.test(line)) {
+    const match = line.match(/^\s*uses:\s*actions\/([^@\s]+)@([0-9a-f]{40})(?:\s+#.*)?$/);
+    if (!match) {
       fail(`${label}: official action must be pinned to a full commit SHA: ${line.trim()}`);
+    }
+    const expected = OFFICIAL_ACTION_PINS.get(match[1]);
+    if (expected && match[2] !== expected) {
+      fail(`${label}: actions/${match[1]} must use approved Node 24 revision ${expected}`);
     }
   }
 }

@@ -229,9 +229,9 @@ export function SettingsWindow(): JSX.Element {
       const revision = settingsRevisionRef.current;
       try {
         const saved = await applyUiSettings(patch);
-        authoritativeSettingsRef.current = saved;
-        liveWriteFailedRef.current = false;
         if (revision === settingsRevisionRef.current) {
+          authoritativeSettingsRef.current = saved;
+          liveWriteFailedRef.current = false;
           setSettings((prev) => (prev ? mergeUiFields(prev, saved) : saved));
           applyTheme(saved.theme);
           applyVisual(saved);

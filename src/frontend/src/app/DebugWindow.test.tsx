@@ -227,4 +227,29 @@ describe("DebugWindow", () => {
     expect((screen.getByRole("button", { name: "Open v2rayN" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("drops an in-flight probe result after the adapter changes", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    let resolveProbe!: (value: UiDebugReport) => void;
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void, _onError?: unknown, onReady?: () => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      onReady?.();
+      return () => undefined;
+    });
+    apiMocks.runUiDebugProbe.mockImplementationOnce(
+      () => new Promise<UiDebugReport>((resolve) => { resolveProbe = resolve; }),
+    );
+
+    await renderDebugWindow();
+    await waitFor(() => expect(apiMocks.runUiDebugProbe).toHaveBeenCalledOnce());
+    await act(async () => settingsHandler?.({ payload: { ...settings, selected_client: "happ" } }));
+    expect(await screen.findByText(/These tools control v2rayN only/)).toBeTruthy();
+
+    await act(async () => {
+      resolveProbe(report);
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Probe complete")).toBeNull();
+    expect((screen.getByRole("button", { name: "Open v2rayN" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
 });

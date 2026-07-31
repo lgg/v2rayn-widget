@@ -416,4 +416,40 @@ describe("SettingsWindow", () => {
     expect(apiMocks.closeWindow).not.toHaveBeenCalled();
   });
 
+  it("keeps a newer authoritative fallback after a stale live-write success", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    let resolveStaleWrite!: (value: AppSettings) => void;
+    eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      return () => undefined;
+    });
+    apiMocks.applyUiSettings
+      .mockImplementationOnce(
+        () => new Promise<AppSettings>((resolve) => { resolveStaleWrite = resolve; }),
+      )
+      .mockRejectedValueOnce(new Error("second live write failed"));
+    apiMocks.getSettings
+      .mockResolvedValueOnce(baseSettings)
+      .mockRejectedValueOnce(new Error("recovery unavailable"));
+
+    render(<SettingsWindow />);
+    await screen.findByRole("heading", { name: "Settings" });
+    await waitFor(() => expect(settingsHandler).toBeDefined());
+    const alwaysOnTop = screen.getByLabelText("Always on top") as HTMLInputElement;
+
+    fireEvent.click(alwaysOnTop);
+    await waitFor(() => expect(apiMocks.applyUiSettings).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      settingsHandler?.({ payload: { ...baseSettings, theme: "light", always_on_top: false } });
+      resolveStaleWrite({ ...baseSettings, theme: "dark", always_on_top: true });
+      await Promise.resolve();
+    });
+
+    expect(alwaysOnTop.checked).toBe(false);
+    fireEvent.click(alwaysOnTop);
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not save settings");
+    expect(alwaysOnTop.checked).toBe(false);
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
 });

@@ -26,6 +26,13 @@ vi.mock("@/lib/tauri-listener", () => listenerMocks);
 
 import { DebugWindow } from "@/app/DebugWindow";
 
+async function renderDebugWindow(): Promise<void> {
+  await act(async () => {
+    render(<DebugWindow />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 const settings: AppSettings = {
   selected_client: "v2rayn",
   language: "en",
@@ -126,7 +133,7 @@ describe("DebugWindow", () => {
       window_opacity_percent: 64,
     });
 
-    render(<DebugWindow />);
+    await renderDebugWindow();
     await waitFor(() => expect(i18n.language).toBe("ru"));
     expect(document.documentElement.classList.contains("dark")).toBe(false);
     expect(document.documentElement.style.getPropertyValue("--widget-opacity")).toBe("0.64");
@@ -154,7 +161,7 @@ describe("DebugWindow", () => {
       return () => undefined;
     });
 
-    render(<DebugWindow />);
+    await renderDebugWindow();
     await waitFor(() => expect(settingsHandler).toBeDefined());
 
     await act(async () => {
@@ -173,7 +180,7 @@ describe("DebugWindow", () => {
       return () => undefined;
     });
 
-    render(<DebugWindow />);
+    await renderDebugWindow();
     await screen.findByRole("heading", { name: "Debug tools" });
     await waitFor(() => expect(apiMocks.runUiDebugProbe).toHaveBeenCalledTimes(1));
 
@@ -192,7 +199,7 @@ describe("DebugWindow", () => {
       return () => undefined;
     });
 
-    render(<DebugWindow />);
+    await renderDebugWindow();
     expect(apiMocks.getSettings).not.toHaveBeenCalled();
     await act(async () => ready?.());
     await waitFor(() => expect(apiMocks.getSettings).toHaveBeenCalledOnce());

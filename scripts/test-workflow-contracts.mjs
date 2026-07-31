@@ -159,6 +159,7 @@ function verifyQualityWorkflow() {
     ["CARGO_TARGET_DIR", "external Cargo target"],
     ["src/tauri/portable-release/v2rayn-widget.exe", "stable portable artifact path"],
     ["Rust cleanup left generated paths", "verified Rust cleanup"],
+    ["Frontend tests emitted React act warnings", "warning-free React tests"],
   ]) requireText(text, needle, label);
 
   rejectText(text, "pull_request_target:", "quality events");

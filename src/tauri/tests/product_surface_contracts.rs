@@ -197,8 +197,10 @@ fn tray_runtime_is_localized_and_reports_native_operation_results() {
     assert!(tray.contains("app.state::<TrayMenuState>().apply_labels(labels)?"));
 
     let app = include_str!("../../frontend/src/app/App.tsx");
-    assert!(app.contains("bindTauriListener<TrayStatusUpdate>(\"tray-status-updated\""));
-    assert!(app.contains("bindTauriListener<TrayOperationError>(\"tray-operation-error\""));
+    assert!(app.contains("bindTauriListener<TrayStatusUpdate>("));
+    assert!(app.contains("\"tray-status-updated\","));
+    assert!(app.contains("bindTauriListener<TrayOperationError>("));
+    assert!(app.contains("\"tray-operation-error\","));
 
     let store = include_str!("../../frontend/src/features/dashboard-store.ts");
     assert!(store.contains("get().settings?.selected_client !== payload.client_id"));

@@ -25,7 +25,7 @@ Implementation complete; exact-head verification pending.
 
 ## Verification evidence
 
-Pending exact-head Release Quality. A draft-only synchronize event is used to cancel the staging quality run before the one-shot implementation verification.
+Pending exact-head Release Quality. Final diff review additionally verifies stale-success fallback ownership, selected-client generation ownership for Debug results and exact approved Node 24 action revisions.
 
 ## Residual external validation
 

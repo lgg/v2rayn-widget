@@ -1,4 +1,4 @@
-name: Apply 0034 frontend correction
+name: Apply 0034 correction
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-0034-frontend-${{ github.event.pull_request.number }}
+  group: apply-0034-correction-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -24,105 +24,29 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout audit branch
+      - name: Checkout exact branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: audit/0034-async-native-consistency
-          fetch-depth: 2
+          fetch-depth: 32
 
-      - name: Apply exact frontend corrections
+      - name: Apply assertion-backed correction
+        shell: pwsh
+        run: node scripts/apply-0034-correction.mjs
+
+      - name: Preserve permanent workflow and remove temporary inputs
         shell: pwsh
         run: |
-          @'
-          import fs from "node:fs";
+          git show c5a0f072af28a41a505f24483684167e22379f42:.github/workflows/windows-quality.yml | Set-Content scripts/windows-quality-hardened.yml -Encoding utf8
+          Remove-Item scripts/apply-0034-correction.mjs -Force
+          Remove-Item scripts/trigger-0034-frontend-correction.txt -Force -ErrorAction SilentlyContinue
 
-          function read(path) {
-            return fs.readFileSync(path, "utf8").replace(/\r\n/g, "\n");
-          }
-
-          function replaceOnce(path, before, after) {
-            const source = read(path);
-            const first = source.indexOf(before);
-            if (first < 0) throw new Error(`Missing expected block in ${path}: ${before.slice(0, 100)}`);
-            if (source.indexOf(before, first + before.length) >= 0) throw new Error(`Expected unique block in ${path}`);
-            fs.writeFileSync(path, source.slice(0, first) + after + source.slice(first + before.length));
-          }
-
-          replaceOnce(
-            "src/frontend/src/features/dashboard-store.ts",
-            '    updated_at: new Date().toISOString(),',
-            '    updated_at: "1970-01-01T00:00:00.000Z",',
-          );
-
-          replaceOnce(
-            "src/frontend/src/features/dashboard-store.test.ts",
-            '      ...status("happ"),\n      status: "Disconnected",',
-            '      ...status("2026-07-31T00:00:02.000000000Z"),\n      status: "Disconnected",',
-          );
-          replaceOnce(
-            "src/frontend/src/features/dashboard-store.test.ts",
-            '    expect(useDashboardStore.getState().status?.updated_at).toBe("happ");',
-            '    expect(useDashboardStore.getState().status?.updated_at).toBe(\n      "2026-07-31T00:00:02.000000000Z",\n    );',
-          );
-
-          replaceOnce(
-            "src/frontend/src/app/SettingsWindow.tsx",
-            '      } catch {\n        setSaveError(t("errors.settingsSaveFailed"));\n        const authoritative = await getSettings().catch(() => null);',
-            '      } catch {\n        if (revision !== settingsRevisionRef.current) {\n          return;\n        }\n        setSaveError(t("errors.settingsSaveFailed"));\n        const authoritative = await getSettings().catch(() => null);',
-          );
-
-          const testAnchor = '  it("serializes the full save after pending live UI writes", async () => {';
-          const staleFailureTest = `  it("ignores a stale live-save failure after authoritative settings arrive", async () => {
-            let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
-            let rejectLiveWrite!: (error: Error) => void;
-            eventMocks.listen.mockImplementation(async (eventName: string, handler: (event: { payload: AppSettings }) => void) => {
-              if (eventName === "settings-updated") settingsHandler = handler;
-              return () => undefined;
-            });
-            apiMocks.applyUiSettings.mockImplementationOnce(
-              () => new Promise<AppSettings>((_resolve, reject) => {
-                rejectLiveWrite = reject;
-              }),
-            );
-
-            render(<SettingsWindow />);
-            await screen.findByRole("heading", { name: "Settings" });
-            await waitFor(() => expect(settingsHandler).toBeDefined());
-
-            fireEvent.click(screen.getByLabelText("Always on top"));
-            await waitFor(() => expect(apiMocks.applyUiSettings).toHaveBeenCalledTimes(1));
-
-            await act(async () => {
-              settingsHandler?.({ payload: { ...baseSettings, theme: "light" } });
-              rejectLiveWrite(new Error("stale live failure"));
-              await Promise.resolve();
-            });
-
-            expect(apiMocks.getSettings).toHaveBeenCalledTimes(1);
-          });
-
-`;
-          replaceOnce(
-            "src/frontend/src/app/SettingsWindow.test.tsx",
-            testAnchor,
-            staleFailureTest + testAnchor,
-          );
-
-          console.log("0034 frontend correction applied");
-          '@ | Set-Content scripts/apply-0034-frontend.mjs -Encoding utf8
-          node scripts/apply-0034-frontend.mjs
-          Remove-Item scripts/apply-0034-frontend.mjs -Force
-
-      - name: Preserve hardened permanent workflow source
-        shell: pwsh
-        run: git show HEAD~2:.github/workflows/windows-quality.yml | Set-Content scripts/windows-quality-hardened.yml -Encoding utf8
-
-      - name: Commit correction without workflow mutation
+      - name: Commit product correction
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/frontend scripts/windows-quality-hardened.yml
+          git add src/frontend scripts/apply-0034-correction.mjs scripts/trigger-0034-frontend-correction.txt scripts/windows-quality-hardened.yml
           git diff --cached --check
           git commit -m "0034: correct placeholder freshness and stale save errors"
           git push origin HEAD:audit/0034-async-native-consistency

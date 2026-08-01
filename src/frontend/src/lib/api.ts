@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   AppSettings,
   ClientDescriptor,
@@ -178,23 +179,32 @@ export async function relaunchWidgetAsAdmin(): Promise<void> {
   return invoke("relaunch_widget_as_admin");
 }
 
-export function shouldReloadClosedDraftSurface(label: string, tauriRuntimeAvailable: boolean): boolean {
-  return tauriRuntimeAvailable && (label === "settings" || label === "happ-setup");
+export function shouldReloadClosedDraftSurface(
+  label: string,
+  currentLabel: string | null,
+  tauriRuntimeAvailable: boolean,
+): boolean {
+  return tauriRuntimeAvailable
+    && label === currentLabel
+    && (label === "settings" || label === "happ-setup");
 }
 
 function reloadClosedDraftSurface(label: string): void {
   const tauriRuntimeAvailable = "__TAURI_INTERNALS__" in window;
-  if (!shouldReloadClosedDraftSurface(label, tauriRuntimeAvailable)) {
+  if (!tauriRuntimeAvailable) {
     return;
   }
 
   // Reload is post-close cleanup, not part of the safe-close transaction. Never
   // turn an already successful backend close into a reported close failure.
   try {
-    window.location.reload();
+    const currentLabel = getCurrentWindow().label;
+    if (shouldReloadClosedDraftSurface(label, currentLabel, true)) {
+      window.location.reload();
+    }
   } catch {
     // A future open still receives authoritative settings events; failure to
-    // reload must not reverse the proven-safe close result.
+    // inspect/reload the hidden webview must not reverse a proven-safe close.
   }
 }
 

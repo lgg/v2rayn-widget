@@ -4,15 +4,17 @@
 
 | Field | Value |
 | --- | --- |
-| Status | In Progress |
+| Status | Done |
 | Priority | P1 |
 | Type | audit/hardening |
 | Base | `9edc190b875275f392121272b335831b6b5d75f7` |
+| Verified head | `830d11a9964ce144d2451498ccf4b5cd574a9252` |
+| Merge commit | `535c4aad466bd2ffb527feaf3123d09b810eeb41` |
 | Public redaction | Reviewed |
 
 ## Context
 
-Tasks 0030-0034 hardened active-client context, native window/tray consistency and asynchronous result ownership. This independent pass verifies the current Windows product against every declared screen, action, capability, IPC boundary, quality workflow and tracked limitation.
+Tasks 0030-0034 hardened active-client context, native window/tray consistency and asynchronous result ownership. This independent pass verified the current Windows product against every declared screen, action, capability, IPC boundary, quality workflow and tracked limitation.
 
 ## Goal
 
@@ -20,21 +22,21 @@ Make the current declared Windows product internally consistent, accessible, war
 
 ## Confirmed findings in scope
 
-1. Settings can close while a live UI write is still pending, hiding a later persistence/recovery failure; failed recovery can also leave the optimistic value visible.
-2. v2rayN-specific Debug Tools remain actionable while Happ is selected, producing technical backend context errors instead of an explicit unsupported state.
-3. Main can announce the same status twice and the connection button exposes only a generic Toggle accessible name.
-4. Permanent workflows pin Node 20 generations of official checkout/artifact actions while the runner has moved to Node 24.
-5. README and roadmap/related-work sections stop before recent completed audits; external-only tasks 0011/0012 are not classified clearly enough.
+1. Settings could close while a live UI write was still pending, hiding a later persistence/recovery failure; failed recovery could also leave the optimistic value visible.
+2. v2rayN-specific Debug Tools remained actionable while Happ was selected, producing technical backend context errors instead of an explicit unsupported state.
+3. Main could announce the same status twice and the connection button exposed only a generic Toggle accessible name.
+4. Permanent workflows pinned Node 20 generations of official checkout/artifact actions while the runner had moved to Node 24.
+5. README and roadmap/related-work sections stopped before recent completed audits; external-only tasks 0011/0012 were not classified clearly enough.
 
-## Scope
+## Scope completed
 
-- Harden Settings live-write close/recovery ownership.
-- Gate v2rayN Debug Tools by selected adapter and expose an explicit localized state.
-- Remove duplicate live-region status announcements and provide state-specific connection action names.
-- Upgrade official Actions to immutable Node 24 revisions and update contracts.
-- Synchronize README, architecture, roadmap, task 0011 and task/decision/report 0012.
-- Add focused frontend/contract regressions.
-- Run complete Release Quality and portable release smoke build.
+- Hardened Settings live-write close/recovery ownership.
+- Gated v2rayN Debug Tools by selected adapter and exposed an explicit localized state.
+- Removed duplicate live-region status announcements and added state-specific connection action names.
+- Upgraded official Actions to immutable Node 24 revisions and updated workflow contracts.
+- Synchronized README, architecture, roadmap, task 0011 and task/decision/report 0012.
+- Added focused frontend and workflow-contract regressions.
+- Ran complete Release Quality and portable release smoke build.
 
 ## Out of scope
 
@@ -45,27 +47,23 @@ Make the current declared Windows product internally consistent, accessible, war
 
 ## Acceptance criteria
 
-- [ ] Settings waits for pending live writes before close and stays visible on unresolved persistence failure.
-- [ ] Failed live-write recovery restores the last authoritative live UI fields without discarding unrelated draft-only fields.
-- [ ] Debug Tools performs no v2rayN command while Happ is selected and enables itself after an authoritative switch to v2rayN.
-- [ ] Exactly one status live region is exposed on Main and the connection button has a state-specific accessible name.
-- [ ] Permanent workflows use full-SHA Node 24 official actions and workflow contracts validate them.
-- [ ] README/architecture/roadmaps accurately cover tasks 0030-0035 and distinguish current release scope from external/deferred work.
-- [ ] Task 0011 is honestly blocked/deferred on external manual QA; task 0012 has an explicit defer decision.
-- [ ] Complete exact-head Release Quality is green with no React act warnings and a portable executable artifact.
-- [ ] Implementation and final evidence are merged into `main`.
+- [x] Settings waits for pending live writes before close and stays visible on unresolved persistence failure.
+- [x] Failed live-write recovery restores the last authoritative live UI fields without discarding unrelated draft-only fields.
+- [x] Debug Tools performs no v2rayN command while Happ is selected and enables itself after an authoritative switch to v2rayN.
+- [x] Exactly one status live region is exposed on Main and the connection button has a state-specific accessible name.
+- [x] Permanent workflows use full-SHA Node 24 official actions and workflow contracts validate them.
+- [x] README/architecture/roadmaps accurately cover tasks 0030-0035 and distinguish current release scope from external/deferred work.
+- [x] Task 0011 is honestly blocked on external manual QA; task 0012 has an explicit defer decision.
+- [x] Complete exact-head Release Quality is green with no React act warnings and a portable executable artifact.
+- [x] Implementation and final evidence are merged into `main`.
 
-## Verification plan
+## Verification evidence
 
-- Frontend unit/component tests for queue idle waiting, Settings close/failure recovery, Debug adapter gating and accessibility.
-- Workflow contract tests for immutable Node 24 action SHAs.
-- TypeScript/Vite production build.
-- Full Rust tests, rustfmt, both Clippy modes, locked check and portable release smoke build.
-- Documentation and public-redaction review.
+- Release Quality run `#483` completed successfully on exact head `830d11a9964ce144d2451498ccf4b5cd574a9252`.
+- Frontend job passed workflow contracts, dependency audit, 92 tests and the TypeScript/Vite production build.
+- Rust Windows job passed rustfmt, Rust tests, strict Clippy for normal and release configurations, locked build checks and portable release artifact generation.
+- Pull request `#31` was squash-merged into `main` as `535c4aad466bd2ffb527feaf3123d09b810eeb41`.
 
-## Risks
+## Residual limitations
 
-- A close wait must not deadlock when a live write rejects.
-- Authoritative rollback must preserve unrelated unsaved draft-only fields.
-- Debug gating must react to later settings events without duplicate probes.
-- Workflow upgrades must remain compatible with the self-hosted runner and artifact handoff.
+Task 0011 remains blocked because it requires representative real subscription-driven v2rayN installations. Subscription operations remain explicitly unsupported. Linux/macOS support remains deferred by decision 0012. Happ control remains explicitly experimental and opt-in.

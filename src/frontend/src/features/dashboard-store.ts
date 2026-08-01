@@ -296,6 +296,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   selectClient: async (clientId) => {
+    if (get().actionLoading) {
+      return;
+    }
+
     const current = get().settings;
     if (!current || current.selected_client === clientId) {
       return;
@@ -371,6 +375,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   toggleConnection: async () => {
+    if (get().actionLoading) {
+      return;
+    }
+
     const generation = clientGeneration;
     const clientId = get().settings?.selected_client;
     set({ actionLoading: true, error: null });
@@ -430,7 +438,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   setActiveItem: async (itemId) => {
-    if (!itemId) {
+    if (!itemId || get().actionLoading) {
       return;
     }
 

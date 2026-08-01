@@ -34,6 +34,10 @@ function formatSnapshot(snapshot: DebugRuntimeSnapshot): string {
 export function DebugWindow(): JSX.Element {
   const { t, i18n } = useTranslation();
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const closeRequestedRef = useRef(false);
   const [report, setReport] = useState<UiDebugReport | null>(null);
   const [initialProbePending, setInitialProbePending] = useState(true);
   const [probeError, setProbeError] = useState<string | null>(null);
@@ -53,8 +57,8 @@ export function DebugWindow(): JSX.Element {
     }
     selectedClientRef.current = client;
     setSelectedClient(client);
+    setBusy(client === "v2rayn" && busyRef.current);
     if (client !== "v2rayn") {
-      setBusy(false);
       setReport(null);
       setProbeError(null);
       setInitialProbePending(false);
@@ -76,6 +80,26 @@ export function DebugWindow(): JSX.Element {
     }
   };
 
+  async function requestClose(): Promise<void> {
+    if (closingRef.current) {
+      return;
+    }
+    if (busyRef.current) {
+      closeRequestedRef.current = true;
+      return;
+    }
+
+    closeRequestedRef.current = false;
+    closingRef.current = true;
+    setClosing(true);
+    try {
+      await closeDebugWindow();
+    } finally {
+      closingRef.current = false;
+      setClosing(false);
+    }
+  }
+
   const run = async (
     title: string,
     fn: () => Promise<unknown>,
@@ -84,8 +108,9 @@ export function DebugWindow(): JSX.Element {
     const operationRevision = clientRevisionRef.current;
     const isCurrent = (): boolean =>
       operationRevision === clientRevisionRef.current && selectedClientRef.current === "v2rayn";
-    if (!isCurrent()) return false;
+    if (!isCurrent() || busyRef.current || closingRef.current) return false;
 
+    busyRef.current = true;
     setBusy(true);
     const withSnapshot = options?.captureSnapshot ?? true;
     if (options?.probeOperation) {
@@ -131,7 +156,13 @@ export function DebugWindow(): JSX.Element {
       }
       return false;
     } finally {
-      if (isCurrent()) setBusy(false);
+      busyRef.current = false;
+      if (selectedClientRef.current === "v2rayn") {
+        setBusy(false);
+      }
+      if (closeRequestedRef.current) {
+        void requestClose();
+      }
     }
   };
 
@@ -196,19 +227,25 @@ export function DebugWindow(): JSX.Element {
   useEffect(
     () =>
       bindTauriListener("debug-close-requested", () => {
-        void closeDebugWindow();
+        void requestClose();
       }),
     [],
   );
 
   const debugEnabled = selectedClient === "v2rayn";
+  const actionsDisabled = busy || closing || !debugEnabled;
 
   return (
     <main data-tauri-drag-region className="drag-region h-full p-0">
       <section className="glass flex h-full flex-col overflow-hidden rounded-3xl border border-white/40 p-4 dark:border-slate-700/80">
         <header className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{t("debug.title")}</h2>
-          <button type="button" className="no-drag rounded-lg border px-2 py-1" onClick={() => void closeDebugWindow()}>
+          <button
+            type="button"
+            disabled={closing}
+            className="no-drag rounded-lg border px-2 py-1 disabled:opacity-60"
+            onClick={() => void requestClose()}
+          >
             {t("common.close")}
           </button>
         </header>
@@ -218,7 +255,8 @@ export function DebugWindow(): JSX.Element {
             <p>{settingsLoadError}</p>
             <button
               type="button"
-              className="mt-2 rounded-lg border border-rose-400/50 px-2 py-1 font-medium"
+              disabled={closing}
+              className="mt-2 rounded-lg border border-rose-400/50 px-2 py-1 font-medium disabled:opacity-60"
               onClick={() => setSettingsLoadAttempt((value) => value + 1)}
             >
               {t("actions.retry")}
@@ -233,13 +271,13 @@ export function DebugWindow(): JSX.Element {
         )}
 
         <div className="no-drag mb-3 grid grid-cols-2 gap-2 text-xs">
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("open_v2rayn", openV2RayN)}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={actionsDisabled} onClick={() => void run("open_v2rayn", openV2RayN)}>
             {t("debug.openV2Rayn")}
           </button>
           <button
             type="button"
             className="rounded-lg border px-2 py-2"
-            disabled={busy || !debugEnabled}
+            disabled={actionsDisabled}
             onClick={() =>
               void run(
                 "probe",
@@ -253,7 +291,7 @@ export function DebugWindow(): JSX.Element {
           <button
             type="button"
             className="rounded-lg border px-2 py-2"
-            disabled={busy || !debugEnabled}
+            disabled={actionsDisabled}
             onClick={() => void run("click_enable_tun", debugToggleViaUiOnly, { refreshProbe: true })}
           >
             {t("debug.toggleUiOnly")}
@@ -261,7 +299,7 @@ export function DebugWindow(): JSX.Element {
           <button
             type="button"
             className="rounded-lg border px-2 py-2"
-            disabled={busy || !debugEnabled}
+            disabled={actionsDisabled}
             onClick={() => void run("click_reload", debugClickReloadViaUi, { refreshProbe: true })}
           >
             {t("debug.clickReload")}
@@ -270,7 +308,7 @@ export function DebugWindow(): JSX.Element {
             <input
               aria-label={t("debug.profileNameLabel")}
               className="rounded-lg border bg-transparent px-2 py-2"
-              disabled={busy || !debugEnabled}
+              disabled={actionsDisabled}
               value={profileNameInput}
               onChange={(event) => setProfileNameInput(event.target.value)}
               placeholder={t("debug.profileNamePlaceholder")}
@@ -278,7 +316,7 @@ export function DebugWindow(): JSX.Element {
             <button
               type="button"
               className="rounded-lg border px-3 py-2"
-              disabled={busy || !debugEnabled || profileNameInput.trim().length === 0}
+              disabled={actionsDisabled || profileNameInput.trim().length === 0}
               onClick={() =>
                 void run(
                   `select_profile_ui:${profileNameInput.trim()}`,
@@ -290,16 +328,16 @@ export function DebugWindow(): JSX.Element {
               {t("debug.selectProfileUi")}
             </button>
           </div>
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("toggle_config_only", debugToggleViaConfigOnly)}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={actionsDisabled} onClick={() => void run("toggle_config_only", debugToggleViaConfigOnly)}>
             {t("debug.toggleConfigOnly")}
           </button>
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("toggle_full", toggleTunViaUi, { refreshProbe: true })}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={actionsDisabled} onClick={() => void run("toggle_full", toggleTunViaUi, { refreshProbe: true })}>
             {t("debug.toggleFull")}
           </button>
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("refresh", refreshStatus)}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={actionsDisabled} onClick={() => void run("refresh", refreshStatus)}>
             {t("debug.refresh")}
           </button>
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("relaunch_admin", relaunchWidgetAsAdmin, { captureSnapshot: false })}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={actionsDisabled} onClick={() => void run("relaunch_admin", relaunchWidgetAsAdmin, { captureSnapshot: false })}>
             {t("actions.relaunchAdmin")}
           </button>
         </div>

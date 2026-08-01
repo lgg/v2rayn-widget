@@ -19,6 +19,9 @@ import {
   reportWindowCloseFailure,
 } from "@/lib/window-close-feedback";
 
+let diagnosticsOpenInFlight: Promise<void> | null = null;
+let mainWindowHeightTail: Promise<void> = Promise.resolve();
+
 export async function getClientCatalog(): Promise<ClientDescriptor[]> {
   return invoke<ClientDescriptor[]>("get_client_catalog");
 }
@@ -147,8 +150,18 @@ export async function openDebugWindow(): Promise<void> {
   return invoke("open_debug_window");
 }
 
-export async function openDiagnosticsWindow(): Promise<void> {
-  return invoke("open_diagnostics_window");
+export function openDiagnosticsWindow(): Promise<void> {
+  if (diagnosticsOpenInFlight) {
+    return diagnosticsOpenInFlight;
+  }
+
+  const operation = invoke<void>("open_diagnostics_window").finally(() => {
+    if (diagnosticsOpenInFlight === operation) {
+      diagnosticsOpenInFlight = null;
+    }
+  });
+  diagnosticsOpenInFlight = operation;
+  return operation;
 }
 
 export async function runUiDebugProbe(): Promise<UiDebugReport> {
@@ -247,6 +260,15 @@ export async function exitApp(): Promise<void> {
   return invoke("exit_app");
 }
 
-export async function setMainWindowHeight(height: number): Promise<void> {
-  return invoke("set_main_window_height", { height });
+export function setMainWindowHeight(height: number): Promise<void> {
+  const write = (): Promise<void> => invoke<void>("set_main_window_height", { height });
+  const operation = mainWindowHeightTail.then(write, write);
+
+  // Preserve ordering but keep the queue usable after an individual resize
+  // failure. The latest measured height therefore always reaches Rust last.
+  mainWindowHeightTail = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  return operation;
 }

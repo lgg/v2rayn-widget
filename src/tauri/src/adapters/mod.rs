@@ -1,6 +1,8 @@
 pub mod happ;
 pub mod v2rayn;
 
+use std::time::{Duration, Instant};
+
 use tauri::State;
 
 use crate::{
@@ -14,6 +16,9 @@ use crate::{
     services::process_monitor,
     state::app_state::AppState,
 };
+
+const HAPP_START_TIMEOUT: Duration = Duration::from_secs(8);
+const HAPP_PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(150);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshKind {
@@ -163,7 +168,43 @@ impl ProxyClientAdapter for RegisteredAdapter {
                 if !state.context_matches(ProxyClientId::Happ, requested.client_epoch) {
                     return Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed before the Happ operation started".to_owned());
                 }
-                happ::open(&state.snapshot().settings)
+
+                let snapshot = state.snapshot();
+                let executable = happ::detect_executable(&snapshot.settings).ok_or_else(|| {
+                    "Happ executable not found. Start Happ once or configure its executable path in Happ setup."
+                        .to_owned()
+                })?;
+                let exact_process_settings = AppSettings {
+                    happ_path: Some(executable.to_string_lossy().to_string()),
+                    ..snapshot.settings.clone()
+                };
+
+                happ::open(&snapshot.settings)?;
+
+                // Keep the shared Happ operation lock until the exact executable
+                // selected for this launch becomes observable. Otherwise a queued
+                // Main/Tray open can run after spawn() but before process discovery
+                // and launch a second instance. Stop waiting early when the active
+                // client context changes.
+                let process_observed =
+                    wait_until(HAPP_START_TIMEOUT, HAPP_PROCESS_POLL_INTERVAL, || {
+                        !state.context_matches(ProxyClientId::Happ, snapshot.client_epoch)
+                            || happ::read_process_snapshot_for_settings(&exact_process_settings)
+                                .running
+                    })
+                    .await;
+
+                if !state.context_matches(ProxyClientId::Happ, snapshot.client_epoch) {
+                    return Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running".to_owned());
+                }
+                if !process_observed {
+                    return Err(
+                        "HAPP_START_TIMEOUT: Happ was launched, but its exact process did not become observable before the startup timeout"
+                            .to_owned(),
+                    );
+                }
+
+                Ok(())
             }
         }
     }
@@ -197,6 +238,22 @@ impl ProxyClientAdapter for RegisteredAdapter {
                 })
             }
         }
+    }
+}
+
+async fn wait_until<F>(timeout: Duration, poll_interval: Duration, mut condition: F) -> bool
+where
+    F: FnMut() -> bool,
+{
+    let deadline = Instant::now() + timeout;
+    loop {
+        if condition() {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(poll_interval).await;
     }
 }
 
@@ -291,6 +348,25 @@ mod tests {
             enabled.capabilities.toggle_connection,
             CapabilityState::Experimental
         );
+    }
+
+    #[tokio::test]
+    async fn process_wait_observes_a_later_ready_state() {
+        let mut attempts = 0;
+        let ready = wait_until(Duration::from_millis(50), Duration::from_millis(1), || {
+            attempts += 1;
+            attempts >= 3
+        })
+        .await;
+
+        assert!(ready);
+        assert_eq!(attempts, 3);
+    }
+
+    #[tokio::test]
+    async fn process_wait_fails_closed_at_timeout() {
+        let ready = wait_until(Duration::ZERO, Duration::from_millis(1), || false).await;
+        assert!(!ready);
     }
 
     #[test]

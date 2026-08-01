@@ -12,17 +12,18 @@
 
 ## Context
 
-A fresh audit of the current merged `main` tree found five lifecycle defects that were not covered by the prior auxiliary-window pass:
+A fresh audit of the current merged `main` tree found six lifecycle defects that were not covered by the prior auxiliary-window pass:
 
 1. Settings rendered its discard confirmation inside the fieldset disabled by that same confirmation state, making Keep editing and Discard changes natively inoperable.
 2. A native Settings close request during a full Save could resume from the same serialized queue and issue a second safe-close command alongside Save.
 3. Settings path Detect and Validate had no synchronous ownership, so they could overlap, accept a late stale response or be followed by close while still mutating the draft.
 4. Debug Tools used React state alone to disable commands, so two clicks before the next render could enqueue two mutating backend operations; a double Toggle could execute twice.
 5. Main client switching, connection Toggle and profile selection also relied on React rendering alone; two same-frame events could dispatch duplicate store/backend operations.
+6. Administrator relaunch had no process-wide backend guard, so concurrent requests from any window could issue multiple Windows `runas` launches.
 
 ## Goal
 
-Give Main, Settings and Debug explicit synchronous ownership of interactive operations and close requests, while preserving visible fail-safe behavior when backend close fails.
+Give Main, Settings and Debug explicit synchronous ownership of interactive operations and close requests, and enforce process-wide ownership for administrator relaunch.
 
 ## Scope
 
@@ -35,7 +36,8 @@ Give Main, Settings and Debug explicit synchronous ownership of interactive oper
 - Reject duplicate Debug operations synchronously before React rerenders.
 - Defer Debug native/custom close until the active operation settles.
 - Reject duplicate Main client switch, connection Toggle and profile selection at the Zustand store boundary.
-- Add focused frontend regression coverage.
+- Reject duplicate administrator relaunch in the Rust service before invoking `ShellExecuteW`.
+- Add focused frontend and Rust regression coverage.
 
 ## Out of scope
 
@@ -55,8 +57,10 @@ Give Main, Settings and Debug explicit synchronous ownership of interactive oper
 - [ ] Rapid duplicate Debug mutation dispatch produces only one backend command.
 - [ ] Debug close waits until the active operation and its post-operation probe settle.
 - [ ] Rapid duplicate Main Toggle, client switch and profile selection each dispatch only one backend operation.
+- [ ] Concurrent administrator relaunch requests produce only one `runas` attempt.
 - [ ] Existing safe-close failure behavior remains intact.
 - [ ] All frontend tests and production build pass without React act warnings.
+- [ ] Rust tests, formatting, strict Clippy and portable release build pass.
 - [ ] Full Release Quality passes on the PR merge candidate.
 - [ ] Implementation and final evidence are merged into `main`.
 
@@ -65,6 +69,7 @@ Give Main, Settings and Debug explicit synchronous ownership of interactive oper
 - Focused Settings accessibility, path-operation and close-ownership tests.
 - Focused Debug duplicate-dispatch and deferred-close test.
 - Focused dashboard-store duplicate-dispatch tests.
+- Rust unit test for the administrator relaunch claim.
 - Existing Main, Settings, Debug and auxiliary lifecycle suites.
 - Full frontend tests, dependency audit and production build.
 - Rust formatting, tests, strict Clippy, locked build and portable Windows executable through Release Quality.

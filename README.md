@@ -108,7 +108,7 @@ Legacy v2rayN commands remain registered during staged migration so existing deb
 
 Network diagnostics reject non-public literal and DNS-resolved targets, disable redirects and ambient proxy settings, and pin hostname requests to the exact public socket addresses that were validated before the request. Settings normalization bounds endpoint lists, polling and opacity values before persistence.
 
-All four local windows expose explicit loading/error/retry or no-result behavior. Settings and Happ Setup protect unsaved draft-only changes on both custom and native close requests. Settings, Debug and Happ Setup close requests are routed through the backend rule that restores Main before hiding the source; if that cannot be proven, the source remains visible and a localized accessible alert explains the failure. Diagnostics opens without hiding Main and can therefore use its normal native close lifecycle. Local and Diagnostics windows are fitted to the active monitor work area when shown or resized by application commands. Native minimum sizes are temporarily capped when a small/RDP work area cannot contain them and restored before final size/position clamping when space returns. Async Tauri listeners are disposed even if registration finishes after React unmounts. Endpoint lists and loaded settings are normalized and bounded before use.
+All four local windows expose explicit loading/error/retry or no-result behavior. Settings and Happ Setup protect unsaved draft-only changes on both custom and native close requests. Settings, Debug and Happ Setup close requests are routed through the backend rule that restores Main before hiding the source; if that cannot be proven, the source remains visible and a localized accessible alert explains the failure. Main mutations, Settings save/path/discard actions, Debug commands and Happ Setup actions reject duplicate same-frame dispatch before React rerenders. Administrator relaunch also has a process-wide backend claim, so concurrent requests from different windows cannot launch multiple elevated processes. Diagnostics opens without hiding Main and can therefore use its normal native close lifecycle. Local and Diagnostics windows are fitted to the active monitor work area when shown or resized by application commands. Native minimum sizes are temporarily capped when a small/RDP work area cannot contain them and restored before final size/position clamping when space returns. Async Tauri listeners are disposed even if registration finishes after React unmounts. Endpoint lists and loaded settings are normalized and bounded before use.
 
 ## Contributor workflow
 
@@ -139,6 +139,10 @@ Planning and decisions:
 - `project-tracking/reports/0026-post-uac-fix-hardening-report.md`
 - `project-tracking/tasks/0029-close-and-small-work-area-hardening.md`
 - `project-tracking/reports/0029-close-and-small-work-area-hardening-report.md`
+- `project-tracking/tasks/0037-auxiliary-operation-ownership-and-reopen-state.md`
+- `project-tracking/reports/0037-auxiliary-operation-ownership-and-reopen-state-report.md`
+- `project-tracking/tasks/0039-settings-debug-operation-ownership.md`
+- `project-tracking/reports/0039-settings-debug-operation-ownership-report.md`
 
 The repository is public. Do not commit credentials, subscription URLs, private endpoints, real local paths, runtime configs/logs or personal data.
 
@@ -262,3 +266,7 @@ Widget logs are written to the application config directory under:
 - 0033: tray/native runtime consistency.
 - 0034: asynchronous native ownership and warning-free quality gates.
 - 0035: declared-surface, accessibility, Settings close ownership and Node 24 Actions audit.
+- 0036: verified audit evidence alignment.
+- 0037: auxiliary operation ownership and hidden-window reopen state.
+- 0038: verified auxiliary lifecycle evidence alignment.
+- 0039: Main, Settings, Debug and administrator relaunch operation ownership.

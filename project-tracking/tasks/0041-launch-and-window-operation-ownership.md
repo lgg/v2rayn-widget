@@ -4,10 +4,13 @@
 
 | Field | Value |
 | --- | --- |
-| Status | In Progress |
+| Status | Done |
 | Priority | P1 |
 | Type | audit/hardening |
 | Base | `0c172d87868d8fbe5c4d96b77ff975ce376b4811` |
+| Verified head | `de903b606c0c07f455f8998e82085964e7b08b89` |
+| Verified PR merge candidate | `1dde9fdeec83855ee695939ff246b0d2a0fff353` |
+| Merge commit | `5d06a9ab3b348b5dbfb460e987cbca9fdc02ea1a` |
 | Public redaction | Reviewed |
 
 ## Context
@@ -22,15 +25,15 @@ A fresh independent audit of the merged `main` tree found three remaining asynch
 
 Retain operation ownership until externally observable completion and ensure window operations are idempotent or ordered at their public frontend boundary.
 
-## Scope
+## Scope completed
 
-- Keep Happ open under the shared backend operation lock until the exact selected executable becomes observable.
-- Stop Happ startup waiting promptly if the selected-client context changes.
-- Fail closed with an explicit timeout when the exact Happ process never appears.
-- Coalesce concurrent Diagnostics open calls into one Tauri invoke and release ownership after success or failure.
-- Serialize Main height writes so the newest measurement is always applied last.
-- Keep resize serialization usable after an individual IPC failure.
-- Add focused frontend and Rust regression coverage.
+- Kept Happ open under the shared backend operation lock until the exact selected executable became observable.
+- Stopped Happ startup waiting promptly when selected-client context changed.
+- Failed closed with an explicit timeout when the exact Happ process did not appear.
+- Coalesced concurrent Diagnostics open calls into one Tauri invoke and released ownership after success or failure.
+- Serialized Main height writes so the newest measurement is always applied last.
+- Kept resize serialization usable after an individual IPC failure.
+- Added focused frontend and Rust regression coverage.
 
 ## Out of scope
 
@@ -41,23 +44,29 @@ Retain operation ownership until externally observable completion and ensure win
 
 ## Acceptance criteria
 
-- [ ] A queued Happ open cannot launch a second instance while the first exact process is still starting.
-- [ ] Happ startup ownership is scoped to the exact executable selected for launch.
-- [ ] Happ startup waiting exits when client context becomes stale.
-- [ ] Happ startup timeout fails closed with a clear error.
-- [ ] Duplicate Diagnostics opens produce one backend invoke.
-- [ ] Diagnostics ownership is released after the invoke settles.
-- [ ] Main height writes execute in request order and the latest measurement is applied last.
-- [ ] A failed height write does not poison later writes.
-- [ ] Focused frontend and Rust tests pass.
-- [ ] Full Release Quality passes on the PR merge candidate.
-- [ ] Implementation and final evidence are merged into `main`.
+- [x] A queued Happ open cannot launch a second instance while the first exact process is still starting.
+- [x] Happ startup ownership is scoped to the exact executable selected for launch.
+- [x] Happ startup waiting exits when client context becomes stale.
+- [x] Happ startup timeout fails closed with a clear error.
+- [x] Duplicate Diagnostics opens produce one backend invoke.
+- [x] Diagnostics ownership is released after the invoke settles.
+- [x] Main height writes execute in request order and the latest measurement is applied last.
+- [x] A failed height write does not poison later writes.
+- [x] Focused frontend and Rust tests pass.
+- [x] Full Release Quality passes on the PR merge candidate.
+- [x] Implementation and final evidence are merged into `main`.
 
-## Verification plan
+## Verification evidence
 
-- Rust tests for delayed readiness and fail-closed timeout behavior.
-- Frontend API tests for Diagnostics coalescing, resize ordering and failure recovery.
-- Existing screen, adapter, Settings/Debug/Happ lifecycle and window tests.
-- npm dependency audit and TypeScript/Vite production build.
-- Rust formatting, tests, both strict Clippy modes, locked build and portable Windows executable.
-- Final diff, branch, PR, documentation and public-redaction review.
+- Release Quality `#508` completed successfully for PR merge candidate `1dde9fdeec83855ee695939ff246b0d2a0fff353`, generated from head `de903b606c0c07f455f8998e82085964e7b08b89` and base `0c172d87868d8fbe5c4d96b77ff975ce376b4811`.
+- Workflow and installer contracts passed; npm audit reported zero vulnerabilities.
+- All 27 frontend test files and all 107 frontend tests passed without React act warnings.
+- TypeScript/Vite production build passed.
+- Rust formatting and all 136 Rust tests passed.
+- Strict normal Clippy, strict release-configuration Clippy and locked build checks passed.
+- Portable Windows executable smoke artifact was built and uploaded successfully.
+- Pull request `#37` was squash-merged into `main` as `5d06a9ab3b348b5dbfb460e987cbca9fdc02ea1a`.
+
+## Residual limitations
+
+Subscription operations remain unsupported. Linux/macOS support remains deferred. Happ connection control remains explicitly experimental and opt-in.

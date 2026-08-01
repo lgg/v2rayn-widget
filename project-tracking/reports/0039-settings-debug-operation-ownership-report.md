@@ -9,6 +9,7 @@ Implementation complete; merge-candidate verification pending.
 - Main client-switch, connection-control and profile-selection dispatch.
 - Settings discard confirmation semantics and native disabled-state behavior.
 - Settings full-save serialization and native/custom close races.
+- Settings path detection/validation ownership and stale-result handling.
 - Debug command dispatch before React disabled-state rendering.
 - Debug native/custom close during active command and post-command probe.
 - Shared safe-close failure behavior.
@@ -19,9 +20,10 @@ Implementation complete; merge-candidate verification pending.
 1. The Settings discard buttons were descendants of a disabled fieldset and therefore could not be operated through normal browser interaction.
 2. The Settings Save button remained active while discard confirmation was visible.
 3. Native Settings close during full Save could wait for the Save queue and then race Save's own close, issuing two safe-close calls.
-4. Debug Tools had no synchronous operation guard, allowing two rapid commands before React rendered disabled controls.
-5. Debug could be hidden while a mutating command and its confirmation probe were still running.
-6. Main Toggle, client switching and profile selection did not reject same-frame duplicate dispatch at the store boundary.
+4. Settings path Detect/Validate could overlap, apply a late stale result or continue while close was requested.
+5. Debug Tools had no synchronous operation guard, allowing two rapid commands before React rendered disabled controls.
+6. Debug could be hidden while a mutating command and its confirmation probe were still running.
+7. Main Toggle, client switching and profile selection did not reject same-frame duplicate dispatch at the store boundary.
 
 ## Implemented corrections
 
@@ -29,6 +31,10 @@ Implementation complete; merge-candidate verification pending.
 - Disabled the editable Settings form and Save while confirmation is visible.
 - Added synchronous Settings save/close/discard ownership refs.
 - Deferred native Settings close while Save is active and coalesced it into the Save-owned close.
+- Serialized Settings path Detect/Validate through a synchronous operation guard.
+- Disabled the path section and Save while a path operation is active.
+- Rejected path results invalidated by a newer authoritative settings revision.
+- Deferred close during a path operation and routed a changed result through the normal unsaved confirmation.
 - Preserved the draft and normal confirmation path when validation or saving does not complete successfully.
 - Added a synchronous Debug operation guard independent of React rendering.
 - Deferred Debug close until the active operation, snapshots and requested post-operation probe settle.

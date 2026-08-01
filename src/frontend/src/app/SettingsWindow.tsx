@@ -128,6 +128,7 @@ export function SettingsWindow(): JSX.Element {
   const authoritativeSettingsRef = useRef<AppSettings | null>(null);
   const liveWriteFailedRef = useRef(false);
   const closingRef = useRef(false);
+  const closeRequestedRef = useRef(false);
   const [closing, setClosing] = useState(false);
   const [settingsListenerSettled, setSettingsListenerSettled] = useState(false);
 
@@ -266,7 +267,7 @@ export function SettingsWindow(): JSX.Element {
   };
 
   const onSave = async (): Promise<void> => {
-    if (!settings || saveInProgressRef.current) {
+    if (!settings || saveInProgressRef.current || closingRef.current || confirmDiscardOpen) {
       return;
     }
 
@@ -322,12 +323,25 @@ export function SettingsWindow(): JSX.Element {
       liveWriteFailedRef.current = false;
       setSettings(saved);
       updateDraftDirty(false);
-      await closeSettingsWindow();
+      closeRequestedRef.current = false;
+
+      closingRef.current = true;
+      setClosing(true);
+      try {
+        await closeSettingsWindow();
+      } finally {
+        closingRef.current = false;
+        setClosing(false);
+      }
     } catch {
       setSaveError(t("errors.settingsSaveFailed"));
     } finally {
       saveInProgressRef.current = false;
       setBusy(false);
+      if (closeRequestedRef.current) {
+        closeRequestedRef.current = false;
+        void requestClose();
+      }
     }
   };
 
@@ -335,7 +349,12 @@ export function SettingsWindow(): JSX.Element {
     if (closingRef.current) {
       return;
     }
+    if (saveInProgressRef.current) {
+      closeRequestedRef.current = true;
+      return;
+    }
 
+    closeRequestedRef.current = false;
     closingRef.current = true;
     setClosing(true);
     try {
@@ -357,9 +376,20 @@ export function SettingsWindow(): JSX.Element {
   }
 
   const discardAndClose = async (): Promise<void> => {
-    if (await closeSettingsWindow()) {
-      setConfirmDiscardOpen(false);
-      updateDraftDirty(false);
+    if (closingRef.current || saveInProgressRef.current) {
+      return;
+    }
+
+    closingRef.current = true;
+    setClosing(true);
+    try {
+      if (await closeSettingsWindow()) {
+        setConfirmDiscardOpen(false);
+        updateDraftDirty(false);
+      }
+    } finally {
+      closingRef.current = false;
+      setClosing(false);
     }
   };
 
@@ -379,12 +409,18 @@ export function SettingsWindow(): JSX.Element {
           <div className="no-drag flex flex-wrap justify-center gap-2">
             <button
               type="button"
-              className="rounded-lg bg-accent px-3 py-2 font-medium text-white"
+              disabled={closing}
+              className="rounded-lg bg-accent px-3 py-2 font-medium text-white disabled:opacity-60"
               onClick={() => setLoadAttempt((value) => value + 1)}
             >
               {t("actions.retry")}
             </button>
-            <button type="button" className="rounded-lg border px-3 py-2" onClick={() => void closeSettingsWindow()}>
+            <button
+              type="button"
+              disabled={closing}
+              className="rounded-lg border px-3 py-2 disabled:opacity-60"
+              onClick={() => void requestClose()}
+            >
               {t("common.close")}
             </button>
           </div>
@@ -409,8 +445,7 @@ export function SettingsWindow(): JSX.Element {
           </button>
         </header>
 
-        <fieldset disabled={busy || closing || confirmDiscardOpen} className="contents">
-          <div className="no-drag min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <div className="no-drag min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {confirmDiscardOpen && (
             <section
               role="alert"
@@ -419,12 +454,18 @@ export function SettingsWindow(): JSX.Element {
               <p className="font-medium">{t("settings.unsavedTitle")}</p>
               <p className="mt-1 text-xs">{t("settings.unsavedMessage")}</p>
               <div className="mt-3 flex justify-end gap-2">
-                <button type="button" className="rounded-lg border px-2 py-1 text-xs" onClick={() => setConfirmDiscardOpen(false)}>
+                <button
+                  type="button"
+                  disabled={closing}
+                  className="rounded-lg border px-2 py-1 text-xs disabled:opacity-60"
+                  onClick={() => setConfirmDiscardOpen(false)}
+                >
                   {t("settings.keepEditing")}
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg bg-amber-600 px-2 py-1 text-xs font-medium text-white"
+                  disabled={closing}
+                  className="rounded-lg bg-amber-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-60"
                   onClick={() => void discardAndClose()}
                 >
                   {t("settings.discardChanges")}
@@ -433,6 +474,7 @@ export function SettingsWindow(): JSX.Element {
             </section>
           )}
 
+          <fieldset disabled={busy || closing || confirmDiscardOpen} className="contents">
           <label className="block space-y-1">
             <span className="flex items-center gap-2 font-medium text-muted">
               <Languages className="h-4 w-4" />
@@ -866,12 +908,17 @@ export function SettingsWindow(): JSX.Element {
               </button>
             </div>
           </section>
-          </div>
-        </fieldset>
+          </fieldset>
+        </div>
 
         <footer className="no-drag mt-3">
           {saveError && <p role="alert" className="mb-2 text-center text-xs text-rose-300">{saveError}</p>}
-          <button type="button" disabled={busy || closing} className="w-full rounded-xl bg-accent px-3 py-2 font-medium text-white" onClick={() => void onSave()}>
+          <button
+            type="button"
+            disabled={busy || closing || confirmDiscardOpen}
+            className="w-full rounded-xl bg-accent px-3 py-2 font-medium text-white disabled:opacity-60"
+            onClick={() => void onSave()}
+          >
             {t("common.save")}
           </button>
         </footer>

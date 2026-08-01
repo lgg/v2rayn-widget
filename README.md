@@ -253,3 +253,12 @@ Widget logs are written to the application config directory under:
 - additional adapters using the existing operational contract;
 - eventual compatibility-field and legacy-command cleanup;
 - product/repository naming cleanup after release validation.
+
+## Final consistency audits
+
+- 0030: active selected-adapter context consistency.
+- 0031: Happ toggle lifecycle hardening.
+- 0032: auxiliary settings consistency.
+- 0033: tray/native runtime consistency.
+- 0034: asynchronous native ownership and warning-free quality gates.
+- 0035: declared-surface, accessibility, Settings close ownership and Node 24 Actions audit.

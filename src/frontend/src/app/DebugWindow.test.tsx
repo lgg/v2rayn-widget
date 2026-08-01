@@ -183,7 +183,7 @@ describe("DebugWindow", () => {
     });
 
     await renderDebugWindow();
-    await screen.findByRole("heading", { name: "Debug tools" });
+    await screen.findByRole("heading", { name: "v2rayN Debug Tools" });
     await waitFor(() => expect(apiMocks.runUiDebugProbe).toHaveBeenCalledTimes(1));
 
     await act(async () => {
@@ -205,6 +205,51 @@ describe("DebugWindow", () => {
     expect(apiMocks.getSettings).not.toHaveBeenCalled();
     await act(async () => ready?.());
     await waitFor(() => expect(apiMocks.getSettings).toHaveBeenCalledOnce());
+  });
+
+  it("blocks v2rayN commands while Happ is selected and enables them after a switch", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void, _onError?: unknown, onReady?: () => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      onReady?.();
+      return () => undefined;
+    });
+    apiMocks.getSettings.mockResolvedValueOnce({ ...settings, selected_client: "happ" });
+
+    render(<DebugWindow />);
+    const adapterNotice = await screen.findByText(/These tools control v2rayN only/);
+    expect(adapterNotice.textContent).toContain("v2rayN");
+    expect((screen.getByRole("button", { name: "Open v2rayN" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(apiMocks.runUiDebugProbe).not.toHaveBeenCalled();
+
+    await act(async () => settingsHandler?.({ payload: settings }));
+    await waitFor(() => expect(apiMocks.runUiDebugProbe).toHaveBeenCalledOnce());
+    expect((screen.getByRole("button", { name: "Open v2rayN" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("drops an in-flight probe result after the adapter changes", async () => {
+    let settingsHandler: ((event: { payload: AppSettings }) => void) | undefined;
+    let resolveProbe!: (value: UiDebugReport) => void;
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: (event: { payload: AppSettings }) => void, _onError?: unknown, onReady?: () => void) => {
+      if (eventName === "settings-updated") settingsHandler = handler;
+      onReady?.();
+      return () => undefined;
+    });
+    apiMocks.runUiDebugProbe.mockImplementationOnce(
+      () => new Promise<UiDebugReport>((resolve) => { resolveProbe = resolve; }),
+    );
+
+    await renderDebugWindow();
+    await waitFor(() => expect(apiMocks.runUiDebugProbe).toHaveBeenCalledOnce());
+    await act(async () => settingsHandler?.({ payload: { ...settings, selected_client: "happ" } }));
+    expect(await screen.findByText(/These tools control v2rayN only/)).toBeTruthy();
+
+    await act(async () => {
+      resolveProbe(report);
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Probe complete")).toBeNull();
+    expect((screen.getByRole("button", { name: "Open v2rayN" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
 });

@@ -16,7 +16,7 @@ import {
 } from "@/lib/api";
 import { applySurfaceSettings } from "@/lib/surface-settings";
 import { bindTauriListener } from "@/lib/tauri-listener";
-import type { AppSettings, DebugRuntimeSnapshot, UiDebugReport } from "@/lib/types";
+import type { AppSettings, DebugRuntimeSnapshot, ProxyClientId, UiDebugReport } from "@/lib/types";
 
 async function closeDebugWindow(): Promise<void> {
   await closeWindow("debug");
@@ -41,17 +41,36 @@ export function DebugWindow(): JSX.Element {
   const [profileNameInput, setProfileNameInput] = useState("");
   const settingsRevisionRef = useRef(0);
   const [settingsListenerSettled, setSettingsListenerSettled] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<ProxyClientId | null>(null);
+  const selectedClientRef = useRef<ProxyClientId | null>(null);
+  const clientRevisionRef = useRef(0);
+
+  const applySelectedClient = (client: ProxyClientId): void => {
+    if (selectedClientRef.current !== client) {
+      clientRevisionRef.current += 1;
+    }
+    selectedClientRef.current = client;
+    setSelectedClient(client);
+    if (client !== "v2rayn") {
+      setBusy(false);
+      setReport(null);
+      setProbeError(null);
+      setInitialProbePending(false);
+    }
+  };
 
   const append = (line: string): void => {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 220));
   };
 
-  const captureSnapshot = async (label: string): Promise<void> => {
+  const captureSnapshot = async (label: string, isCurrent: () => boolean): Promise<void> => {
     try {
       const snapshot = await debugCaptureRuntimeSnapshot();
-      append(`${label}: ${formatSnapshot(snapshot)}`);
+      if (isCurrent()) append(`${label}: ${formatSnapshot(snapshot)}`);
     } catch (error) {
-      append(`${label}: snapshot failed (${error instanceof Error ? error.message : String(error)})`);
+      if (isCurrent()) {
+        append(`${label}: snapshot failed (${error instanceof Error ? error.message : String(error)})`);
+      }
     }
   };
 
@@ -60,6 +79,11 @@ export function DebugWindow(): JSX.Element {
     fn: () => Promise<unknown>,
     options?: { captureSnapshot?: boolean; refreshProbe?: boolean; probeOperation?: boolean }
   ): Promise<boolean> => {
+    const operationRevision = clientRevisionRef.current;
+    const isCurrent = (): boolean =>
+      operationRevision === clientRevisionRef.current && selectedClientRef.current === "v2rayn";
+    if (!isCurrent()) return false;
+
     setBusy(true);
     const withSnapshot = options?.captureSnapshot ?? true;
     if (options?.probeOperation) {
@@ -70,34 +94,42 @@ export function DebugWindow(): JSX.Element {
     try {
       append(`RUN ${title}`);
       if (withSnapshot) {
-        await captureSnapshot("before");
+        await captureSnapshot("before", isCurrent);
       }
+      if (!isCurrent()) return false;
 
       const result = await fn();
+      if (!isCurrent()) return false;
       append(`OK ${title}: ${typeof result === "string" ? result : "done"}`);
+      if (options?.probeOperation) {
+        setReport(result as UiDebugReport);
+        setProbeError(null);
+      }
 
       if (withSnapshot) {
-        await captureSnapshot("after");
+        await captureSnapshot("after", isCurrent);
       }
 
       if (options?.refreshProbe) {
         const refreshed = await runUiDebugProbe();
+        if (!isCurrent()) return false;
         setReport(refreshed);
         setProbeError(null);
       }
       return true;
     } catch (error) {
+      if (!isCurrent()) return false;
       const message = error instanceof Error ? error.message : String(error);
       append(`ERR ${title}: ${message}`);
       if (options?.probeOperation || options?.refreshProbe) {
         setProbeError(message.trim() || t("debug.probeFailed"));
       }
       if (withSnapshot) {
-        await captureSnapshot("after_err");
+        await captureSnapshot("after_err", isCurrent);
       }
       return false;
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   };
 
@@ -106,11 +138,11 @@ export function DebugWindow(): JSX.Element {
     let active = true;
     const revision = settingsRevisionRef.current;
     void getSettings()
-      .then((settings) =>
-        active && revision === settingsRevisionRef.current
-          ? applySurfaceSettings(settings)
-          : undefined,
-      )
+      .then(async (settings) => {
+        if (!active || revision !== settingsRevisionRef.current) return;
+        applySelectedClient(settings.selected_client);
+        await applySurfaceSettings(settings);
+      })
       .catch(() => undefined);
     return () => {
       active = false;
@@ -123,6 +155,7 @@ export function DebugWindow(): JSX.Element {
       "settings-updated",
       (event) => {
         settingsRevisionRef.current += 1;
+        applySelectedClient(event.payload.selected_client);
         void applySurfaceSettings(event.payload);
       },
       () => setSettingsListenerSettled(true),
@@ -131,16 +164,24 @@ export function DebugWindow(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (selectedClient === null) return;
+    if (selectedClient !== "v2rayn") {
+      setReport(null);
+      setProbeError(null);
+      setInitialProbePending(false);
+      return;
+    }
+
+    const operationRevision = clientRevisionRef.current;
+    setInitialProbePending(true);
     void run(
       "probe",
-      async () => {
-        const result = await runUiDebugProbe();
-        setReport(result);
-        return "probe complete";
-      },
+      runUiDebugProbe,
       { captureSnapshot: true, probeOperation: true }
-    ).finally(() => setInitialProbePending(false));
-  }, []);
+    ).finally(() => {
+      if (operationRevision === clientRevisionRef.current) setInitialProbePending(false);
+    });
+  }, [selectedClient]);
 
   useEffect(
     () =>
@@ -149,6 +190,8 @@ export function DebugWindow(): JSX.Element {
       }),
     [],
   );
+
+  const debugEnabled = selectedClient === "v2rayn";
 
   return (
     <main data-tauri-drag-region className="drag-region h-full p-0">
@@ -160,22 +203,24 @@ export function DebugWindow(): JSX.Element {
           </button>
         </header>
 
+        {!debugEnabled && selectedClient !== null && (
+          <p role="alert" className="no-drag mb-3 rounded-xl border border-amber-400/50 bg-amber-500/10 p-3 text-xs text-amber-100">
+            {t("debug.v2raynOnly")}
+          </p>
+        )}
+
         <div className="no-drag mb-3 grid grid-cols-2 gap-2 text-xs">
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("open_v2rayn", openV2RayN)}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("open_v2rayn", openV2RayN)}>
             {t("debug.openV2Rayn")}
           </button>
           <button
             type="button"
             className="rounded-lg border px-2 py-2"
-            disabled={busy}
+            disabled={busy || !debugEnabled}
             onClick={() =>
               void run(
                 "probe",
-                async () => {
-                  const result = await runUiDebugProbe();
-                  setReport(result);
-                  return result.note;
-                },
+                runUiDebugProbe,
                 { captureSnapshot: true, probeOperation: true }
               )
             }
@@ -185,7 +230,7 @@ export function DebugWindow(): JSX.Element {
           <button
             type="button"
             className="rounded-lg border px-2 py-2"
-            disabled={busy}
+            disabled={busy || !debugEnabled}
             onClick={() => void run("click_enable_tun", debugToggleViaUiOnly, { refreshProbe: true })}
           >
             {t("debug.toggleUiOnly")}
@@ -193,7 +238,7 @@ export function DebugWindow(): JSX.Element {
           <button
             type="button"
             className="rounded-lg border px-2 py-2"
-            disabled={busy}
+            disabled={busy || !debugEnabled}
             onClick={() => void run("click_reload", debugClickReloadViaUi, { refreshProbe: true })}
           >
             {t("debug.clickReload")}
@@ -202,7 +247,7 @@ export function DebugWindow(): JSX.Element {
             <input
               aria-label={t("debug.profileNameLabel")}
               className="rounded-lg border bg-transparent px-2 py-2"
-              disabled={busy}
+              disabled={busy || !debugEnabled}
               value={profileNameInput}
               onChange={(event) => setProfileNameInput(event.target.value)}
               placeholder={t("debug.profileNamePlaceholder")}
@@ -210,7 +255,7 @@ export function DebugWindow(): JSX.Element {
             <button
               type="button"
               className="rounded-lg border px-3 py-2"
-              disabled={busy || profileNameInput.trim().length === 0}
+              disabled={busy || !debugEnabled || profileNameInput.trim().length === 0}
               onClick={() =>
                 void run(
                   `select_profile_ui:${profileNameInput.trim()}`,
@@ -222,16 +267,16 @@ export function DebugWindow(): JSX.Element {
               {t("debug.selectProfileUi")}
             </button>
           </div>
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("toggle_config_only", debugToggleViaConfigOnly)}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("toggle_config_only", debugToggleViaConfigOnly)}>
             {t("debug.toggleConfigOnly")}
           </button>
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("toggle_full", toggleTunViaUi, { refreshProbe: true })}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("toggle_full", toggleTunViaUi, { refreshProbe: true })}>
             {t("debug.toggleFull")}
           </button>
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("refresh", refreshStatus)}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("refresh", refreshStatus)}>
             {t("debug.refresh")}
           </button>
-          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy} onClick={() => void run("relaunch_admin", relaunchWidgetAsAdmin, { captureSnapshot: false })}>
+          <button type="button" className="rounded-lg border px-2 py-2" disabled={busy || !debugEnabled} onClick={() => void run("relaunch_admin", relaunchWidgetAsAdmin, { captureSnapshot: false })}>
             {t("actions.relaunchAdmin")}
           </button>
         </div>

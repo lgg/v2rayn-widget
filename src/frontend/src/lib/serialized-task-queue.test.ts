@@ -43,4 +43,26 @@ describe("SerializedTaskQueue", () => {
     ).rejects.toThrow("failed");
     await expect(queue.enqueue(async () => "ok")).resolves.toBe("ok");
   });
+  it("waits until the current tail settles", async () => {
+    let resolveTask!: () => void;
+    const queue = new SerializedTaskQueue();
+    queue.enqueue(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveTask = resolve;
+        }),
+    );
+
+    let idle = false;
+    const waiting = queue.waitForIdle().then(() => {
+      idle = true;
+    });
+    await Promise.resolve();
+    expect(idle).toBe(false);
+
+    resolveTask();
+    await waiting;
+    expect(idle).toBe(true);
+  });
+
 });

@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Open |
+| Status | Blocked — external manual QA required |
 | Priority | P2 |
 | Type | task |
 | Source | Beads `v2rayn-760` |
@@ -67,7 +67,7 @@ Out of scope:
 
 | Question | Status | Answer / Decision |
 | --- | --- | --- |
-| Which subscription setup variants are available for validation? | Open | Need safe, redacted variant list before testing. |
+| Which subscription setup variants are available for validation? | Blocked | Representative real subscription-driven installations and a redacted variant list are not available in repository-only CI. The current product continues to label profile switching experimental and subscription operations unsupported. |
 | Where should the matrix live? | Proposed | Add `project-tracking/reports/0011-build-subscription-mode-profile-switch-validation-matrix-report.md` when validation is done, and add a dedicated docs file if the matrix becomes long. |
 
 ## Risks

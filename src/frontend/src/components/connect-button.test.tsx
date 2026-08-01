@@ -20,4 +20,15 @@ describe("ConnectButton", () => {
     render(<ConnectButton status="Disconnected" disabled={false} onClick={vi.fn()} />);
     expect(screen.getByText("OFF")).toBeTruthy();
   });
+  it("exposes the action implied by the current state", () => {
+    const { rerender } = render(<ConnectButton status="Disconnected" disabled={false} onClick={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
+
+    rerender(<ConnectButton status="Connected" disabled={false} onClick={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
+
+    rerender(<ConnectButton status="Connecting" disabled onClick={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Connection in progress" }).getAttribute("aria-busy")).toBe("true");
+  });
+
 });

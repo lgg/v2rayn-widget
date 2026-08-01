@@ -346,3 +346,12 @@ The separate trusted `Build Release Assets` workflow is responsible for installe
 Network diagnostics disable redirects and ambient proxy settings, resolve each configured HTTP(S) endpoint, reject the endpoint if any answer is non-public, and pin hostname requests to the exact validated `SocketAddr` set with `reqwest::ClientBuilder::resolve_to_addrs`. This removes the second unvalidated DNS lookup that could otherwise permit DNS rebinding. Literal or resolved loopback, private, link-local, CGNAT, benchmark, documentation, multicast, reserved, NAT64, Teredo and 6to4 addresses are rejected.
 
 The Rust suite includes v2rayN resolver/config/log tests, strict-primary versus backup observation tests, schema-preserving and guarded config-update tests, serialized v2rayN/Happ operation tests, selected-process launch/window tests, settings normalization and debounced-position tests, exact fail-closed UI action/profile classifiers, network-target safety tests, product-surface/IPC contracts, window geometry contracts, active-client context transitions and pure Happ classifier tests. Runtime-specific Happ variation is handled through probe diagnostics and fail-closed behavior.
+
+## Final consistency audits
+
+- 0030: active selected-adapter context consistency.
+- 0031: Happ toggle lifecycle hardening.
+- 0032: auxiliary settings consistency.
+- 0033: tray/native runtime consistency.
+- 0034: asynchronous native ownership and warning-free quality gates.
+- 0035: declared-surface, accessibility, Settings close ownership and Node 24 Actions audit.

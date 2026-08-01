@@ -78,6 +78,12 @@ describe("SettingsWindow close ownership", () => {
     ]);
     apiMocks.applyUiSettings.mockImplementation(async (patch: Partial<AppSettings>) => ({ ...settings, ...patch }));
     apiMocks.updateSettings.mockImplementation(async (payload: AppSettings) => payload);
+    apiMocks.detectV2RayNPath.mockResolvedValue(null);
+    apiMocks.validateV2RayNPath.mockResolvedValue({
+      is_valid: true,
+      message_key: "settings.pathValid",
+      normalized_path: "C:\\Apps\\v2rayN",
+    });
     apiMocks.closeWindow.mockResolvedValue(true);
   });
 
@@ -151,5 +157,38 @@ describe("SettingsWindow close ownership", () => {
 
     await waitFor(() => expect(apiMocks.closeWindow).toHaveBeenCalledWith("settings"));
     expect(apiMocks.closeWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes path detection and defers close into unsaved confirmation", async () => {
+    let nativeCloseHandler: (() => void) | undefined;
+    let resolveDetect!: (value: string | null) => void;
+    listenerMocks.bindTauriListener.mockImplementation((eventName: string, handler: () => void, _onError?: unknown, onReady?: () => void) => {
+      if (eventName === "settings-close-requested") nativeCloseHandler = handler;
+      onReady?.();
+      return () => undefined;
+    });
+    apiMocks.detectV2RayNPath.mockImplementationOnce(
+      () => new Promise<string | null>((resolve) => { resolveDetect = resolve; }),
+    );
+    await renderSettings();
+
+    const detect = screen.getByRole("button", { name: "Detect path" });
+    fireEvent.click(detect);
+    fireEvent.click(detect);
+    await waitFor(() => expect(apiMocks.detectV2RayNPath).toHaveBeenCalledOnce());
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => nativeCloseHandler?.());
+    expect(apiMocks.closeWindow).not.toHaveBeenCalled();
+    expect(screen.queryByText("Unsaved settings")).toBeNull();
+
+    await act(async () => {
+      resolveDetect("C:\\Apps\\v2rayN");
+      await Promise.resolve();
+    });
+
+    await screen.findByText("Unsaved settings");
+    expect(apiMocks.closeWindow).not.toHaveBeenCalled();
+    expect(apiMocks.detectV2RayNPath).toHaveBeenCalledTimes(1);
   });
 });

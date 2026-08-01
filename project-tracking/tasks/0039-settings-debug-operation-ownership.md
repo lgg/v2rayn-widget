@@ -4,15 +4,18 @@
 
 | Field | Value |
 | --- | --- |
-| Status | In Progress |
+| Status | Done |
 | Priority | P1 |
 | Type | audit/hardening |
 | Base | `b9cb335929752078ab0f4b4fc3c58c3dda123125` |
+| Verified head | `198901248968b31e0777b7896559ef982a6e56ed` |
+| Verified PR merge candidate | `bf235ce959855016ef3dd9e085f36c96baedf82a` |
+| Merge commit | `052fb793fa2962df5a8de8b79c3caf2912c41442` |
 | Public redaction | Reviewed |
 
 ## Context
 
-A fresh audit of the current merged `main` tree found six lifecycle defects that were not covered by the prior auxiliary-window pass:
+A fresh audit of the merged `main` tree found six lifecycle defects that were not covered by the prior auxiliary-window pass:
 
 1. Settings rendered its discard confirmation inside the fieldset disabled by that same confirmation state, making Keep editing and Discard changes natively inoperable.
 2. A native Settings close request during a full Save could resume from the same serialized queue and issue a second safe-close command alongside Save.
@@ -25,19 +28,19 @@ A fresh audit of the current merged `main` tree found six lifecycle defects that
 
 Give Main, Settings and Debug explicit synchronous ownership of interactive operations and close requests, and enforce process-wide ownership for administrator relaunch.
 
-## Scope
+## Scope completed
 
-- Keep Settings discard controls outside the disabled editable fieldset.
-- Disable Save and all editable controls while discard confirmation is open.
-- Reject duplicate Settings discard close synchronously.
-- Defer native Settings close requests while a full Save is running and close exactly once after successful save.
-- Serialize Settings path Detect/Validate, reject stale results and defer close until the operation settles.
-- Convert failed/invalid deferred save-close requests into the normal unsaved-draft confirmation.
-- Reject duplicate Debug operations synchronously before React rerenders.
-- Defer Debug native/custom close until the active operation settles.
-- Reject duplicate Main client switch, connection Toggle and profile selection at the Zustand store boundary.
-- Reject duplicate administrator relaunch in the Rust service before invoking `ShellExecuteW`.
-- Add focused frontend and Rust regression coverage.
+- Kept Settings discard controls outside the disabled editable fieldset.
+- Disabled Save and all editable controls while discard confirmation is open.
+- Rejected duplicate Settings discard close synchronously.
+- Deferred native Settings close requests while a full Save is running and closed exactly once after successful save.
+- Serialized Settings path Detect/Validate, rejected stale results and deferred close until the operation settled.
+- Routed failed/invalid deferred save-close requests through the normal unsaved-draft confirmation.
+- Rejected duplicate Debug operations synchronously before React rerenders.
+- Deferred Debug native/custom close until the active operation settled.
+- Rejected duplicate Main client switch, connection Toggle and profile selection at the Zustand store boundary.
+- Rejected duplicate administrator relaunch in the Rust service before invoking `ShellExecuteW`.
+- Added focused frontend and Rust regression coverage.
 
 ## Out of scope
 
@@ -47,30 +50,33 @@ Give Main, Settings and Debug explicit synchronous ownership of interactive oper
 
 ## Acceptance criteria
 
-- [ ] Settings Keep editing and Discard changes remain operable when confirmation is visible.
-- [ ] Settings editable controls and Save are disabled while confirmation is visible.
-- [ ] Rapid duplicate Discard dispatch produces only one safe-close command.
-- [ ] Native close during full Save does not issue a parallel or duplicate close.
-- [ ] Settings path operations reject duplicate dispatch and late stale responses.
-- [ ] Close during a path operation waits and opens unsaved confirmation when the result changes the draft.
-- [ ] A failed or invalid Save followed by deferred close preserves the draft and opens confirmation.
-- [ ] Rapid duplicate Debug mutation dispatch produces only one backend command.
-- [ ] Debug close waits until the active operation and its post-operation probe settle.
-- [ ] Rapid duplicate Main Toggle, client switch and profile selection each dispatch only one backend operation.
-- [ ] Concurrent administrator relaunch requests produce only one `runas` attempt.
-- [ ] Existing safe-close failure behavior remains intact.
-- [ ] All frontend tests and production build pass without React act warnings.
-- [ ] Rust tests, formatting, strict Clippy and portable release build pass.
-- [ ] Full Release Quality passes on the PR merge candidate.
-- [ ] Implementation and final evidence are merged into `main`.
+- [x] Settings Keep editing and Discard changes remain operable when confirmation is visible.
+- [x] Settings editable controls and Save are disabled while confirmation is visible.
+- [x] Rapid duplicate Discard dispatch produces only one safe-close command.
+- [x] Native close during full Save does not issue a parallel or duplicate close.
+- [x] Settings path operations reject duplicate dispatch and late stale responses.
+- [x] Close during a path operation waits and opens unsaved confirmation when the result changes the draft.
+- [x] A failed or invalid Save followed by deferred close preserves the draft and opens confirmation.
+- [x] Rapid duplicate Debug mutation dispatch produces only one backend command.
+- [x] Debug close waits until the active operation and its post-operation probe settle.
+- [x] Rapid duplicate Main Toggle, client switch and profile selection each dispatch only one backend operation.
+- [x] Concurrent administrator relaunch requests produce only one `runas` attempt.
+- [x] Existing safe-close failure behavior remains intact.
+- [x] All frontend tests and production build pass without React act warnings.
+- [x] Rust tests, formatting, strict Clippy and portable release build pass.
+- [x] Full Release Quality passes on the PR merge candidate.
+- [x] Implementation and final evidence are merged into `main`.
 
-## Verification plan
+## Verification evidence
 
-- Focused Settings accessibility, path-operation and close-ownership tests.
-- Focused Debug duplicate-dispatch and deferred-close test.
-- Focused dashboard-store duplicate-dispatch tests.
-- Rust unit test for the administrator relaunch claim.
-- Existing Main, Settings, Debug and auxiliary lifecycle suites.
-- Full frontend tests, dependency audit and production build.
-- Rust formatting, tests, strict Clippy, locked build and portable Windows executable through Release Quality.
-- Final diff, documentation and public-redaction review.
+- Release Quality `#504` completed successfully for PR merge candidate `bf235ce959855016ef3dd9e085f36c96baedf82a`, generated from head `198901248968b31e0777b7896559ef982a6e56ed` and base `b9cb335929752078ab0f4b4fc3c58c3dda123125`.
+- Workflow and installer contracts passed; npm audit reported zero vulnerabilities.
+- All 26 frontend test files and all 104 frontend tests passed without React act warnings.
+- TypeScript/Vite production build passed.
+- Rust formatting, Rust tests, strict Clippy, strict release-configuration Clippy and locked build checks passed.
+- Portable Windows executable smoke artifact was built and uploaded successfully.
+- Pull request `#35` was squash-merged into `main` as `052fb793fa2962df5a8de8b79c3caf2912c41442`.
+
+## Residual limitations
+
+Subscription operations remain unsupported. Linux/macOS support remains deferred. Happ connection control remains explicitly experimental and opt-in.

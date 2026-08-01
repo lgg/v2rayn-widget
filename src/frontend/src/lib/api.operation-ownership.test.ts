@@ -23,7 +23,7 @@ function deferred<T>(): Deferred<T> {
 
 describe("API window operation ownership", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    apiMocks.invoke.mockReset();
     vi.resetModules();
   });
 
@@ -58,7 +58,7 @@ describe("API window operation ownership", () => {
     const first = setMainWindowHeight(320);
     const second = setMainWindowHeight(540);
 
-    expect(apiMocks.invoke).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(apiMocks.invoke).toHaveBeenCalledTimes(1));
     expect(apiMocks.invoke).toHaveBeenNthCalledWith(1, "set_main_window_height", {
       height: 320,
     });

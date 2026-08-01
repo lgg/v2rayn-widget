@@ -1,4 +1,4 @@
-# 0039 - Settings and Debug Operation Ownership Report
+# 0039 - Main, Settings and Debug Operation Ownership Report
 
 ## Status
 
@@ -6,6 +6,7 @@ Implementation complete; merge-candidate verification pending.
 
 ## Audit coverage
 
+- Main client-switch, connection-control and profile-selection dispatch.
 - Settings discard confirmation semantics and native disabled-state behavior.
 - Settings full-save serialization and native/custom close races.
 - Debug command dispatch before React disabled-state rendering.
@@ -20,6 +21,7 @@ Implementation complete; merge-candidate verification pending.
 3. Native Settings close during full Save could wait for the Save queue and then race Save's own close, issuing two safe-close calls.
 4. Debug Tools had no synchronous operation guard, allowing two rapid commands before React rendered disabled controls.
 5. Debug could be hidden while a mutating command and its confirmation probe were still running.
+6. Main Toggle, client switching and profile selection did not reject same-frame duplicate dispatch at the store boundary.
 
 ## Implemented corrections
 
@@ -31,6 +33,7 @@ Implementation complete; merge-candidate verification pending.
 - Added a synchronous Debug operation guard independent of React rendering.
 - Deferred Debug close until the active operation, snapshots and requested post-operation probe settle.
 - Disabled Debug commands while close is in progress.
+- Added synchronous dashboard-store guards for Main Toggle, client switch and profile selection.
 
 ## Verification evidence
 

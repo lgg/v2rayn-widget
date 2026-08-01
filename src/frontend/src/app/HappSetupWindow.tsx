@@ -140,9 +140,13 @@ export function HappSetupWindow(): JSX.Element {
     setAllowUiAutomation(value);
   };
 
-  const beginOperation = (): void => {
+  const beginOperation = (): boolean => {
+    if (busyRef.current || closingRef.current) {
+      return false;
+    }
     busyRef.current = true;
     setBusy(true);
+    return true;
   };
 
   const finishOperation = (): void => {
@@ -168,7 +172,9 @@ export function HappSetupWindow(): JSX.Element {
     && probedCandidate === candidateKey(path);
 
   const detectPath = async (): Promise<void> => {
-    beginOperation();
+    if (!beginOperation()) {
+      return;
+    }
     setError(null);
     setMessage(null);
     setDiagnostics(null);
@@ -200,8 +206,10 @@ export function HappSetupWindow(): JSX.Element {
       setError(t("happSetup.probeRequired"));
       return;
     }
+    if (!beginOperation()) {
+      return;
+    }
 
-    beginOperation();
     setError(null);
     setMessage(null);
     try {
@@ -235,7 +243,9 @@ export function HappSetupWindow(): JSX.Element {
   };
 
   const probe = async (): Promise<void> => {
-    beginOperation();
+    if (!beginOperation()) {
+      return;
+    }
     setError(null);
     setMessage(null);
     try {

@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete; merge-candidate verification pending.
+Complete. The verified PR merge candidate passed Release Quality and the implementation was squash-merged into `main`.
 
 ## Audit coverage
 
@@ -46,11 +46,27 @@ Implementation complete; merge-candidate verification pending.
 
 ## Verification evidence
 
-Pending Release Quality on the current PR merge candidate.
+- Verified source head: `198901248968b31e0777b7896559ef982a6e56ed`.
+- Verified PR merge candidate: `bf235ce959855016ef3dd9e085f36c96baedf82a` against base `b9cb335929752078ab0f4b4fc3c58c3dda123125`.
+- Release Quality run `#504`: successful.
+- Workflow and installer contracts passed; npm audit found zero vulnerabilities.
+- Frontend: 26 test files and 104 tests passed without React act warnings; TypeScript/Vite production build passed.
+- Rust Windows: rustfmt, Rust tests, strict normal/release Clippy checks and locked build passed.
+- Portable Windows executable smoke artifact was built and uploaded successfully.
+- Pull request `#35` was squash-merged into `main` as `052fb793fa2962df5a8de8b79c3caf2912c41442`.
+
+## Files changed
+
+- `src/frontend/src/app/DebugWindow.tsx`
+- `src/frontend/src/app/SettingsWindow.tsx`
+- `src/frontend/src/features/dashboard-store.ts`
+- `src/tauri/src/services/privilege.rs`
+- focused frontend and Rust tests for all confirmed regressions
+- task/report 0039
 
 ## Residual limitations
 
-Subscription operations remain unsupported. Linux/macOS remain deferred. Happ connection control remains experimental and opt-in. This audit does not change adapter capability claims.
+No adapter capability claims changed. Subscription operations remain unsupported, Linux/macOS remain deferred, and Happ connection control remains experimental and opt-in.
 
 ## Public redaction review
 

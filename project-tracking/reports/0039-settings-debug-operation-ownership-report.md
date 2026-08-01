@@ -12,6 +12,7 @@ Implementation complete; merge-candidate verification pending.
 - Settings path detection/validation ownership and stale-result handling.
 - Debug command dispatch before React disabled-state rendering.
 - Debug native/custom close during active command and post-command probe.
+- Process-wide administrator relaunch ownership.
 - Shared safe-close failure behavior.
 - Existing frontend and native release gates.
 
@@ -24,6 +25,7 @@ Implementation complete; merge-candidate verification pending.
 5. Debug Tools had no synchronous operation guard, allowing two rapid commands before React rendered disabled controls.
 6. Debug could be hidden while a mutating command and its confirmation probe were still running.
 7. Main Toggle, client switching and profile selection did not reject same-frame duplicate dispatch at the store boundary.
+8. Administrator relaunch had no process-wide claim, so concurrent requests could issue multiple Windows `runas` launches.
 
 ## Implemented corrections
 
@@ -40,6 +42,7 @@ Implementation complete; merge-candidate verification pending.
 - Deferred Debug close until the active operation, snapshots and requested post-operation probe settle.
 - Disabled Debug commands while close is in progress.
 - Added synchronous dashboard-store guards for Main Toggle, client switch and profile selection.
+- Added an atomic Rust relaunch claim shared by every frontend surface; failed launches release the claim, while a successful launch retains it until the current process exits.
 
 ## Verification evidence
 

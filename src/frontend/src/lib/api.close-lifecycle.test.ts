@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: vi.fn() }));
 
 import { shouldReloadClosedDraftSurface } from "@/lib/api";
 
 describe("closed draft surface lifecycle", () => {
-  it("reloads only the current Settings or Happ Setup surface", () => {
-    expect(shouldReloadClosedDraftSurface("settings", "settings")).toBe(true);
-    expect(shouldReloadClosedDraftSurface("happ-setup", "happ-setup")).toBe(true);
-    expect(shouldReloadClosedDraftSurface("settings", "main")).toBe(false);
-    expect(shouldReloadClosedDraftSurface("debug", "debug")).toBe(false);
-    expect(shouldReloadClosedDraftSurface("main", "main")).toBe(false);
+  it("reloads only Settings or Happ Setup inside the Tauri runtime", () => {
+    expect(shouldReloadClosedDraftSurface("settings", true)).toBe(true);
+    expect(shouldReloadClosedDraftSurface("happ-setup", true)).toBe(true);
+    expect(shouldReloadClosedDraftSurface("debug", true)).toBe(false);
+    expect(shouldReloadClosedDraftSurface("main", true)).toBe(false);
+    expect(shouldReloadClosedDraftSurface("settings", false)).toBe(false);
+    expect(shouldReloadClosedDraftSurface("happ-setup", false)).toBe(false);
   });
 });

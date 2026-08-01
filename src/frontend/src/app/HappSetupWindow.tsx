@@ -52,9 +52,13 @@ export function HappSetupWindow(): JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [probedCandidate, setProbedCandidate] = useState<string | null>(null);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
   const dirtyRef = useRef(false);
+  const busyRef = useRef(false);
+  const closeRequestedRef = useRef(false);
+  const closingRef = useRef(false);
   const settingsRevisionRef = useRef(0);
   const [settingsListenerSettled, setSettingsListenerSettled] = useState(false);
 
@@ -136,14 +140,27 @@ export function HappSetupWindow(): JSX.Element {
     setAllowUiAutomation(value);
   };
 
+  const beginOperation = (): boolean => {
+    if (busyRef.current || closingRef.current) {
+      return false;
+    }
+    busyRef.current = true;
+    setBusy(true);
+    return true;
+  };
+
+  const finishOperation = (): void => {
+    busyRef.current = false;
+    setBusy(false);
+    if (closeRequestedRef.current) {
+      void requestClose();
+    }
+  };
+
   useEffect(
     () =>
       bindTauriListener("happ-setup-close-requested", () => {
-        if (dirtyRef.current) {
-          setConfirmDiscardOpen(true);
-        } else {
-          void closeHappSetupWindow();
-        }
+        void requestClose();
       }),
     [],
   );
@@ -155,7 +172,9 @@ export function HappSetupWindow(): JSX.Element {
     && probedCandidate === candidateKey(path);
 
   const detectPath = async (): Promise<void> => {
-    setBusy(true);
+    if (!beginOperation()) {
+      return;
+    }
     setError(null);
     setMessage(null);
     setDiagnostics(null);
@@ -171,7 +190,7 @@ export function HappSetupWindow(): JSX.Element {
     } catch (cause) {
       setError(backendMessage(cause, t("happSetup.detectFailed"), translate));
     } finally {
-      setBusy(false);
+      finishOperation();
     }
   };
 
@@ -187,8 +206,10 @@ export function HappSetupWindow(): JSX.Element {
       setError(t("happSetup.probeRequired"));
       return;
     }
+    if (!beginOperation()) {
+      return;
+    }
 
-    setBusy(true);
     setError(null);
     setMessage(null);
     try {
@@ -217,12 +238,14 @@ export function HappSetupWindow(): JSX.Element {
     } catch (cause) {
       setError(backendMessage(cause, t("errors.settingsSaveFailed"), translate));
     } finally {
-      setBusy(false);
+      finishOperation();
     }
   };
 
   const probe = async (): Promise<void> => {
-    setBusy(true);
+    if (!beginOperation()) {
+      return;
+    }
     setError(null);
     setMessage(null);
     try {
@@ -251,21 +274,49 @@ export function HappSetupWindow(): JSX.Element {
       setProbedCandidate(null);
       setError(backendMessage(cause, t("happSetup.probeFailed"), translate));
     } finally {
-      setBusy(false);
+      finishOperation();
     }
   };
 
-  const requestClose = async (): Promise<void> => {
+  async function requestClose(): Promise<void> {
+    if (closingRef.current) {
+      return;
+    }
+    if (busyRef.current) {
+      closeRequestedRef.current = true;
+      return;
+    }
+
+    closeRequestedRef.current = false;
     if (dirtyRef.current) {
       setConfirmDiscardOpen(true);
       return;
     }
-    await closeHappSetupWindow();
-  };
+
+    closingRef.current = true;
+    setClosing(true);
+    try {
+      await closeHappSetupWindow();
+    } finally {
+      closingRef.current = false;
+      setClosing(false);
+    }
+  }
 
   const discardAndClose = async (): Promise<void> => {
-    if (await closeHappSetupWindow()) {
-      setConfirmDiscardOpen(false);
+    if (busyRef.current || closingRef.current) {
+      return;
+    }
+
+    closingRef.current = true;
+    setClosing(true);
+    try {
+      if (await closeHappSetupWindow()) {
+        setConfirmDiscardOpen(false);
+      }
+    } finally {
+      closingRef.current = false;
+      setClosing(false);
     }
   };
 
@@ -285,12 +336,13 @@ export function HappSetupWindow(): JSX.Element {
           <div className="no-drag flex flex-wrap justify-center gap-2">
             <button
               type="button"
-              className="rounded-lg bg-accent px-3 py-2 font-medium text-white"
+              disabled={closing}
+              className="rounded-lg bg-accent px-3 py-2 font-medium text-white disabled:opacity-60"
               onClick={() => setLoadAttempt((value) => value + 1)}
             >
               {t("actions.retry")}
             </button>
-            <button type="button" className="rounded-lg border px-3 py-2" onClick={() => void requestClose()}>
+            <button type="button" disabled={closing} className="rounded-lg border px-3 py-2 disabled:opacity-60" onClick={() => void requestClose()}>
               {t("common.close")}
             </button>
           </div>
@@ -310,7 +362,7 @@ export function HappSetupWindow(): JSX.Element {
           <button
             type="button"
             aria-label={t("common.close")}
-            disabled={busy}
+            disabled={busy || closing}
             className="no-drag rounded-lg p-2 hover:bg-white/50 disabled:opacity-60 dark:hover:bg-slate-800"
             onClick={() => void requestClose()}
           >
@@ -324,22 +376,21 @@ export function HappSetupWindow(): JSX.Element {
               <p className="font-medium">{t("settings.unsavedTitle")}</p>
               <p className="mt-1 text-xs">{t("settings.unsavedMessage")}</p>
               <div className="mt-3 flex justify-end gap-2">
-                <button type="button" className="rounded-lg border px-2 py-1 text-xs" onClick={() => setConfirmDiscardOpen(false)}>
+                <button type="button" disabled={closing} className="rounded-lg border px-2 py-1 text-xs disabled:opacity-60" onClick={() => setConfirmDiscardOpen(false)}>
                   {t("settings.keepEditing")}
                 </button>
-                <button type="button" className="rounded-lg bg-amber-600 px-2 py-1 text-xs font-medium text-white" onClick={() => void discardAndClose()}>
+                <button type="button" disabled={closing} className="rounded-lg bg-amber-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-60" onClick={() => void discardAndClose()}>
                   {t("settings.discardChanges")}
                 </button>
               </div>
             </section>
           )}
-          <fieldset className="space-y-3 rounded-xl border bg-white/70 p-3 dark:bg-slate-900/70">
+          <fieldset disabled={busy || closing || confirmDiscardOpen} className="space-y-3 rounded-xl border bg-white/70 p-3 dark:bg-slate-900/70">
             <legend className="px-1 font-medium text-muted">{t("happSetup.executable")}</legend>
             <input
               aria-label={t("happSetup.pathLabel")}
               className="w-full rounded-xl border bg-white/90 px-3 py-2 dark:bg-slate-900/90"
               value={path}
-              disabled={busy}
               placeholder={t("happSetup.pathPlaceholder")}
               onChange={(event) => {
                 updatePathDraft(event.target.value);
@@ -353,7 +404,6 @@ export function HappSetupWindow(): JSX.Element {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={busy}
                 className="rounded-lg border px-2 py-1"
                 onClick={() => void detectPath()}
               >
@@ -362,7 +412,6 @@ export function HappSetupWindow(): JSX.Element {
               </button>
               <button
                 type="button"
-                disabled={busy}
                 className="rounded-lg border px-2 py-1"
                 onClick={() => {
                   updatePathDraft("");
@@ -379,7 +428,7 @@ export function HappSetupWindow(): JSX.Element {
             <p className="text-xs text-muted">{t("happSetup.pathHelp")}</p>
           </fieldset>
 
-          <fieldset className="space-y-3 rounded-xl border border-amber-400/50 bg-amber-50/80 p-3 text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
+          <fieldset disabled={busy || closing || confirmDiscardOpen} className="space-y-3 rounded-xl border border-amber-400/50 bg-amber-50/80 p-3 text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
             <legend className="px-1 font-medium">{t("happSetup.experimentalControl")}</legend>
             <div className="flex gap-2 text-xs leading-5">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -390,7 +439,7 @@ export function HappSetupWindow(): JSX.Element {
                 type="checkbox"
                 className="mt-1"
                 checked={allowUiAutomation}
-                disabled={busy || (!allowUiAutomation && !probeReady)}
+                disabled={!allowUiAutomation && !probeReady}
                 onChange={(event) => updateConsentDraft(event.target.checked)}
               />
               <span>{t("happSetup.enableUiAutomation")}</span>
@@ -400,11 +449,10 @@ export function HappSetupWindow(): JSX.Element {
             )}
           </fieldset>
 
-          <fieldset className="space-y-3 rounded-xl border bg-white/70 p-3 dark:bg-slate-900/70">
+          <fieldset disabled={busy || closing || confirmDiscardOpen} className="space-y-3 rounded-xl border bg-white/70 p-3 dark:bg-slate-900/70">
             <legend className="px-1 font-medium text-muted">{t("happSetup.diagnostics")}</legend>
             <button
               type="button"
-              disabled={busy}
               className="rounded-lg border px-2 py-1"
               onClick={() => void probe()}
             >
@@ -451,7 +499,7 @@ export function HappSetupWindow(): JSX.Element {
         <footer className="no-drag mt-3">
           <button
             type="button"
-            disabled={busy || !dirty}
+            disabled={busy || closing || confirmDiscardOpen || !dirty}
             className="w-full rounded-xl bg-accent px-3 py-2 font-medium text-white disabled:opacity-60"
             onClick={() => void save()}
           >

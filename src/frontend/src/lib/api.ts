@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   AppSettings,
   ClientDescriptor,
@@ -178,11 +179,39 @@ export async function relaunchWidgetAsAdmin(): Promise<void> {
   return invoke("relaunch_widget_as_admin");
 }
 
+export function shouldReloadClosedDraftSurface(
+  label: string,
+  currentLabel: string | null,
+  tauriRuntimeAvailable: boolean,
+): boolean {
+  return tauriRuntimeAvailable
+    && label === currentLabel
+    && (label === "settings" || label === "happ-setup");
+}
+
+function reloadClosedDraftSurface(label: string): void {
+  const tauriRuntimeAvailable = "__TAURI_INTERNALS__" in window;
+  if (!tauriRuntimeAvailable) {
+    return;
+  }
+
+  // Reload is post-close cleanup, not part of the safe-close transaction. Never
+  // turn an already successful backend close into a reported close failure.
+  try {
+    const currentLabel = getCurrentWindow().label;
+    if (shouldReloadClosedDraftSurface(label, currentLabel, true)) {
+      window.location.reload();
+    }
+  } catch {
+    // A future open still receives authoritative settings events; failure to
+    // inspect/reload the hidden webview must not reverse a proven-safe close.
+  }
+}
+
 export async function closeWindow(label: string): Promise<boolean> {
   clearWindowCloseFailure(label);
   try {
     await invoke("close_window", { label });
-    return true;
   } catch (cause) {
     // The Rust command intentionally leaves the auxiliary surface visible when
     // Main restoration fails. Report that failure without rejecting into any
@@ -190,6 +219,12 @@ export async function closeWindow(label: string): Promise<boolean> {
     reportWindowCloseFailure(label, cause);
     return false;
   }
+
+  // Settings and Happ Setup are hidden rather than destroyed. Reload their own
+  // hidden webview only after a proven-safe close so discarded drafts and
+  // operation-local diagnostics cannot reappear on the next open.
+  reloadClosedDraftSurface(label);
+  return true;
 }
 
 export async function detectV2RayNPath(): Promise<string | null> {

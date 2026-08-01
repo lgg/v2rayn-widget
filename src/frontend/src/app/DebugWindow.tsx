@@ -32,11 +32,13 @@ function formatSnapshot(snapshot: DebugRuntimeSnapshot): string {
 }
 
 export function DebugWindow(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<UiDebugReport | null>(null);
   const [initialProbePending, setInitialProbePending] = useState(true);
   const [probeError, setProbeError] = useState<string | null>(null);
+  const [settingsLoadError, setSettingsLoadError] = useState<string | null>(null);
+  const [settingsLoadAttempt, setSettingsLoadAttempt] = useState(0);
   const [log, setLog] = useState<string[]>([]);
   const [profileNameInput, setProfileNameInput] = useState("");
   const settingsRevisionRef = useRef(0);
@@ -137,17 +139,24 @@ export function DebugWindow(): JSX.Element {
     if (!settingsListenerSettled) return;
     let active = true;
     const revision = settingsRevisionRef.current;
+    setSettingsLoadError(null);
     void getSettings()
       .then(async (settings) => {
         if (!active || revision !== settingsRevisionRef.current) return;
-        applySelectedClient(settings.selected_client);
         await applySurfaceSettings(settings);
+        if (!active || revision !== settingsRevisionRef.current) return;
+        setSettingsLoadError(null);
+        applySelectedClient(settings.selected_client);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!active || revision !== settingsRevisionRef.current) return;
+        setInitialProbePending(false);
+        setSettingsLoadError(i18n.t("errors.settingsLoadFailed"));
+      });
     return () => {
       active = false;
     };
-  }, [settingsListenerSettled]);
+  }, [i18n, settingsListenerSettled, settingsLoadAttempt]);
 
   useEffect(() => {
     setSettingsListenerSettled(false);
@@ -155,6 +164,7 @@ export function DebugWindow(): JSX.Element {
       "settings-updated",
       (event) => {
         settingsRevisionRef.current += 1;
+        setSettingsLoadError(null);
         applySelectedClient(event.payload.selected_client);
         void applySurfaceSettings(event.payload);
       },
@@ -202,6 +212,19 @@ export function DebugWindow(): JSX.Element {
             {t("common.close")}
           </button>
         </header>
+
+        {settingsLoadError && (
+          <div role="alert" className="no-drag mb-3 rounded-xl border border-rose-400/50 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-200">
+            <p>{settingsLoadError}</p>
+            <button
+              type="button"
+              className="mt-2 rounded-lg border border-rose-400/50 px-2 py-1 font-medium"
+              onClick={() => setSettingsLoadAttempt((value) => value + 1)}
+            >
+              {t("actions.retry")}
+            </button>
+          </div>
+        )}
 
         {!debugEnabled && selectedClient !== null && (
           <p role="alert" className="no-drag mb-3 rounded-xl border border-amber-400/50 bg-amber-500/10 p-3 text-xs text-amber-100">
@@ -334,7 +357,7 @@ export function DebugWindow(): JSX.Element {
               </>
             ) : initialProbePending ? (
               <p role="status" className="mt-2">{t("common.loading")}</p>
-            ) : (
+            ) : settingsLoadError ? null : (
               <p className="mt-2">{t("debug.noProbeResult")}</p>
             )}
           </section>

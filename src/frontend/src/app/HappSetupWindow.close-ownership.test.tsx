@@ -50,10 +50,22 @@ const settings: AppSettings = {
   window_position: null,
 };
 
+async function renderSetup(): Promise<void> {
+  await act(async () => {
+    render(<HappSetupWindow />);
+    await Promise.resolve();
+  });
+  await screen.findByRole("heading", { name: "Happ adapter setup" });
+}
+
 describe("HappSetupWindow close ownership", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await i18n.changeLanguage("en");
+    listenerMocks.bindTauriListener.mockImplementation((_eventName: string, _handler: unknown, _onError?: unknown, onReady?: () => void) => {
+      onReady?.();
+      return () => undefined;
+    });
     apiMocks.closeWindow.mockResolvedValue(true);
     apiMocks.getSettings.mockResolvedValue(settings);
     apiMocks.validateHappPath.mockResolvedValue({
@@ -75,12 +87,7 @@ describe("HappSetupWindow close ownership", () => {
       () => new Promise<AppSettings>((resolve) => { resolveSave = resolve; }),
     );
 
-    await act(async () => {
-      render(<HappSetupWindow />);
-      await Promise.resolve();
-    });
-    await screen.findByRole("heading", { name: "Happ adapter setup" });
-
+    await renderSetup();
     fireEvent.change(screen.getByLabelText("Executable path"), {
       target: { value: "C:\\Happ\\Happ.exe" },
     });
@@ -98,5 +105,24 @@ describe("HappSetupWindow close ownership", () => {
 
     await waitFor(() => expect(apiMocks.closeWindow).toHaveBeenCalledWith("happ-setup"));
     expect(screen.queryByText("Unsaved settings")).toBeNull();
+  });
+
+  it("accepts only one operation before React can render the disabled state", async () => {
+    let resolveDetection!: (value: string | null) => void;
+    apiMocks.detectHappPath.mockImplementationOnce(
+      () => new Promise<string | null>((resolve) => { resolveDetection = resolve; }),
+    );
+
+    await renderSetup();
+    const detect = screen.getByRole("button", { name: "Detect path" });
+    fireEvent.click(detect);
+    fireEvent.click(detect);
+
+    expect(apiMocks.detectHappPath).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveDetection("C:\\Happ\\Happ.exe");
+      await Promise.resolve();
+    });
   });
 });

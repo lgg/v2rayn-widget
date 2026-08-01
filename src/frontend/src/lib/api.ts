@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   AppSettings,
   ClientDescriptor,
@@ -178,10 +179,24 @@ export async function relaunchWidgetAsAdmin(): Promise<void> {
   return invoke("relaunch_widget_as_admin");
 }
 
+export function shouldReloadClosedDraftSurface(label: string, currentLabel: string): boolean {
+  return (label === "settings" || label === "happ-setup") && label === currentLabel;
+}
+
+function reloadClosedDraftSurface(label: string): void {
+  if (shouldReloadClosedDraftSurface(label, getCurrentWindow().label)) {
+    window.location.reload();
+  }
+}
+
 export async function closeWindow(label: string): Promise<boolean> {
   clearWindowCloseFailure(label);
   try {
     await invoke("close_window", { label });
+    // Settings and Happ Setup are hidden rather than destroyed. Reload their own
+    // hidden webview only after a proven-safe close so discarded drafts and
+    // operation-local diagnostics cannot reappear on the next open.
+    reloadClosedDraftSurface(label);
     return true;
   } catch (cause) {
     // The Rust command intentionally leaves the auxiliary surface visible when

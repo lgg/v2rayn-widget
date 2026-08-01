@@ -186,16 +186,13 @@ impl ProxyClientAdapter for RegisteredAdapter {
                 // Main/Tray open can run after spawn() but before process discovery
                 // and launch a second instance. Stop waiting early when the active
                 // client context changes.
-                let process_observed = wait_until(
-                    HAPP_START_TIMEOUT,
-                    HAPP_PROCESS_POLL_INTERVAL,
-                    || {
+                let process_observed =
+                    wait_until(HAPP_START_TIMEOUT, HAPP_PROCESS_POLL_INTERVAL, || {
                         !state.context_matches(ProxyClientId::Happ, snapshot.client_epoch)
                             || happ::read_process_snapshot_for_settings(&exact_process_settings)
                                 .running
-                    },
-                )
-                .await;
+                    })
+                    .await;
 
                 if !state.context_matches(ProxyClientId::Happ, snapshot.client_epoch) {
                     return Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running".to_owned());
@@ -356,14 +353,10 @@ mod tests {
     #[tokio::test]
     async fn process_wait_observes_a_later_ready_state() {
         let mut attempts = 0;
-        let ready = wait_until(
-            Duration::from_millis(50),
-            Duration::from_millis(1),
-            || {
-                attempts += 1;
-                attempts >= 3
-            },
-        )
+        let ready = wait_until(Duration::from_millis(50), Duration::from_millis(1), || {
+            attempts += 1;
+            attempts >= 3
+        })
         .await;
 
         assert!(ready);

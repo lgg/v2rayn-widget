@@ -1,4 +1,18 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use crate::models::debug::PrivilegeDiagnostics;
+
+static RELAUNCH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+fn claim_relaunch(flag: &AtomicBool) -> anyhow::Result<()> {
+    flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .map(|_| ())
+        .map_err(|_| anyhow::anyhow!("Administrator relaunch is already in progress"))
+}
+
+fn release_relaunch(flag: &AtomicBool) {
+    flag.store(false, Ordering::Release);
+}
 
 #[cfg(target_os = "windows")]
 mod windows_impl {
@@ -120,11 +134,20 @@ pub fn collect_v2rayn_privilege_diagnostics(
 
 #[cfg(target_os = "windows")]
 pub fn relaunch_self_as_admin() -> anyhow::Result<()> {
-    windows_impl::relaunch_self_as_admin()
+    claim_relaunch(&RELAUNCH_IN_PROGRESS)?;
+    match windows_impl::relaunch_self_as_admin() {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            release_relaunch(&RELAUNCH_IN_PROGRESS);
+            Err(error)
+        }
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
 pub fn relaunch_self_as_admin() -> anyhow::Result<()> {
+    claim_relaunch(&RELAUNCH_IN_PROGRESS)?;
+    release_relaunch(&RELAUNCH_IN_PROGRESS);
     Err(anyhow::anyhow!(
         "Relaunch as administrator is only available on Windows"
     ))
@@ -138,4 +161,18 @@ pub fn current_process_is_elevated() -> anyhow::Result<bool> {
 #[cfg(not(target_os = "windows"))]
 pub fn current_process_is_elevated() -> anyhow::Result<bool> {
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relaunch_claim_rejects_duplicate_until_released() {
+        let flag = AtomicBool::new(false);
+        assert!(claim_relaunch(&flag).is_ok());
+        assert!(claim_relaunch(&flag).is_err());
+        release_relaunch(&flag);
+        assert!(claim_relaunch(&flag).is_ok());
+    }
 }

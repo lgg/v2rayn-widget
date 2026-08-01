@@ -170,24 +170,44 @@ impl ProxyClientAdapter for RegisteredAdapter {
                 }
 
                 let snapshot = state.snapshot();
+                let executable = happ::detect_executable(&snapshot.settings).ok_or_else(|| {
+                    "Happ executable not found. Start Happ once or configure its executable path in Happ setup."
+                        .to_owned()
+                })?;
+                let exact_process_settings = AppSettings {
+                    happ_path: Some(executable.to_string_lossy().to_string()),
+                    ..snapshot.settings.clone()
+                };
+
                 happ::open(&snapshot.settings)?;
 
-                // Keep the shared Happ operation lock until the exact configured
-                // process becomes observable. Otherwise a queued Main/Tray open
-                // can run after spawn() but before process discovery and launch a
-                // second instance from the same executable.
-                if !wait_for_happ_process(&snapshot.settings).await {
+                // Keep the shared Happ operation lock until the exact executable
+                // selected for this launch becomes observable. Otherwise a queued
+                // Main/Tray open can run after spawn() but before process discovery
+                // and launch a second instance. Stop waiting early when the active
+                // client context changes.
+                let process_observed = wait_until(
+                    HAPP_START_TIMEOUT,
+                    HAPP_PROCESS_POLL_INTERVAL,
+                    || {
+                        !state.context_matches(ProxyClientId::Happ, snapshot.client_epoch)
+                            || happ::read_process_snapshot_for_settings(&exact_process_settings)
+                                .running
+                    },
+                )
+                .await;
+
+                if !state.context_matches(ProxyClientId::Happ, snapshot.client_epoch) {
+                    return Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running".to_owned());
+                }
+                if !process_observed {
                     return Err(
-                        "HAPP_START_TIMEOUT: Happ was launched, but the configured process did not become observable before the startup timeout"
+                        "HAPP_START_TIMEOUT: Happ was launched, but its exact process did not become observable before the startup timeout"
                             .to_owned(),
                     );
                 }
 
-                if state.context_matches(ProxyClientId::Happ, snapshot.client_epoch) {
-                    Ok(())
-                } else {
-                    Err("CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running".to_owned())
-                }
+                Ok(())
             }
         }
     }
@@ -222,15 +242,6 @@ impl ProxyClientAdapter for RegisteredAdapter {
             }
         }
     }
-}
-
-async fn wait_for_happ_process(settings: &AppSettings) -> bool {
-    wait_until(
-        HAPP_START_TIMEOUT,
-        HAPP_PROCESS_POLL_INTERVAL,
-        || happ::read_process_snapshot_for_settings(settings).running,
-    )
-    .await
 }
 
 async fn wait_until<F>(timeout: Duration, poll_interval: Duration, mut condition: F) -> bool

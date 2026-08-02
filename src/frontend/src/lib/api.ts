@@ -60,7 +60,9 @@ async function invoke<T = void>(
   args?: Record<string, unknown>,
 ): Promise<T> {
   try {
-    return await tauriInvoke<T>(command, args);
+    return args === undefined
+      ? await tauriInvoke<T>(command)
+      : await tauriInvoke<T>(command, args);
   } catch (error) {
     throw commandError(error);
   }

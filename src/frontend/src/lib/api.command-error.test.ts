@@ -34,4 +34,12 @@ describe("Tauri command error boundary", () => {
       message: "Tauri command failed",
     });
   });
+
+  it("treats a stale client-open context as an expected cancellation", async () => {
+    apiMocks.invoke.mockRejectedValueOnce(
+      "CLIENT_CONTEXT_CHANGED: selected proxy client changed while the operation was running",
+    );
+
+    await expect(openSelectedClient()).resolves.toBeUndefined();
+  });
 });

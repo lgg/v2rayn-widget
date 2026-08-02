@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   AppSettings,
@@ -21,6 +21,46 @@ import {
 
 let diagnosticsOpenInFlight: Promise<void> | null = null;
 let mainWindowHeightTail: Promise<void> = Promise.resolve();
+
+function commandError(error: unknown): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  if (typeof error === "string") {
+    const message = error.trim();
+    return new Error(message.length > 0 ? message : "Tauri command failed");
+  }
+
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return new Error(message.trim());
+    }
+  }
+
+  try {
+    const serialized = JSON.stringify(error);
+    if (serialized && serialized !== "{}") {
+      return new Error(serialized);
+    }
+  } catch {
+    // Fall through to the stable generic boundary error.
+  }
+
+  return new Error("Tauri command failed");
+}
+
+async function invoke<T = void>(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  try {
+    return await tauriInvoke<T>(command, args);
+  } catch (error) {
+    throw commandError(error);
+  }
+}
 
 export async function getClientCatalog(): Promise<ClientDescriptor[]> {
   return invoke<ClientDescriptor[]>("get_client_catalog");

@@ -51,6 +51,10 @@ function commandError(error: unknown): Error {
   return new Error("Tauri command failed");
 }
 
+function isClientContextChanged(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("CLIENT_CONTEXT_CHANGED");
+}
+
 async function invoke<T = void>(
   command: string,
   args?: Record<string, unknown>,
@@ -131,7 +135,17 @@ export async function selectClientItem(itemId: string): Promise<DashboardStatus>
 }
 
 export async function openSelectedClient(): Promise<void> {
-  return invoke("open_selected_client");
+  try {
+    await invoke("open_selected_client");
+  } catch (error) {
+    // The user may switch adapters or change active adapter settings while an
+    // open request waits on the backend operation lock. That cancellation is
+    // expected ownership behavior and must not surface on the new context.
+    if (isClientContextChanged(error)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function getStatus(): Promise<DashboardStatus> {

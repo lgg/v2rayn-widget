@@ -245,7 +245,7 @@ export async function debugToggleViaConfigOnly(): Promise<string> {
 }
 
 export async function relaunchWidgetAsAdmin(): Promise<void> {
-  return invoke("relaunch_widget_as_admin");
+  return invoke("request_relaunch_widget_as_admin");
 }
 
 export function shouldReloadClosedDraftSurface(
@@ -313,7 +313,7 @@ export async function listProfiles(): Promise<ProfileSummary[]> {
 }
 
 export async function exitApp(): Promise<void> {
-  return invoke("exit_app");
+  return invoke("request_exit_app");
 }
 
 export function setMainWindowHeight(height: number): Promise<void> {

@@ -411,8 +411,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
               const accept = statusIsAtLeastAsFresh(refreshedStatus, prev.status);
               return {
                 status: accept ? refreshedStatus : prev.status,
-                profiles:
-                  accept && profiles.length > 0 ? profiles : prev.profiles,
+                profiles: accept ? profiles : prev.profiles,
               };
             });
           } catch {
@@ -479,10 +478,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
               const accept = statusIsAtLeastAsFresh(refreshedStatus, prev.status);
               return {
                 status: accept ? refreshedStatus : prev.status,
-                profiles:
-                  accept && refreshedProfiles.length > 0
-                    ? refreshedProfiles
-                    : prev.profiles,
+                profiles: accept ? refreshedProfiles : prev.profiles,
               };
             });
           } catch {

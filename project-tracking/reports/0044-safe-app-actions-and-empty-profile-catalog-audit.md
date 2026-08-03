@@ -27,7 +27,7 @@ Resolution:
 - Exit/Relaunch proceeds only when every requested surface has hidden;
 - a dirty/busy surface remains visible, keeps its existing confirmation UI and blocks the destructive action;
 - tray Exit and frontend commands now route through the guard;
-- frontend exact-command regressions prevent fallback to the unsafe direct commands.
+- frontend exact-command and Rust product-contract regressions prevent fallback to unsafe direct commands.
 
 ### 2. Delayed refreshes ignored a verified empty profile catalog
 
@@ -43,14 +43,16 @@ Resolution:
 ## Review observations
 
 - The change reuses existing close ownership instead of creating duplicate frontend dirty-state synchronization.
+- The guard is fail-closed: visibility, focus or event-delivery failures do not terminate the process.
 - No new capability claims or unsupported subscription/platform behavior is introduced.
 - Existing direct Rust exit/relaunch implementations remain internal execution primitives and are no longer registered as frontend commands.
-- The exact frontend/backend command contract remains covered by product-surface tests.
+- A product contract locks tray routing, command registration, frontend invocation and both existing safe-close event names.
 
 ## Changed files
 
 - `src/tauri/src/app_actions.rs`
 - `src/tauri/src/main.rs`
+- `src/tauri/tests/app_action_contract.rs`
 - `src/frontend/src/lib/api.ts`
 - `src/frontend/src/features/dashboard-store.ts`
 - `src/frontend/src/lib/api.safe-app-actions.test.ts`

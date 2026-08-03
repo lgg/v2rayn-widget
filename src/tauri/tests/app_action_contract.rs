@@ -4,9 +4,9 @@ fn destructive_app_actions_are_routed_through_draft_guards() {
     let action_source = include_str!("../src/app_actions.rs");
     let frontend_api = include_str!("../../frontend/src/lib/api.ts");
 
-    assert!(main_source.contains(
-        "\"exit\" => app_actions::request_exit_app_from_native(app.clone())"
-    ));
+    assert!(
+        main_source.contains("\"exit\" => app_actions::request_exit_app_from_native(app.clone())")
+    );
     assert!(main_source.contains("app_actions::request_relaunch_widget_as_admin"));
     assert!(main_source.contains("app_actions::request_exit_app"));
     assert!(!main_source.contains("commands::relaunch_widget_as_admin,"));

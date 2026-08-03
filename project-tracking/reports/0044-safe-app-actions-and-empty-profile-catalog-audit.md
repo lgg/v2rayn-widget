@@ -2,7 +2,9 @@
 
 Date: 2026-08-03
 Baseline: `main` at `ea75ad015f9d56a01b4ead272efcccfe3b15ef55`
-Status: Validation pending
+Implemented by: PR #41
+Merged result: `fe94e0432f0ffef0dd2ee0085c165a62f754d2e9`
+Status: Verified and merged
 
 ## Repository state reviewed
 
@@ -16,7 +18,7 @@ Status: Validation pending
 
 ### 1. Application-wide destructive actions bypassed draft protection
 
-Settings and Happ Setup already own native close requests and display an unsaved-change confirmation. However, tray Exit, frontend Exit and administrator relaunch called `app.exit(0)` through paths that did not ask those surfaces to close first. A user could therefore lose an unsaved draft by choosing Exit from the tray or relaunching with administrator privileges from Main, Settings or Debug.
+Settings and Happ Setup already owned native close requests and displayed an unsaved-change confirmation. However, tray Exit, frontend Exit and administrator relaunch called `app.exit(0)` through paths that did not ask those surfaces to close first. A user could therefore lose an unsaved draft by choosing Exit from the tray or relaunching with administrator privileges from Main, Settings or Debug.
 
 Resolution:
 
@@ -40,6 +42,10 @@ Resolution:
 - adapter-owned transient-read fallback remains responsible for preserving the last verified catalog on actual read failure;
 - focused fake-timer regressions cover both toggle and item-selection delayed refreshes.
 
+## CI-discovered issue
+
+An intermediate run passed all code tests, lint checks, builds and portable packaging, but the aggregate job remained red because `cargo fmt --check` rejected one multiline `assert!` layout in the new static contract. The file was changed to the exact rustfmt output and the complete pipeline was rerun on final branch head `5911a4fe24798d39ef9c6f995f61d7ca7b3b67a9`. Final run #519 passed every step.
+
 ## Review observations
 
 - The change reuses existing close ownership instead of creating duplicate frontend dirty-state synchronization.
@@ -47,6 +53,7 @@ Resolution:
 - No new capability claims or unsupported subscription/platform behavior is introduced.
 - Existing direct Rust exit/relaunch implementations remain internal execution primitives and are no longer registered as frontend commands.
 - A product contract locks tray routing, command registration, frontend invocation and both existing safe-close event names.
+- Repository review found no additional confirmed defect requiring a change in this pass.
 
 ## Changed files
 
@@ -62,8 +69,23 @@ Resolution:
 
 ## Validation evidence
 
-Pending the Windows pull-request workflow on the final branch head.
+Release Quality run #519 (`30804545173`) validated PR #41 final branch head `5911a4fe24798d39ef9c6f995f61d7ca7b3b67a9` on the repository's self-hosted Windows x64 runner:
+
+- workflow, credentials, action pinning, installer and cleanup contracts: passed;
+- frontend dependency audit: 0 vulnerabilities at the configured severity threshold;
+- frontend tests: 115 passed across 31 files;
+- frontend production build: passed;
+- frontend distribution and diagnostics artifacts: uploaded;
+- Rust formatting: passed;
+- Rust tests: 140 passed (129 unit + 1 app-action contract + 9 product-surface contracts + 1 quality-storage contract);
+- debug Clippy with `-D warnings`: passed;
+- release Clippy with `-D warnings`: passed;
+- Rust build/check: passed;
+- portable `v2rayn-widget.exe` release smoke artifact: built and uploaded;
+- portable artifact archive size: 6,715,342 bytes;
+- portable artifact archive SHA-256 digest: `7c689c6d76420890ce97ff3278d454caeb533df4663bb47b81ad630ac976f2fd`;
+- Rust diagnostics artifact SHA-256 digest: `6e384213b3b60749363f507e563a1da6333ecfca3df9ecdc38611f4ca8a0085c`.
 
 ## Validation boundary
 
-The guard is validated through command contracts, unit/regression tests and the Windows build/package pipeline. A fresh manual interaction matrix against every operating-system timing condition and every real v2rayN/Happ build remains environment-dependent and will not be represented as automated proof.
+The guard is validated through command contracts, unit/regression tests and the Windows build/package pipeline. This does not claim a fresh manual interaction matrix against every operating-system timing condition or every real v2rayN/Happ build. Those external-client and timing combinations remain environment-dependent and are not represented as automated proof.

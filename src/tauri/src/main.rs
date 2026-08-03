@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod adapters;
+mod app_actions;
 mod client_commands;
 mod commands;
 mod models;
@@ -277,7 +278,7 @@ fn main() {
                             }
                         });
                     }
-                    "exit" => app.exit(0),
+                    "exit" => app_actions::request_exit_app_from_native(app.clone()),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -457,14 +458,14 @@ fn main() {
             commands::debug_select_profile_via_ui,
             commands::debug_capture_runtime_snapshot,
             commands::debug_toggle_via_config_only,
-            commands::relaunch_widget_as_admin,
+            app_actions::request_relaunch_widget_as_admin,
             commands::detect_v2rayn_path,
             commands::validate_v2rayn_path,
             commands::get_available_locales,
             commands::list_profiles,
             commands::close_window,
             commands::set_main_window_height,
-            commands::exit_app
+            app_actions::request_exit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

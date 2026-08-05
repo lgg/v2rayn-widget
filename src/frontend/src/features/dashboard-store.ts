@@ -173,6 +173,13 @@ function buildNoticeFromError(error: unknown, fallback: string): UiNotice {
   };
 }
 
+function applyCatalogResult(
+  catalog: ProfileSummary[] | null,
+  previous: ProfileSummary[],
+): ProfileSummary[] {
+  return catalog === null ? previous : catalog;
+}
+
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   status: null,
   settings: null,
@@ -205,7 +212,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         refreshSelectedClientStartup().catch(() =>
           getStatus().catch(() => defaultStatus()),
         ),
-        listSelectedClientItems().catch(() => []),
+        listSelectedClientItems().catch(() => null),
       ]);
 
       if (generation !== clientGeneration || revision !== settingsRevision) {
@@ -218,7 +225,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           settings,
           clients,
           status: accept ? status : previous.status,
-          profiles: accept ? profiles : previous.profiles,
+          profiles: accept
+            ? applyCatalogResult(profiles, previous.profiles)
+            : previous.profiles,
           pathNoticeKey: pathNoticeFor(settings),
           loading: false,
           error: null,
@@ -261,7 +270,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const status = background
         ? await refreshSelectedClientBackground()
         : await refreshSelectedClient();
-      const profiles = await listSelectedClientItems().catch(() => []);
+      const profiles = await listSelectedClientItems().catch(() => null);
 
       if (!clientOperationIsCurrent(generation, clientId)) {
         return;
@@ -271,7 +280,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         const accept = statusIsAtLeastAsFresh(status, prev.status);
         return {
           status: accept ? status : prev.status,
-          profiles: accept ? profiles : prev.profiles,
+          profiles: accept
+            ? applyCatalogResult(profiles, prev.profiles)
+            : prev.profiles,
           actionLoading: background ? prev.actionLoading : false,
         };
       });
@@ -325,7 +336,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const catalogRequest = ++catalogRequestRevision;
       const [status, profiles, clients] = await Promise.all([
         refreshSelectedClientStartup().catch(() => defaultStatus()),
-        listSelectedClientItems().catch(() => []),
+        listSelectedClientItems().catch(() => null),
         getClientCatalog().catch(() => get().clients),
       ]);
 
@@ -344,7 +355,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           clients:
             catalogRequest === catalogRequestRevision ? clients : get().clients,
           status: accept ? status : previous.status,
-          profiles: accept ? profiles : previous.profiles,
+          profiles: accept
+            ? applyCatalogResult(profiles, previous.profiles)
+            : previous.profiles,
           actionLoading: false,
           pathNoticeKey: pathNoticeFor(resolvedSettings),
         };
@@ -403,7 +416,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         void (async () => {
           try {
             const refreshedStatus = await refreshSelectedClientPostRoute();
-            const profiles = await listSelectedClientItems().catch(() => []);
+            const profiles = await listSelectedClientItems().catch(() => null);
             if (!clientOperationIsCurrent(generation, clientId)) {
               return;
             }
@@ -411,7 +424,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
               const accept = statusIsAtLeastAsFresh(refreshedStatus, prev.status);
               return {
                 status: accept ? refreshedStatus : prev.status,
-                profiles: accept ? profiles : prev.profiles,
+                profiles: accept
+                  ? applyCatalogResult(profiles, prev.profiles)
+                  : prev.profiles,
               };
             });
           } catch {
@@ -446,7 +461,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set({ actionLoading: true, error: null });
     try {
       const status = await selectClientItemApi(itemId);
-      const profiles = await listSelectedClientItems().catch(() => []);
+      const profiles = await listSelectedClientItems().catch(() => null);
       if (!clientOperationIsCurrent(generation, clientId)) {
         return;
       }
@@ -454,7 +469,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         const accept = statusIsAtLeastAsFresh(status, previous.status);
         return {
           status: accept ? status : previous.status,
-          profiles: accept ? profiles : previous.profiles,
+          profiles: accept
+            ? applyCatalogResult(profiles, previous.profiles)
+            : previous.profiles,
           actionLoading: false,
         };
       });
@@ -469,7 +486,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           try {
             const refreshedStatus = await refreshSelectedClientPostRoute();
             const refreshedProfiles = await listSelectedClientItems().catch(
-              () => [],
+              () => null,
             );
             if (!clientOperationIsCurrent(generation, clientId)) {
               return;
@@ -478,7 +495,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
               const accept = statusIsAtLeastAsFresh(refreshedStatus, prev.status);
               return {
                 status: accept ? refreshedStatus : prev.status,
-                profiles: accept ? refreshedProfiles : prev.profiles,
+                profiles: accept
+                  ? applyCatalogResult(refreshedProfiles, prev.profiles)
+                  : prev.profiles,
               };
             });
           } catch {
@@ -617,14 +636,16 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         refreshSelectedClientStartup().catch(() =>
           getStatus().catch(() => defaultStatus()),
         ),
-        listSelectedClientItems().catch(() => []),
+        listSelectedClientItems().catch(() => null),
       ]).then(([status, profiles]) => {
         if (!clientOperationIsCurrent(initialGeneration, initialClientId)) return;
         set((previous) => {
           const accept = statusIsAtLeastAsFresh(status, previous.status);
           return {
             status: accept ? status : previous.status,
-            profiles: accept ? profiles : previous.profiles,
+            profiles: accept
+              ? applyCatalogResult(profiles, previous.profiles)
+              : previous.profiles,
           };
         });
       });

@@ -1,6 +1,6 @@
 # 0046 - Profile cache and client refresh resilience
 
-Status: Implementation complete / validation pending
+Status: Verified / merge-ready
 Priority: P1
 
 ## Problem
@@ -22,6 +22,7 @@ A fresh audit of `main` at `5142879249fb462cf21fafb562bf82e091d373ab` after task
 - A locally optimistic client selection therefore does not trigger a duplicate refresh when the backend event confirms the same selected client, while a genuinely external selected-client or same-client operational settings event still refreshes.
 - Kept v2rayN path/mock changes, Happ path/control changes and health-display probe settings refreshable.
 - Added focused Rust and frontend regression coverage for per-installation cache isolation, unresolved-path failure semantics, optimistic selection confirmation, external client transitions, same-client operational changes and initial settings hydration.
+- Re-verified native ordering: settings are saved/applied and client context is invalidated before `settings-updated` is emitted, so event-driven refresh observes authoritative backend state.
 
 ## Acceptance criteria
 
@@ -54,7 +55,8 @@ A fresh audit of `main` at `5142879249fb462cf21fafb562bf82e091d373ab` after task
 
 ## Validation history
 
-- Release Quality #545 (`31528979735`) on candidate head `41e79d077cdfe5a1409cc0ec588e5278270f33d0` was **not** accepted: frontend validation passed, but Rust validation exposed two defects in the new regression code. `cargo fmt --check` found one formatting drift, and `cargo test --locked` failed because the test compared `ProfileSummary` values with `assert_eq!` even though the production model intentionally does not implement `PartialEq`.
-- The branch was corrected before merge: rustfmt layout was applied and the regression now validates cached profile length/id/name instead of broadening the production model solely for test convenience.
+- Release Quality #545 (`31528979735`) on candidate head `41e79d077cdfe5a1409cc0ec588e5278270f33d0` was **rejected**. Frontend validation passed, but Rust validation exposed two defects in the new regression code: one rustfmt drift and `assert_eq!` comparisons on `ProfileSummary`, which intentionally has no `PartialEq`. The test was rewritten to validate cached length/id/name without changing the production model.
+- Release Quality #548 (`31530231226`) on corrected head `e398ea3e565147769ca7471651ed7e2070e05de8` was also **rejected**. Frontend, Rust tests, both Clippy configurations, locked build and portable package passed, but the aggregate gate correctly retained failure because one remaining multiline assertion still differed from exact rustfmt output. `cargo test --locked` at this point already passed 130 unit tests plus 1 app-action, 9 product-surface and 1 quality-storage contract tests. The remaining change was formatting-only and did not alter behavior.
+- Release Quality #549 (`31531414988`) on exact implementation head `e5088465fed0d607d9f31af14a678c5b80e263f2` completed **successfully**. Frontend: dependency audit found 0 vulnerabilities; 33 test files / 122 tests passed; `tsc -b` and Vite production build passed. Rust: rustfmt passed; 130 unit tests plus 1 app-action, 9 product-surface and 1 quality-storage contract tests passed; debug and release Clippy passed with warnings denied; locked Rust check/build passed; portable Windows release smoke artifact upload passed. The uploaded portable artifact ZIP final size was 6,717,693 bytes with SHA-256 `e3dc074f039930df5feb5b34ae1d19921796b096009188e115fe611c12e0bd86`.
 
-Full Release Quality validation is still required on the corrected exact PR head before merge. This task remains validation-pending until that workflow is green and the exact successful run evidence is recorded here.
+The implementation is verified and merge-ready. Because this evidence update changes the PR head, one final full Release Quality run on the closing documentation head is still required before merge. No merge is permitted unless that exact closing head is fully green.

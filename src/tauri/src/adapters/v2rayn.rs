@@ -112,9 +112,8 @@ pub async fn list_items(state: State<'_, AppState>) -> Result<Vec<ProfileSummary
     }
 
     let snapshot = state.snapshot();
-    let base_path = require_profile_base_path(commands::resolve_v2rayn_base_path(
-        &snapshot.settings,
-    ))?;
+    let base_path =
+        require_profile_base_path(commands::resolve_v2rayn_base_path(&snapshot.settings))?;
 
     let profiles = match config_reader::read_config(&base_path) {
         Ok(config) => {
@@ -167,6 +166,13 @@ mod tests {
         }
     }
 
+    fn assert_single_profile(base_path: &Path, expected_id: &str) {
+        let profiles = cached_profiles(base_path).expect("expected cached profile catalog");
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].id, expected_id);
+        assert_eq!(profiles[0].name, format!("profile-{expected_id}"));
+    }
+
     #[test]
     fn profile_cache_is_isolated_per_installation_and_retains_previous_paths() {
         let first = Path::new("C:\\Apps\\v2rayN-a");
@@ -175,12 +181,16 @@ mod tests {
         cache_profiles(first, &[profile("one")]);
         cache_profiles(second, &[profile("two")]);
 
-        assert_eq!(cached_profiles(first), Some(vec![profile("one")]));
-        assert_eq!(cached_profiles(second), Some(vec![profile("two")]));
+        assert_single_profile(first, "one");
+        assert_single_profile(second, "two");
 
         cache_profiles(first, &[]);
-        assert_eq!(cached_profiles(first).map(|items| items.len()), Some(0));
-        assert_eq!(cached_profiles(second), Some(vec![profile("two")]));
+        assert!(
+            cached_profiles(first)
+                .expect("expected cached empty catalog")
+                .is_empty()
+        );
+        assert_single_profile(second, "two");
     }
 
     #[test]

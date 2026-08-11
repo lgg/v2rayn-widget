@@ -74,14 +74,11 @@ jobs:
             Accept = "application/vnd.github+json"
             "X-GitHub-Api-Version" = "2022-11-28"
           }
-          $encodedBranch = [uri]::EscapeDataString($env:BRANCH)
-          $uri = "https://api.github.com/repos/$env:REPOSITORY/contents/$path?ref=$encodedBranch"
-          $current = Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
           $content = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
           $body = @{
             message = "0045: apply exact audited dependency lock"
             content = $content
-            sha = $current.sha
+            sha = "1983819be03a0007f09e2305bca9eac008ec28c1"
             branch = $env:BRANCH
           } | ConvertTo-Json
           Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:REPOSITORY/contents/$path" -Method Put -Body $body -ContentType "application/json"

@@ -78,20 +78,16 @@ No additional confirmed defect was found in the inspected current surfaces after
 - release packaging verifies the checked-out tag/version relationship, uses the pre-provisioned immutable NSIS cache, and grants `contents: write` only to the separate release-attachment job;
 - repository search found no current TODO marker requiring implementation in the audited product surface.
 
-## Validation plan
+## Validation history
 
-Before merge, Release Quality must pass on the exact PR head, including:
+Release Quality #545 (`31528979735`) on candidate head `41e79d077cdfe5a1409cc0ec588e5278270f33d0` was rejected rather than waived. The frontend job was green, including locked install, dependency audit, 33 frontend test files / 122 tests and production build. The Rust job's aggregate failure correctly exposed two defects in the newly added test code:
 
-- workflow/installer contracts;
-- `npm ci` and dependency audit;
-- all frontend tests including the new authoritative-settings refresh regressions;
-- frontend production build;
-- Rust formatting and tests;
-- debug and release Clippy with warnings denied;
-- locked Rust build/check;
-- portable Windows release smoke build and artifact upload.
+1. `cargo fmt --all -- --check` rejected one line in `v2rayn.rs` that did not match rustfmt output.
+2. `cargo test --locked` failed to compile three `assert_eq!` comparisons because `ProfileSummary` intentionally has no `PartialEq` implementation.
 
-The exact workflow run, verified head and final merge commit will be appended only after those checks complete successfully.
+The workflow continued into later gates because constituent Rust steps are diagnostic/continue-on-error before the aggregate failure step; therefore the later successful Clippy/build/portable steps do not make #545 a green validation run. The branch was corrected before merge by applying rustfmt output and rewriting the cache regression to inspect profile count/id/name instead of deriving a new production trait solely for testing.
+
+A fresh full Release Quality run on the corrected exact head is required before merge. The exact successful run, verified head and final merge commit will be appended only after those checks complete successfully.
 
 ## Honest validation boundary
 

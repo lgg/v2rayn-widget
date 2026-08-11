@@ -52,6 +52,9 @@ A fresh audit of `main` at `5142879249fb462cf21fafb562bf82e091d373ab` after task
 - `project-tracking/tasks/0046-profile-cache-and-client-refresh-resilience.md`
 - `project-tracking/reports/0046-profile-cache-and-client-refresh-resilience-audit.md`
 
-## Validation
+## Validation history
 
-Full Release Quality validation is required on the PR head before merge. This task remains validation-pending until that workflow is green and the exact run evidence is recorded here.
+- Release Quality #545 (`31528979735`) on candidate head `41e79d077cdfe5a1409cc0ec588e5278270f33d0` was **not** accepted: frontend validation passed, but Rust validation exposed two defects in the new regression code. `cargo fmt --check` found one formatting drift, and `cargo test --locked` failed because the test compared `ProfileSummary` values with `assert_eq!` even though the production model intentionally does not implement `PartialEq`.
+- The branch was corrected before merge: rustfmt layout was applied and the regression now validates cached profile length/id/name instead of broadening the production model solely for test convenience.
+
+Full Release Quality validation is still required on the corrected exact PR head before merge. This task remains validation-pending until that workflow is green and the exact successful run evidence is recorded here.

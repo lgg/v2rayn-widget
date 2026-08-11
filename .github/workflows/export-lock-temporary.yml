@@ -35,44 +35,32 @@ jobs:
           $path = "src/frontend/package-lock.json"
           $text = [System.IO.File]::ReadAllText($path)
 
-          $oldNano = @'
-              "version": "3.3.16",
-              "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.16.tgz",
-              "integrity": "sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==",
-          '@
-          $newNano = @'
-              "version": "3.3.17",
-              "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.17.tgz",
-              "integrity": "sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==",
-          '@
-          $oldPostcss = @'
-              "version": "8.5.21",
-              "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.21.tgz",
-              "integrity": "sha512-v4sDNP3fdNiWMfabO7OwOQdOX8TiQSztKyT1Wj0w+j7LDallJThJRBBBmzVGyYj0crMh7jlV4zepPkiNu9UwDQ==",
-          '@
-          $newPostcss = @'
-              "version": "8.5.23",
-              "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.23.tgz",
-              "integrity": "sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==",
-          '@
+          function Replace-ExactlyOnce([string]$inputText, [string]$oldValue, [string]$newValue, [string]$label) {
+            $count = ([regex]::Matches($inputText, [regex]::Escape($oldValue))).Count
+            if ($count -ne 1) {
+              throw "$label expected exactly once, found $count"
+            }
+            return $inputText.Replace($oldValue, $newValue)
+          }
 
-          if ($text.Contains($newNano) -and $text.Contains($newPostcss)) {
+          $alreadyPatched = $text.Contains('"version": "3.3.17"') -and
+            $text.Contains('nanoid-3.3.17.tgz') -and
+            $text.Contains('"version": "8.5.23"') -and
+            $text.Contains('postcss-8.5.23.tgz')
+          if ($alreadyPatched) {
             Write-Host "Exact security patch is already present; no commit required."
             exit 0
           }
-          if (-not $text.Contains($oldNano)) {
-            throw "Expected NanoID 3.3.16 lock block was not found"
-          }
-          if (-not $text.Contains($oldPostcss)) {
-            throw "Expected PostCSS 8.5.21 lock block was not found"
-          }
 
-          $patched = $text.Replace($oldNano, $newNano).Replace($oldPostcss, $newPostcss)
-          if ($patched -eq $text) {
-            throw "Lock patch produced no change"
-          }
+          $patched = $text
+          $patched = Replace-ExactlyOnce $patched '"version": "3.3.16",' '"version": "3.3.17",' 'NanoID version'
+          $patched = Replace-ExactlyOnce $patched 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.16.tgz' 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.17.tgz' 'NanoID resolved URL'
+          $patched = Replace-ExactlyOnce $patched 'sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==' 'sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==' 'NanoID integrity'
+          $patched = Replace-ExactlyOnce $patched '"version": "8.5.21",' '"version": "8.5.23",' 'PostCSS version'
+          $patched = Replace-ExactlyOnce $patched 'https://registry.npmjs.org/postcss/-/postcss-8.5.21.tgz' 'https://registry.npmjs.org/postcss/-/postcss-8.5.23.tgz' 'PostCSS resolved URL'
+          $patched = Replace-ExactlyOnce $patched 'sha512-v4sDNP3fdNiWMfabO7OwOQdOX8TiQSztKyT1Wj0w+j7LDallJThJRBBBmzVGyYj0crMh7jlV4zepPkiNu9UwDQ==' 'sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==' 'PostCSS integrity'
+
           [System.IO.File]::WriteAllText($path, $patched, [System.Text.UTF8Encoding]::new($false))
-
           $lock = Get-Content $path -Raw | ConvertFrom-Json -AsHashtable
           if ($lock.packages['node_modules/nanoid'].version -ne '3.3.17') {
             throw "NanoID version verification failed"

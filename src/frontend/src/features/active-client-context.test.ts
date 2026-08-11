@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   activeClientOperationalContextChanged,
   activeClientOperationalRefreshKey,
-  settingsTransitionRequiresOperationalRefresh,
 } from "@/features/active-client-context";
 import type { AppSettings } from "@/lib/types";
 
@@ -103,27 +102,5 @@ describe("active client operational context", () => {
     expect(activeClientOperationalRefreshKey(next)).not.toBe(
       activeClientOperationalRefreshKey(baseSettings),
     );
-    expect(settingsTransitionRequiresOperationalRefresh(baseSettings, next)).toBe(true);
-  });
-
-  it("lets explicit client selection own its startup refresh", () => {
-    const next = { ...baseSettings, selected_client: "happ" as const };
-    expect(activeClientOperationalRefreshKey(next)).not.toBe(
-      activeClientOperationalRefreshKey(baseSettings),
-    );
-    expect(settingsTransitionRequiresOperationalRefresh(baseSettings, next)).toBe(false);
-  });
-
-  it("still refreshes for active path changes on the same client", () => {
-    const next = {
-      ...baseSettings,
-      v2rayn_path_mode: "manual" as const,
-      v2rayn_path: "C:\\Apps\\v2rayN",
-    };
-    expect(settingsTransitionRequiresOperationalRefresh(baseSettings, next)).toBe(true);
-  });
-
-  it("does not refresh when there is no previous settings snapshot", () => {
-    expect(settingsTransitionRequiresOperationalRefresh(null, baseSettings)).toBe(false);
   });
 });

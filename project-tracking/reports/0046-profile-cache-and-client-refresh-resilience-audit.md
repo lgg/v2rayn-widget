@@ -1,8 +1,9 @@
 # 0046 - Profile cache and client refresh resilience audit
 
 Date: 2026-08-11
+Finalized: 2026-08-11
 Baseline: `main` at `5142879249fb462cf21fafb562bf82e091d373ab`
-Status: Verified / merge-ready
+Status: Verified / merged
 
 ## Repository state reviewed
 
@@ -114,7 +115,17 @@ Release Quality #549 (`31531414988`) on exact implementation head `e5088465fed0d
 - Uploaded portable artifact ZIP SHA-256: `e3dc074f039930df5feb5b34ae1d19921796b096009188e115fe611c12e0bd86`.
 - Rust aggregate failure step was skipped because all recorded Rust quality gates were successful.
 
-Because recording this evidence changes only tracking documentation but still changes the PR head, one final full Release Quality run on the exact closing documentation head is required before merge. PR #45 must not merge unless that closing run is fully green.
+### Closing validation #551
+
+Release Quality #551 (`31532789010`) on exact closing documentation head `4f29465aec76a53088c1bc96b4c57473a31abf70` completed with `success` before merge. The full frontend and `rust-windows` jobs passed again, including dependency audit, frontend tests/build, rustfmt, Rust tests, debug/release Clippy, locked Rust build, portable Windows smoke build/upload and the aggregate checks.
+
+## Merge evidence
+
+- PR #45: `0046: harden profile cache and client refresh ownership`.
+- Verified head: `4f29465aec76a53088c1bc96b4c57473a31abf70`.
+- Merged into `main`: 2026-08-11 20:42:48Z.
+- Merge commit: `d0a52eaa9ec71fd4e8aeb8c572327d0ea5e9562f`.
+- The final evidence wording is being carried by a documentation-only follow-up; that follow-up is subject to the same full Release Quality gate before entering `main`.
 
 ## Honest validation boundary
 

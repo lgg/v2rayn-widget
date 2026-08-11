@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-lock:
+  normalize-lock:
     runs-on: [self-hosted, v2rayn-widget-ci]
     timeout-minutes: 10
     steps:
@@ -22,10 +22,10 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ runner.environment }}" -ne "self-hosted") {
-            throw "Temporary lock patch must run on the self-hosted runner"
+            throw "Temporary lock normalization must run on the self-hosted runner"
           }
 
-      - name: Apply exact audited lock patch
+      - name: Normalize patched lock to repository LF format
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -34,40 +34,19 @@ jobs:
         run: |
           $path = "src/frontend/package-lock.json"
           $text = [System.IO.File]::ReadAllText($path)
-
-          function Replace-ExactlyOnce([string]$inputText, [string]$oldValue, [string]$newValue, [string]$label) {
-            $count = ([regex]::Matches($inputText, [regex]::Escape($oldValue))).Count
-            if ($count -ne 1) {
-              throw "$label expected exactly once, found $count"
-            }
-            return $inputText.Replace($oldValue, $newValue)
-          }
-
-          $alreadyPatched = $text.Contains('"version": "3.3.17"') -and
-            $text.Contains('nanoid-3.3.17.tgz') -and
-            $text.Contains('"version": "8.5.23"') -and
-            $text.Contains('postcss-8.5.23.tgz')
-          if ($alreadyPatched) {
-            Write-Host "Exact security patch is already present; no commit required."
-            exit 0
-          }
-
-          $patched = $text
-          $patched = Replace-ExactlyOnce $patched '"version": "3.3.16",' '"version": "3.3.17",' 'NanoID version'
-          $patched = Replace-ExactlyOnce $patched 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.16.tgz' 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.17.tgz' 'NanoID resolved URL'
-          $patched = Replace-ExactlyOnce $patched 'sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==' 'sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==' 'NanoID integrity'
-          $patched = Replace-ExactlyOnce $patched '"version": "8.5.21",' '"version": "8.5.23",' 'PostCSS version'
-          $patched = Replace-ExactlyOnce $patched 'https://registry.npmjs.org/postcss/-/postcss-8.5.21.tgz' 'https://registry.npmjs.org/postcss/-/postcss-8.5.23.tgz' 'PostCSS resolved URL'
-          $patched = Replace-ExactlyOnce $patched 'sha512-v4sDNP3fdNiWMfabO7OwOQdOX8TiQSztKyT1Wj0w+j7LDallJThJRBBBmzVGyYj0crMh7jlV4zepPkiNu9UwDQ==' 'sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==' 'PostCSS integrity'
-
-          [System.IO.File]::WriteAllText($path, $patched, [System.Text.UTF8Encoding]::new($false))
-          $lock = Get-Content $path -Raw | ConvertFrom-Json -AsHashtable
+          $lock = $text | ConvertFrom-Json -AsHashtable
           if ($lock.packages['node_modules/nanoid'].version -ne '3.3.17') {
-            throw "NanoID version verification failed"
+            throw "Expected patched NanoID 3.3.17"
           }
           if ($lock.packages['node_modules/postcss'].version -ne '8.5.23') {
-            throw "PostCSS version verification failed"
+            throw "Expected patched PostCSS 8.5.23"
           }
+          if ($text.Contains('nanoid-3.3.16.tgz') -or $text.Contains('postcss-8.5.21.tgz')) {
+            throw "Vulnerable package URLs remain in patched lock"
+          }
+
+          $normalized = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+          [System.IO.File]::WriteAllText($path, $normalized, [System.Text.UTF8Encoding]::new($false))
 
           $headers = @{
             Authorization = "Bearer $env:GH_TOKEN"
@@ -76,9 +55,9 @@ jobs:
           }
           $content = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
           $body = @{
-            message = "0045: apply exact audited dependency lock"
+            message = "0045: normalize audited dependency lock"
             content = $content
-            sha = "1983819be03a0007f09e2305bca9eac008ec28c1"
+            sha = "cf54b2de3ff61764d6fc5c614f0e3e72052e9a88"
             branch = $env:BRANCH
           } | ConvertTo-Json
           Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:REPOSITORY/contents/$path" -Method Put -Body $body -ContentType "application/json"

@@ -185,11 +185,9 @@ mod tests {
         assert_single_profile(second, "two");
 
         cache_profiles(first, &[]);
-        assert!(
-            cached_profiles(first)
-                .expect("expected cached empty catalog")
-                .is_empty()
-        );
+        assert!(cached_profiles(first)
+            .expect("expected cached empty catalog")
+            .is_empty());
         assert_single_profile(second, "two");
     }
 

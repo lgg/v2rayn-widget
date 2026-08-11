@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
@@ -19,8 +20,7 @@ use crate::{
 
 #[derive(Debug, Default)]
 struct ProfileCache {
-    base_path: Option<PathBuf>,
-    profiles: Vec<ProfileSummary>,
+    profiles_by_base_path: HashMap<PathBuf, Vec<ProfileSummary>>,
 }
 
 fn profile_cache() -> &'static Mutex<ProfileCache> {
@@ -32,15 +32,22 @@ fn cache_profiles(base_path: &Path, profiles: &[ProfileSummary]) {
     let mut cache = profile_cache()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    cache.base_path = Some(base_path.to_path_buf());
-    cache.profiles = profiles.to_vec();
+    cache
+        .profiles_by_base_path
+        .insert(base_path.to_path_buf(), profiles.to_vec());
 }
 
 fn cached_profiles(base_path: &Path) -> Option<Vec<ProfileSummary>> {
     let cache = profile_cache()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    (cache.base_path.as_deref() == Some(base_path)).then(|| cache.profiles.clone())
+    cache.profiles_by_base_path.get(base_path).cloned()
+}
+
+fn require_profile_base_path(base_path: Option<PathBuf>) -> Result<PathBuf, String> {
+    base_path.ok_or_else(|| {
+        "Could not list v2rayN profiles: v2rayN installation path not found".to_owned()
+    })
 }
 
 pub fn descriptor() -> ClientDescriptor {
@@ -105,9 +112,9 @@ pub async fn list_items(state: State<'_, AppState>) -> Result<Vec<ProfileSummary
     }
 
     let snapshot = state.snapshot();
-    let Some(base_path) = commands::resolve_v2rayn_base_path(&snapshot.settings) else {
-        return Ok(Vec::new());
-    };
+    let base_path = require_profile_base_path(commands::resolve_v2rayn_base_path(
+        &snapshot.settings,
+    ))?;
 
     let profiles = match config_reader::read_config(&base_path) {
         Ok(config) => {
@@ -161,15 +168,24 @@ mod tests {
     }
 
     #[test]
-    fn profile_cache_distinguishes_empty_success_from_a_different_installation() {
+    fn profile_cache_is_isolated_per_installation_and_retains_previous_paths() {
         let first = Path::new("C:\\Apps\\v2rayN-a");
         let second = Path::new("C:\\Apps\\v2rayN-b");
 
         cache_profiles(first, &[profile("one")]);
-        assert_eq!(cached_profiles(first).map(|items| items.len()), Some(1));
-        assert!(cached_profiles(second).is_none());
+        cache_profiles(second, &[profile("two")]);
+
+        assert_eq!(cached_profiles(first), Some(vec![profile("one")]));
+        assert_eq!(cached_profiles(second), Some(vec![profile("two")]));
 
         cache_profiles(first, &[]);
         assert_eq!(cached_profiles(first).map(|items| items.len()), Some(0));
+        assert_eq!(cached_profiles(second), Some(vec![profile("two")]));
+    }
+
+    #[test]
+    fn unresolved_profile_path_is_a_failure_not_an_empty_catalog() {
+        let error = require_profile_base_path(None).expect_err("missing path must fail");
+        assert!(error.contains("installation path not found"));
     }
 }

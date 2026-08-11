@@ -2,7 +2,7 @@
 
 Date: 2026-08-05
 Baseline: `main` at `b24075eb29f518a79c4d46f5e1e9dd997f5f7f28`
-Status: Validation pending
+Status: Verified / merge-ready
 
 ## Repository state reviewed
 
@@ -48,6 +48,18 @@ Resolution:
 - kept all unrelated package records unchanged relative to the pristine lockfile;
 - restored repository LF line endings after the Windows checkout so the lockfile does not contain a whole-file CRLF diff.
 
+## Confirmed finding 3 - product-surface contract asserted an obsolete implementation shape
+
+Release Quality #534 proved the production implementation, dependency audit, Clippy checks, Rust build and portable package could all succeed, but the Rust aggregate gate still failed because `product_surface_contracts.rs` asserted the old literal source shape `profiles: accept ? profiles : previous.profiles`.
+
+That source-string contract became obsolete when finding 1 introduced `applyCatalogResult`; the failure did not represent a broken product invariant, but leaving the assertion unchanged would keep valid refactors permanently red in CI.
+
+Resolution:
+
+- kept production code unchanged;
+- updated the contract to assert the actual invariant instead: the freshness gate remains present, accepted catalogs flow through `applyCatalogResult`, and `catalog === null` preserves the previous catalog while a successful `[]` remains authoritative;
+- reran the complete Windows Release Quality workflow and confirmed the corrected product-surface contract passes.
+
 ## CI and lockfile recovery evidence
 
 Release Quality run #521 (`30965283250`) initially completed the frontend job successfully but its first Rust job ended during the Rust-test step without retrievable job logs. A later single-job retry could not be used as validation because it failed before Rust verification at `Download frontend distribution`: the older frontend artifact was no longer available. Neither event is treated as a product-code failure or as successful Rust validation.
@@ -64,7 +76,27 @@ The final security lock patch was then produced fail-closed from that pristine b
 - Windows CRLF introduced by checkout was normalized back to the repository's LF representation;
 - the temporary patch/export workflow was removed from the branch after use.
 
-Final Release Quality evidence remains pending the clean final PR head.
+Release Quality run #534 (`31519141176`) then passed frontend install/audit/tests/build, Rust formatting, the 129 Rust unit tests, debug/release Clippy, Rust build and portable release smoke build/upload. Its final Rust aggregate gate correctly exposed finding 3: one stale product-surface source assertion failed even though the product and packaging checks themselves succeeded.
+
+Release Quality run #535 (`31520683711`) on implementation head `d548ac30ba19af5948d44c8b63bd1697075aef54` completed successfully end-to-end:
+
+- frontend dependency restore passed;
+- `npm audit --audit-level=high` reported `0 vulnerabilities`;
+- all 32 frontend test files / 118 tests passed;
+- frontend production build and artifact upload passed;
+- Rust formatting passed;
+- 129 Rust unit tests passed;
+- app-action contract: 1/1 passed;
+- product-surface contracts: 9/9 passed;
+- quality-storage contract: 1/1 passed;
+- strict debug Clippy passed;
+- strict release Clippy passed;
+- Rust build passed;
+- portable Windows release smoke build and upload passed;
+- portable artifact size: 6,715,649 bytes;
+- portable artifact SHA-256 digest: `19f410919ad2c8243d0c63eae59bd502aa6eb8e97441fe3d32a54d57f80acb28`.
+
+The closing task/report commit changes documentation only; it must retain a green Release Quality check before PR merge.
 
 ## Review observations
 
@@ -80,9 +112,10 @@ Final Release Quality evidence remains pending the clean final PR head.
 - `src/frontend/src/features/dashboard-store.ts`
 - `src/frontend/src/features/dashboard-store-catalog-failure.test.ts`
 - `src/frontend/package-lock.json`
+- `src/tauri/tests/product_surface_contracts.rs`
 - `project-tracking/tasks/0045-preserve-profile-catalog-on-command-failure.md`
 - `project-tracking/reports/0045-preserve-profile-catalog-on-command-failure-audit.md`
 
 ## Validation boundary
 
-Automated regressions can prove state transitions for successful empty results and rejected list commands. Dependency audit and build validation can prove the committed graph used by CI. They do not claim manual validation against every real client version, installation layout or transient WebView2/IPC condition.
+Automated regressions prove the covered state transitions for successful empty results and rejected list commands, and the Windows quality workflow proves the committed dependency/build/package graph used by CI. This does not claim fresh manual end-to-end validation against every real v2rayN/Happ version, installation layout or transient WebView2/IPC condition.

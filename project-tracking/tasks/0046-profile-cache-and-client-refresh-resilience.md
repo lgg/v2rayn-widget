@@ -1,6 +1,6 @@
 # 0046 - Profile cache and client refresh resilience
 
-Status: Verified / merge-ready
+Status: Done
 Priority: P1
 
 ## Problem
@@ -58,5 +58,11 @@ A fresh audit of `main` at `5142879249fb462cf21fafb562bf82e091d373ab` after task
 - Release Quality #545 (`31528979735`) on candidate head `41e79d077cdfe5a1409cc0ec588e5278270f33d0` was **rejected**. Frontend validation passed, but Rust validation exposed two defects in the new regression code: one rustfmt drift and `assert_eq!` comparisons on `ProfileSummary`, which intentionally has no `PartialEq`. The test was rewritten to validate cached length/id/name without changing the production model.
 - Release Quality #548 (`31530231226`) on corrected head `e398ea3e565147769ca7471651ed7e2070e05de8` was also **rejected**. Frontend, Rust tests, both Clippy configurations, locked build and portable package passed, but the aggregate gate correctly retained failure because one remaining multiline assertion still differed from exact rustfmt output. `cargo test --locked` at this point already passed 130 unit tests plus 1 app-action, 9 product-surface and 1 quality-storage contract tests. The remaining change was formatting-only and did not alter behavior.
 - Release Quality #549 (`31531414988`) on exact implementation head `e5088465fed0d607d9f31af14a678c5b80e263f2` completed **successfully**. Frontend: dependency audit found 0 vulnerabilities; 33 test files / 122 tests passed; `tsc -b` and Vite production build passed. Rust: rustfmt passed; 130 unit tests plus 1 app-action, 9 product-surface and 1 quality-storage contract tests passed; debug and release Clippy passed with warnings denied; locked Rust check/build passed; portable Windows release smoke artifact upload passed. The uploaded portable artifact ZIP final size was 6,717,693 bytes with SHA-256 `e3dc074f039930df5feb5b34ae1d19921796b096009188e115fe611c12e0bd86`.
+- Release Quality #551 (`31532789010`) on closing documentation head `4f29465aec76a53088c1bc96b4c57473a31abf70` completed **successfully** before merge. Frontend and Rust jobs both passed all gates, including tests, formatting, both Clippy configurations, locked build, portable Windows release smoke build/upload and aggregate validation.
 
-The implementation is verified and merge-ready. Because this evidence update changes the PR head, one final full Release Quality run on the closing documentation head is still required before merge. No merge is permitted unless that exact closing head is fully green.
+## Merge evidence
+
+- PR #45, `0046: harden profile cache and client refresh ownership`, merged into `main` on 2026-08-11 at 20:42:48Z.
+- Verified PR head before merge: `4f29465aec76a53088c1bc96b4c57473a31abf70`.
+- Merge commit: `d0a52eaa9ec71fd4e8aeb8c572327d0ea5e9562f`.
+- The final post-merge evidence update is documentation-only and is validated separately before it is merged into `main`.

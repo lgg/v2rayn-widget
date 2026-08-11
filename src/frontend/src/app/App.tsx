@@ -6,7 +6,7 @@ import { ConnectButton } from "@/components/connect-button";
 import { InfoPanel } from "@/components/info-panel";
 import { ProfileSelector } from "@/components/profile-selector";
 import { StatusBadge } from "@/components/status-badge";
-import { settingsTransitionRequiresOperationalRefresh } from "@/features/active-client-context";
+import { activeClientOperationalRefreshKey } from "@/features/active-client-context";
 import { useDashboardStore } from "@/features/dashboard-store";
 import { setMainWindowHeight } from "@/lib/api";
 import { bindTauriListener } from "@/lib/tauri-listener";
@@ -27,7 +27,6 @@ export function App(): JSX.Element {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLElement | null>(null);
   const lastMeasuredHeight = useRef<number>(0);
-  const previousOperationalSettings = useRef<AppSettings | null>(null);
   const [eventListenersSettled, setEventListenersSettled] = useState(false);
 
   const {
@@ -70,7 +69,16 @@ export function App(): JSX.Element {
     const disposers = [
       bindTauriListener<AppSettings>(
         "settings-updated",
-        (event) => applyExternalSettings(event.payload),
+        (event) => {
+          const previousSettings = useDashboardStore.getState().settings;
+          const shouldRefresh = previousSettings !== null
+            && activeClientOperationalRefreshKey(previousSettings)
+              !== activeClientOperationalRefreshKey(event.payload);
+          applyExternalSettings(event.payload);
+          if (shouldRefresh) {
+            void refresh();
+          }
+        },
         markSettled,
         markSettled,
       ),
@@ -92,7 +100,7 @@ export function App(): JSX.Element {
       active = false;
       for (const dispose of disposers) dispose();
     };
-  }, [applyExternalOperationError, applyExternalSettings, applyExternalStatus]);
+  }, [applyExternalOperationError, applyExternalSettings, applyExternalStatus, refresh]);
 
   useEffect(() => {
     if (eventListenersSettled) void bootstrap();
@@ -108,19 +116,6 @@ export function App(): JSX.Element {
     }, settings.poll_interval_sec * 1000);
 
     return () => window.clearInterval(timer);
-  }, [refresh, settings]);
-
-  useEffect(() => {
-    if (!settings) {
-      previousOperationalSettings.current = null;
-      return;
-    }
-
-    const previous = previousOperationalSettings.current;
-    previousOperationalSettings.current = settings;
-    if (settingsTransitionRequiresOperationalRefresh(previous, settings)) {
-      void refresh();
-    }
   }, [refresh, settings]);
 
   useEffect(() => {

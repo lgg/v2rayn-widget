@@ -1,0 +1,34 @@
+name: Temporary Lock Export
+
+on:
+  push:
+    branches:
+      - audit/0045-preserve-profile-catalog-on-command-failure
+
+permissions:
+  contents: read
+
+jobs:
+  export-lock:
+    runs-on: [self-hosted, v2rayn-widget-ci]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Confirm self-hosted runner assignment
+        shell: pwsh
+        run: |
+          if ("${{ runner.environment }}" -ne "self-hosted") {
+            throw "Temporary export must run on the self-hosted runner"
+          }
+
+      - name: Upload pristine package lock
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pristine-package-lock
+          path: src/frontend/package-lock.json
+          if-no-files-found: error
+          retention-days: 1

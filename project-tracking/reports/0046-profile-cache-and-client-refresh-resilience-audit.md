@@ -50,14 +50,20 @@ The v2rayN adapter's cache stored one `base_path` plus one catalog. A successful
 
 ## Confirmed finding 3 - Optimistic client selection could dispatch a duplicate stale-context refresh
 
-Main updates `settings.selected_client` optimistically before the backend `select_client` command completes. The App-level operational refresh effect previously refreshed whenever its composite settings key changed. That means the optimistic client transition could launch a second refresh while the backend still owned the old adapter context. The backend correctly protects this with client epochs, but the redundant request could still become an expected `CLIENT_CONTEXT_CHANGED` cancellation visible as a false refresh failure or simply duplicate the explicit startup refresh performed by the client-selection action.
+Main updates `settings.selected_client` optimistically before the backend `select_client` command completes. The previous App-level settings-state effect reacted to that optimistic change before backend selection ownership had transferred, so it could launch a second refresh against the old adapter context. The backend correctly rejected stale work by client epoch, but that redundant request could still surface an expected `CLIENT_CONTEXT_CHANGED` as a false refresh failure or duplicate the explicit startup refresh.
 
 ### Resolution
 
-- Added a settings-transition helper that distinguishes explicit selected-client transitions from same-client operational changes.
-- A selected-client transition no longer starts an App-level duplicate refresh; the existing `selectClient` action owns the selected client's startup refresh.
-- Same-client v2rayN/Happ operational changes and health-display probe changes still trigger refresh.
-- Added helper-level and App rerender regressions for both sides of the contract.
+- Removed operational refresh ownership from arbitrary local settings-state transitions.
+- The `settings-updated` listener now compares the current dashboard-store operational refresh key with the incoming authoritative backend settings before applying the event.
+- If the event merely confirms the client already selected optimistically in Main, the keys match and no second refresh is dispatched.
+- If an authoritative event truly changes the selected client externally, or changes same-client path/control/health settings, the keys differ and a refresh still runs after the authoritative settings are applied.
+- The first settings event remains owned by dashboard-store startup hydration and does not receive a duplicate App refresh.
+- Focused App regressions cover optimistic confirmation, external selected-client change, same-client operational change and first-event hydration.
+
+### PR self-review hardening
+
+The first implementation attempted to suppress refresh for every selected-client transition. A review of the existing external-settings contract showed that this was too broad because authoritative external client changes also relied on the refresh path. That implementation was corrected on the PR branch before merge; the final approach distinguishes optimistic local state from authoritative backend events instead of treating all client transitions alike.
 
 ## Additional audit results
 
@@ -78,7 +84,7 @@ Before merge, Release Quality must pass on the exact PR head, including:
 
 - workflow/installer contracts;
 - `npm ci` and dependency audit;
-- all frontend tests including the new operational-refresh regressions;
+- all frontend tests including the new authoritative-settings refresh regressions;
 - frontend production build;
 - Rust formatting and tests;
 - debug and release Clippy with warnings denied;

@@ -204,7 +204,9 @@ fn tray_runtime_is_localized_and_reports_native_operation_results() {
 
     let store = include_str!("../../frontend/src/features/dashboard-store.ts");
     assert!(store.contains("get().settings?.selected_client !== payload.client_id"));
-    assert!(store.contains("profiles: accept ? profiles : previous.profiles"));
+    assert!(store.contains("profiles: accept"));
+    assert!(store.contains("? applyCatalogResult(profiles, previous.profiles)"));
+    assert!(store.contains("return catalog === null ? previous : catalog;"));
 }
 
 #[test]

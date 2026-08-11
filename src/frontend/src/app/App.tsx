@@ -27,7 +27,6 @@ export function App(): JSX.Element {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLElement | null>(null);
   const lastMeasuredHeight = useRef<number>(0);
-  const skippedInitialOperationalRefresh = useRef(false);
   const [eventListenersSettled, setEventListenersSettled] = useState(false);
 
   const {
@@ -56,7 +55,6 @@ export function App(): JSX.Element {
     applyExternalStatus,
     applyExternalOperationError
   } = useDashboardStore();
-  const operationalRefreshKey = activeClientOperationalRefreshKey(settings);
 
   useEffect(() => {
     let active = true;
@@ -71,7 +69,16 @@ export function App(): JSX.Element {
     const disposers = [
       bindTauriListener<AppSettings>(
         "settings-updated",
-        (event) => applyExternalSettings(event.payload),
+        (event) => {
+          const previousSettings = useDashboardStore.getState().settings;
+          const shouldRefresh = previousSettings !== null
+            && activeClientOperationalRefreshKey(previousSettings)
+              !== activeClientOperationalRefreshKey(event.payload);
+          applyExternalSettings(event.payload);
+          if (shouldRefresh) {
+            void refresh();
+          }
+        },
         markSettled,
         markSettled,
       ),
@@ -93,7 +100,7 @@ export function App(): JSX.Element {
       active = false;
       for (const dispose of disposers) dispose();
     };
-  }, [applyExternalOperationError, applyExternalSettings, applyExternalStatus]);
+  }, [applyExternalOperationError, applyExternalSettings, applyExternalStatus, refresh]);
 
   useEffect(() => {
     if (eventListenersSettled) void bootstrap();
@@ -110,19 +117,6 @@ export function App(): JSX.Element {
 
     return () => window.clearInterval(timer);
   }, [refresh, settings]);
-
-  useEffect(() => {
-    if (operationalRefreshKey === null) {
-      return;
-    }
-
-    if (!skippedInitialOperationalRefresh.current) {
-      skippedInitialOperationalRefresh.current = true;
-      return;
-    }
-
-    void refresh();
-  }, [refresh, operationalRefreshKey]);
 
   useEffect(() => {
     if (!notice) {

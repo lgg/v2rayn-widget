@@ -49,7 +49,11 @@ Consequences:
 
 ## Validation evidence
 
-Pending the pull-request Release Quality workflow on the final branch head.
+Release Quality run #521 (`30965283250`) initially completed the frontend job successfully but its first Rust job ended during the Rust-test step without retrievable job logs. A later single-job retry could not be used as validation because it failed before Rust verification at `Download frontend distribution`: the older frontend artifact was no longer available. Neither event is treated as a product-code failure or as successful Rust validation.
+
+This report update intentionally creates a fresh PR revision so the complete Release Quality workflow runs from frontend artifact production through Rust tests, strict Clippy, build and portable packaging within one current validation cycle.
+
+Final validation evidence remains pending the fresh full workflow on the new branch head.
 
 ## Validation boundary
 

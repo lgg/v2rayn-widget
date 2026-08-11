@@ -45,24 +45,3 @@ export function activeClientOperationalRefreshKey(
     settings.latency_mode,
   ]);
 }
-
-export function settingsTransitionRequiresOperationalRefresh(
-  previous: AppSettings | null,
-  next: AppSettings,
-): boolean {
-  if (!previous) {
-    return false;
-  }
-
-  // Main's explicit client-selection action owns the selected client's startup
-  // refresh. Starting a second refresh from the optimistic settings transition
-  // can race the backend select_client command and read the old adapter context.
-  if (previous.selected_client !== next.selected_client) {
-    return false;
-  }
-
-  return (
-    activeClientOperationalRefreshKey(previous) !==
-    activeClientOperationalRefreshKey(next)
-  );
-}

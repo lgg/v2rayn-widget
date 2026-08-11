@@ -64,6 +64,8 @@ Keep the last verified profile/item catalog when listing fails while continuing 
 - [x] Rust formatting, 129 unit tests, 11 contract tests, strict debug/release Clippy and Rust build pass.
 - [x] Portable Windows release smoke build/upload passes.
 - [x] The stale product-surface assertion is replaced with semantic catalog-preservation checks.
+- [x] The closing documentation head retained a fully green Release Quality gate before merge.
+- [x] PR #43 merged into `main`.
 
 ## Validation evidence
 
@@ -77,7 +79,9 @@ Release Quality #535 (`31520683711`) passed end-to-end on implementation head `d
 - portable release smoke artifact built/uploaded successfully;
 - portable artifact SHA-256: `19f410919ad2c8243d0c63eae59bd502aa6eb8e97441fe3d32a54d57f80acb28`.
 
-The closing task/report changes are documentation-only and are still required to carry a green Release Quality check before merge.
+Release Quality #537 (`31522349164`) then passed end-to-end on closing documentation head `a1b9e405388b578d076e22b42d661ccd11011236`. Both `frontend` and `rust-windows` jobs completed successfully, including dependency audit, frontend tests/build, Rust formatting/tests, debug/release Clippy, Rust build, portable release build and artifact upload.
+
+PR #43 merged into `main` as `ff291a5bd507672100c6849905484c2ac5123c36` on 2026-08-11.
 
 ## Validation plan
 
@@ -87,6 +91,7 @@ The closing task/report changes are documentation-only and are still required to
 - Run the frontend dependency audit. Done.
 - Run Rust formatting, tests, strict debug/release Clippy, build and portable release smoke through the repository workflow. Done.
 - Review the public diff for accidental sensitive data. Done.
+- Verify the closing documentation-only head through the same Release Quality workflow before merge. Done.
 
 ## Risks
 

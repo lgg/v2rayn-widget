@@ -1,8 +1,9 @@
 # 0045 - Preserve profile catalog on command failure audit
 
 Date: 2026-08-05
+Finalized: 2026-08-11
 Baseline: `main` at `b24075eb29f518a79c4d46f5e1e9dd997f5f7f28`
-Status: Verified / merge-ready
+Status: Verified / merged
 
 ## Repository state reviewed
 
@@ -96,7 +97,9 @@ Release Quality run #535 (`31520683711`) on implementation head `d548ac30ba19af5
 - portable artifact size: 6,715,649 bytes;
 - portable artifact SHA-256 digest: `19f410919ad2c8243d0c63eae59bd502aa6eb8e97441fe3d32a54d57f80acb28`.
 
-The closing task/report commit changes documentation only; it must retain a green Release Quality check before PR merge.
+Release Quality run #537 (`31522349164`) on closing documentation head `a1b9e405388b578d076e22b42d661ccd11011236` also completed successfully end-to-end. Both `frontend` and `rust-windows` jobs passed, including dependency audit, frontend tests/build, Rust formatting/tests, strict debug/release Clippy, Rust build and portable Windows release packaging/upload.
+
+PR #43 merged into `main` on 2026-08-11 as merge commit `ff291a5bd507672100c6849905484c2ac5123c36`.
 
 ## Review observations
 
@@ -115,6 +118,13 @@ The closing task/report commit changes documentation only; it must retain a gree
 - `src/tauri/tests/product_surface_contracts.rs`
 - `project-tracking/tasks/0045-preserve-profile-catalog-on-command-failure.md`
 - `project-tracking/reports/0045-preserve-profile-catalog-on-command-failure-audit.md`
+
+## Final repository outcome
+
+- PR #43 is merged into the product branch `main`.
+- The closing documentation head retained a fully green Release Quality gate before merge.
+- The task is complete and the audit report reflects the merged state rather than a pre-merge checkpoint.
+- No temporary patch/export workflow remains in the product tree.
 
 ## Validation boundary
 

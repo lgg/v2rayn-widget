@@ -1,4 +1,4 @@
-name: Temporary Lock Export
+name: Temporary Exact Lock Patch
 
 on:
   push:
@@ -6,10 +6,10 @@ on:
       - audit/0045-preserve-profile-catalog-on-command-failure
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export-lock:
+  patch-lock:
     runs-on: [self-hosted, v2rayn-widget-ci]
     timeout-minutes: 10
     steps:
@@ -22,13 +22,78 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ runner.environment }}" -ne "self-hosted") {
-            throw "Temporary export must run on the self-hosted runner"
+            throw "Temporary lock patch must run on the self-hosted runner"
           }
 
-      - name: Upload pristine package lock
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: pristine-package-lock
-          path: src/frontend/package-lock.json
-          if-no-files-found: error
-          retention-days: 1
+      - name: Apply exact audited lock patch
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          $path = "src/frontend/package-lock.json"
+          $text = [System.IO.File]::ReadAllText($path)
+
+          $oldNano = @'
+              "version": "3.3.16",
+              "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.16.tgz",
+              "integrity": "sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==",
+          '@
+          $newNano = @'
+              "version": "3.3.17",
+              "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.17.tgz",
+              "integrity": "sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==",
+          '@
+          $oldPostcss = @'
+              "version": "8.5.21",
+              "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.21.tgz",
+              "integrity": "sha512-v4sDNP3fdNiWMfabO7OwOQdOX8TiQSztKyT1Wj0w+j7LDallJThJRBBBmzVGyYj0crMh7jlV4zepPkiNu9UwDQ==",
+          '@
+          $newPostcss = @'
+              "version": "8.5.23",
+              "resolved": "https://registry.npmjs.org/postcss/-/postcss-8.5.23.tgz",
+              "integrity": "sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==",
+          '@
+
+          if ($text.Contains($newNano) -and $text.Contains($newPostcss)) {
+            Write-Host "Exact security patch is already present; no commit required."
+            exit 0
+          }
+          if (-not $text.Contains($oldNano)) {
+            throw "Expected NanoID 3.3.16 lock block was not found"
+          }
+          if (-not $text.Contains($oldPostcss)) {
+            throw "Expected PostCSS 8.5.21 lock block was not found"
+          }
+
+          $patched = $text.Replace($oldNano, $newNano).Replace($oldPostcss, $newPostcss)
+          if ($patched -eq $text) {
+            throw "Lock patch produced no change"
+          }
+          [System.IO.File]::WriteAllText($path, $patched, [System.Text.UTF8Encoding]::new($false))
+
+          $lock = Get-Content $path -Raw | ConvertFrom-Json -AsHashtable
+          if ($lock.packages['node_modules/nanoid'].version -ne '3.3.17') {
+            throw "NanoID version verification failed"
+          }
+          if ($lock.packages['node_modules/postcss'].version -ne '8.5.23') {
+            throw "PostCSS version verification failed"
+          }
+
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $encodedBranch = [uri]::EscapeDataString($env:BRANCH)
+          $uri = "https://api.github.com/repos/$env:REPOSITORY/contents/$path?ref=$encodedBranch"
+          $current = Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
+          $content = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
+          $body = @{
+            message = "0045: apply exact audited dependency lock"
+            content = $content
+            sha = $current.sha
+            branch = $env:BRANCH
+          } | ConvertTo-Json
+          Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:REPOSITORY/contents/$path" -Method Put -Body $body -ContentType "application/json"

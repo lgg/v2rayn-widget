@@ -6,7 +6,7 @@ import { ConnectButton } from "@/components/connect-button";
 import { InfoPanel } from "@/components/info-panel";
 import { ProfileSelector } from "@/components/profile-selector";
 import { StatusBadge } from "@/components/status-badge";
-import { activeClientOperationalRefreshKey } from "@/features/active-client-context";
+import { settingsTransitionRequiresOperationalRefresh } from "@/features/active-client-context";
 import { useDashboardStore } from "@/features/dashboard-store";
 import { setMainWindowHeight } from "@/lib/api";
 import { bindTauriListener } from "@/lib/tauri-listener";
@@ -27,7 +27,7 @@ export function App(): JSX.Element {
   const { t } = useTranslation();
   const panelRef = useRef<HTMLElement | null>(null);
   const lastMeasuredHeight = useRef<number>(0);
-  const skippedInitialOperationalRefresh = useRef(false);
+  const previousOperationalSettings = useRef<AppSettings | null>(null);
   const [eventListenersSettled, setEventListenersSettled] = useState(false);
 
   const {
@@ -56,7 +56,6 @@ export function App(): JSX.Element {
     applyExternalStatus,
     applyExternalOperationError
   } = useDashboardStore();
-  const operationalRefreshKey = activeClientOperationalRefreshKey(settings);
 
   useEffect(() => {
     let active = true;
@@ -112,17 +111,17 @@ export function App(): JSX.Element {
   }, [refresh, settings]);
 
   useEffect(() => {
-    if (operationalRefreshKey === null) {
+    if (!settings) {
+      previousOperationalSettings.current = null;
       return;
     }
 
-    if (!skippedInitialOperationalRefresh.current) {
-      skippedInitialOperationalRefresh.current = true;
-      return;
+    const previous = previousOperationalSettings.current;
+    previousOperationalSettings.current = settings;
+    if (settingsTransitionRequiresOperationalRefresh(previous, settings)) {
+      void refresh();
     }
-
-    void refresh();
-  }, [refresh, operationalRefreshKey]);
+  }, [refresh, settings]);
 
   useEffect(() => {
     if (!notice) {
